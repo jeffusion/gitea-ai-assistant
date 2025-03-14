@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  ai-code-review:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: registry.kuiper.com/ai-code-review:latest
+    container_name: ai-code-review
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 512M

@@ -1,0 +1,25 @@
+{
+  "action": "opened",
+  "pull_request": {
+    "id": 1,
+    "number": 1,
+    "title": "测试PR",
+    "head": {
+      "sha": "abcd1234abcd1234abcd1234abcd1234abcd1234"
+    },
+    "base": {
+      "repo": {
+        "owner": {
+          "login": "test-owner"
+        },
+        "name": "test-repo"
+      }
+    }
+  },
+  "repository": {
+    "owner": {
+      "login": "test-owner"
+    },
+    "name": "test-repo"
+  }
+}

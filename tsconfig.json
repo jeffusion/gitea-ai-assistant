@@ -1,0 +1,46 @@
+{
+	"compilerOptions": {
+		"target": "es2022",
+		"module": "commonjs",
+		"moduleResolution": "node",
+		"lib": [
+			"es2022"
+		],
+
+		"rootDir": "src",
+		"outDir": "dist",
+		"sourceMap": false,
+		"removeComments": true,
+
+		"strict": true,
+		"alwaysStrict": true,
+		"strictFunctionTypes": true,
+		"strictNullChecks": true,
+		"strictPropertyInitialization": true,
+
+		"forceConsistentCasingInFileNames": true,
+		"noImplicitAny": true,
+		"noImplicitReturns": true,
+		"noImplicitThis": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+
+		"emitDecoratorMetadata": true,
+		"experimentalDecorators": true,
+		"downlevelIteration": true,
+		"declaration": true,
+		"esModuleInterop": true,
+
+		"pretty": true,
+		"skipLibCheck": true
+	},
+	"include": [
+		"typings/**/*",
+		"src/**/*"
+	],
+	"exclude": [
+		"node_modules",
+		"dist"
+	]
+}
