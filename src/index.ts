@@ -7,7 +7,24 @@ const app = new Hono();
 
 // 健康检查路由
 app.get('/', (c) => {
-  return c.json({ status: 'ok', message: 'AI Code Review 服务运行中' });
+  const webhookSecretConfigured = !!config.app.webhookSecret;
+
+  return c.json({
+    status: 'ok',
+    message: 'AI Code Review 服务运行中',
+    version: '1.1.0',
+    webhookSecurityEnabled: webhookSecretConfigured,
+    configuration: {
+      webhookEndpoints: {
+        pullRequest: '/webhook/gitea/pull_request',
+        commitStatus: '/webhook/gitea/status',
+        legacy: '/webhook/gitea (仅支持Pull Request事件)'
+      },
+      signature: webhookSecretConfigured
+        ? '签名验证已启用 (使用X-Gitea-Signature头)'
+        : '警告: 签名验证未配置，建议设置WEBHOOK_SECRET环境变量'
+    }
+  });
 });
 
 // Gitea webhook路由 - 处理PR事件

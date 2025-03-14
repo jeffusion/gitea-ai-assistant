@@ -1,8 +1,8 @@
 import { Context } from 'hono';
 import { giteaService, PullRequestFile, PullRequestDetails } from '../services/gitea';
 import { aiReviewService } from '../services/ai-review';
-// import config from '../config';
-// import * as crypto from 'crypto';
+import config from '../config';
+import * as crypto from 'crypto';
 import { logger } from '../utils/logger';
 
 // 判断是否为开发环境
@@ -11,32 +11,41 @@ const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
 /**
  * 验证Webhook请求签名
  */
-// function verifyWebhookSignature(body: string, signature: string): boolean {
-//   // 开发环境下跳过签名验证
-//   if (isDev && !signature) {
-//     logger.warn('开发环境: 跳过Webhook签名验证');
-//     return true;
-//   }
+function verifyWebhookSignature(body: string, signature: string): boolean {
+  // 开发环境下跳过签名验证
+  if (isDev && !signature) {
+    logger.warn('开发环境: 跳过Webhook签名验证');
+    return true;
+  }
 
-//   if (!config.app.webhookSecret) return false;
+  if (!config.app.webhookSecret) {
+    logger.warn('未配置Webhook密钥，跳过签名验证');
+    return false;
+  }
 
-//   const hmac = crypto.createHmac('sha256', config.app.webhookSecret);
-//   hmac.update(body);
-//   const calculatedSignature = `sha256=${hmac.digest('hex')}`;
+  // Gitea使用SHA-256哈希算法
+  const hmac = crypto.createHmac('sha256', config.app.webhookSecret);
+  hmac.update(body);
+  const calculatedSignature = hmac.digest('hex');
 
-//   // 如果签名不存在，直接返回false
-//   if (!signature) return false;
+  // 如果签名不存在，直接返回false
+  if (!signature) {
+    logger.warn('请求中无签名头');
+    return false;
+  }
 
-//   try {
-//     return crypto.timingSafeEqual(
-//       Buffer.from(calculatedSignature),
-//       Buffer.from(signature)
-//     );
-//   } catch (error) {
-//     logger.error('签名验证失败', error);
-//     return false;
-//   }
-// }
+  // Gitea的签名没有前缀，直接比较
+  try {
+    // 使用timingSafeEqual进行常量时间比较，防止时序攻击
+    return crypto.timingSafeEqual(
+      Buffer.from(calculatedSignature),
+      Buffer.from(signature)
+    );
+  } catch (error) {
+    logger.error('签名验证失败', error);
+    return false;
+  }
+}
 
 /**
  * 处理Pull Request事件
@@ -44,13 +53,13 @@ const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
 export async function handlePullRequestEvent(c: Context): Promise<Response> {
   try {
     // 验证Webhook签名
-    // const signature = c.req.header('X-Gitea-Signature') || '';
+    const signature = c.req.header('X-Gitea-Signature') || '';
     const rawBody = await c.req.text();
 
-    // if (!verifyWebhookSignature(rawBody, signature)) {
-    //   logger.error('Webhook签名验证失败');
-    //   return c.json({ error: 'Webhook签名验证失败' }, 401);
-    // }
+    if (!verifyWebhookSignature(rawBody, signature)) {
+      logger.error('Webhook签名验证失败');
+      return c.json({ error: 'Webhook签名验证失败' }, 401);
+    }
 
     // 解析请求体
     const body = JSON.parse(rawBody);
@@ -99,7 +108,15 @@ export async function handlePullRequestEvent(c: Context): Promise<Response> {
  */
 export async function handleCommitStatusEvent(c: Context): Promise<Response> {
   try {
+    // 验证Webhook签名
+    const signature = c.req.header('X-Gitea-Signature') || '';
     const rawBody = await c.req.text();
+
+    if (!verifyWebhookSignature(rawBody, signature)) {
+      logger.error('Webhook签名验证失败');
+      return c.json({ error: 'Webhook签名验证失败' }, 401);
+    }
+
     const body = JSON.parse(rawBody);
 
     // 记录收到的数据，方便调试

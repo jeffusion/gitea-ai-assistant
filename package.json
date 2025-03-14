@@ -1,8 +1,10 @@
 {
-  "name": "ai-review",
+  "name": "gitea-ai-reviewer",
   "version": "1.0.0",
   "description": "AI-driven code review for Gitea",
-  "packageManager": "yarn@4.6.0",
+  "engines": {
+    "bun": ">=1.2.5"
+  },
   "dependencies": {
     "@hono/zod-validator": "^0.4.3",
     "axios": "^1.8.3",

@@ -71,16 +71,27 @@
    **Pull Request审查webhook**:
    - URL: `http://your-server:3000/webhook/gitea/pull_request`
    - 内容类型: `application/json`
-   - 秘钥: 设置为与WEBHOOK_SECRET相同的值
+   - 秘钥: 设置为与`WEBHOOK_SECRET`环境变量相同的值
    - 触发事件: 选择"Pull Request"
 
    **提交状态审查webhook**:
    - URL: `http://your-server:3000/webhook/gitea/status`
    - 内容类型: `application/json`
-   - 秘钥: 设置为与WEBHOOK_SECRET相同的值
+   - 秘钥: 设置为与`WEBHOOK_SECRET`环境变量相同的值
    - 触发事件: 选择"Status"
 
    > 注意: 老端点 `/webhook/gitea` 仍然支持Pull Request审查，但仅作向后兼容使用。
+
+### Webhook签名验证
+
+为确保请求安全，系统使用Gitea的Webhook签名验证机制：
+
+1. 设置环境变量`WEBHOOK_SECRET`为一个安全的随机字符串
+2. 在Gitea的Webhook配置中，使用相同的字符串作为"秘钥"
+3. 每次请求时，系统会验证请求头中的`X-Gitea-Signature`
+4. 如果签名验证失败，请求会被拒绝处理
+
+验证方法使用SHA-256哈希算法，在处理高负载的情况下这能防止恶意请求并保证请求来源的真实性。
 
 ## 功能说明
 
