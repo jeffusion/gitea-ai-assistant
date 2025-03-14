@@ -48,7 +48,7 @@ export const aiReviewService = {
     commitSha: string
   ): Promise<CodeReviewResult> {
     try {
-      logger.info('开始代码审查', { owner, repo, prNumber });
+      logger.info('开始PR代码审查', { owner, repo, prNumber });
 
       // 获取完整的审查上下文
       const context = await this.getReviewContext(owner, repo, prNumber, diffContent, commitSha);
@@ -66,6 +66,68 @@ export const aiReviewService = {
     } catch (error: any) {
       logger.error('AI代码审查失败:', error);
       throw new Error(`AI代码审查失败: ${error.message}`);
+    }
+  },
+
+  /**
+   * 对单个提交进行代码审查
+   * @param owner 仓库所有者
+   * @param repo 仓库名称
+   * @param commitSha 提交SHA
+   * @param customFiles 可选的自定义文件列表
+   * @returns 代码审查结果
+   */
+  async reviewCommit(
+    owner: string,
+    repo: string,
+    commitSha: string,
+    customFiles?: PullRequestFile[]
+  ): Promise<CodeReviewResult> {
+    try {
+      logger.info('开始提交代码审查', { owner, repo, commitSha });
+
+      // 获取提交差异
+      const diffContent = await giteaService.getCommitDiff(owner, repo, commitSha);
+      if (!diffContent) {
+        logger.warn('提交差异为空，无法进行代码审查');
+        return {
+          summary: '提交差异为空，无法进行代码审查',
+          lineComments: []
+        };
+      }
+
+      // 获取或使用提供的文件列表
+      let files: PullRequestFile[] = [];
+      if (customFiles && customFiles.length > 0) {
+        files = customFiles;
+        logger.info(`使用自定义文件列表，包含 ${files.length} 个文件`);
+      } else {
+        files = await giteaService.getCommitFiles(owner, repo, commitSha);
+        logger.info(`从API获取到 ${files.length} 个变更文件`);
+      }
+
+      // 获取文件内容
+      const fileContents = await giteaService.getRelatedFiles(owner, repo, files, commitSha);
+
+      const context: ReviewContext = {
+        changedFiles: files,
+        fileContents,
+        diffContent
+      };
+
+      // 使用上下文进行总体评价
+      const summary = await this.generateSummary(context);
+
+      // 使用上下文生成行级评论
+      const lineComments = await this.generateLineComments(context);
+
+      return {
+        summary,
+        lineComments,
+      };
+    } catch (error: any) {
+      logger.error('AI提交代码审查失败:', error);
+      throw new Error(`AI提交代码审查失败: ${error.message}`);
     }
   },
 

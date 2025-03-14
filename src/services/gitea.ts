@@ -23,6 +23,15 @@ export interface GiteaService {
   // 获取PR变更的文件列表
   getPullRequestFiles(owner: string, repo: string, prNumber: number): Promise<PullRequestFile[]>;
 
+  // 获取单个提交的差异
+  getCommitDiff(owner: string, repo: string, commitSha: string): Promise<string>;
+
+  // 获取单个提交的文件列表
+  getCommitFiles(owner: string, repo: string, commitSha: string): Promise<PullRequestFile[]>;
+
+  // 获取与提交关联的Pull Request
+  getRelatedPullRequest(owner: string, repo: string, commitSha: string): Promise<PullRequestDetails | null>;
+
   // 获取文件内容
   getFileContent(owner: string, repo: string, path: string, ref?: string): Promise<string>;
 
@@ -40,6 +49,9 @@ export interface GiteaService {
     commitId: string,
     comments: LineComment[]
   ): Promise<void>;
+
+  // 添加提交评论
+  addCommitComment(owner: string, repo: string, commitSha: string, body: string): Promise<void>;
 }
 
 // PR详情接口
@@ -102,6 +114,86 @@ export const giteaService: GiteaService = {
     } catch (error: any) {
       logger.error('获取PR文件列表失败:', error);
       throw new Error(`获取PR文件列表失败: ${error.message}`);
+    }
+  },
+
+  // 获取单个提交的差异
+  async getCommitDiff(owner: string, repo: string, commitSha: string): Promise<string> {
+    try {
+      const response = await giteaClient.get(`/repos/${owner}/${repo}/git/commits/${commitSha}`);
+
+      // Gitea API 不直接提供提交的差异，可能需要另外请求
+      // 这里使用"比较"API获取差异
+      const parentSha = response.data.parents[0]?.sha;
+      if (!parentSha) {
+        logger.warn(`提交 ${commitSha} 没有父提交，无法获取差异`);
+        return '';
+      }
+
+      // 使用官方API获取差异，使用diff格式
+      const diffResponse = await giteaClient.get(`/repos/${owner}/${repo}/git/commits/${commitSha}.diff`);
+      return diffResponse.data || '';
+    } catch (error: any) {
+      logger.error('获取提交差异失败:', error);
+      throw new Error(`获取提交差异失败: ${error.message}`);
+    }
+  },
+
+  // 获取单个提交的文件列表
+  async getCommitFiles(owner: string, repo: string, commitSha: string): Promise<PullRequestFile[]> {
+    try {
+      // Gitea API没有直接获取单个提交文件列表的端点
+      // 我们尝试获取提交信息，提取文件列表
+      const response = await giteaClient.get(`/repos/${owner}/${repo}/git/commits/${commitSha}`);
+
+      // 从webhook的数据提取文件列表
+      // 注意: 这不是理想的方式，但是对于status webhook中提供的文件列表是合理的
+
+      // 这里只能返回基本信息，因为Gitea API不提供单个提交的详细文件信息
+      if (response.data.files) {
+        // 如果API返回了文件列表，则使用它
+        return response.data.files;
+      } else {
+        // 否则返回空数组，依赖控制器中webhook提供的文件列表
+        return [];
+      }
+    } catch (error: any) {
+      logger.error('获取提交文件列表失败:', error);
+      throw new Error(`获取提交文件列表失败: ${error.message}`);
+    }
+  },
+
+  // 获取与提交关联的Pull Request
+  async getRelatedPullRequest(owner: string, repo: string, commitSha: string): Promise<PullRequestDetails | null> {
+    try {
+      // 获取仓库中所有开放的PR
+      const response = await giteaClient.get(`/repos/${owner}/${repo}/pulls?state=open`);
+      const pullRequests = response.data || [];
+
+      // 遍历每个PR，检查它是否包含目标提交
+      for (const pr of pullRequests) {
+        try {
+          const prDetails = await giteaService.getPullRequestDetails(owner, repo, pr.number);
+
+          // 检查PR的提交列表
+          const commitsResponse = await giteaClient.get(`/repos/${owner}/${repo}/pulls/${pr.number}/commits`);
+          const commits = commitsResponse.data || [];
+
+          // 检查提交是否在PR中
+          const foundCommit = commits.find((commit: any) => commit.sha === commitSha);
+          if (foundCommit) {
+            return prDetails;
+          }
+        } catch (error) {
+          logger.warn(`检查PR #${pr.number}是否包含提交 ${commitSha} 时出错`, error);
+        }
+      }
+
+      // 没有找到包含该提交的PR
+      return null;
+    } catch (error: any) {
+      logger.error('获取相关PR失败:', error);
+      return null;
     }
   },
 
@@ -202,6 +294,16 @@ export const giteaService: GiteaService = {
         logger.error('逐条添加评论失败:', fallbackError);
         throw new Error(`添加代码行评论失败: ${error.message}`);
       }
+    }
+  },
+
+  // 添加提交评论
+  async addCommitComment(owner: string, repo: string, commitSha: string, body: string): Promise<void> {
+    try {
+      await giteaClient.post(`/repos/${owner}/${repo}/git/commits/${commitSha}/comments`, { body });
+    } catch (error: any) {
+      logger.error('添加提交评论失败:', error);
+      throw new Error(`添加提交评论失败: ${error.message}`);
     }
   },
 };

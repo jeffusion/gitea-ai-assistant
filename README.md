@@ -1,10 +1,11 @@
 # AI Code Review for Gitea
 
-基于Bun和TypeScript的Gitea代码审查助手，自动为Pull Request提供AI驱动的代码审查。
+基于Bun和TypeScript的Gitea代码审查助手，自动为Pull Request和单个提交提供AI驱动的代码审查。
 
 ## 功能特点
 
 - ✅ 自动对Gitea Pull Request进行代码审查
+- ✅ 自动对成功状态的单个提交进行代码审查
 - ✅ 使用OpenAI API进行代码分析
 - ✅ 提供总体代码审查评论
 - ✅ 支持代码行级别评论
@@ -65,12 +66,37 @@
 
 2. 在Gitea仓库中配置Webhook
 
-   在Gitea仓库设置中添加Webhook:
+   在Gitea仓库设置中添加两个Webhook:
 
-   - URL: `http://your-server:3000/webhook/gitea`
+   **Pull Request审查webhook**:
+   - URL: `http://your-server:3000/webhook/gitea/pull_request`
    - 内容类型: `application/json`
    - 秘钥: 设置为与WEBHOOK_SECRET相同的值
    - 触发事件: 选择"Pull Request"
+
+   **提交状态审查webhook**:
+   - URL: `http://your-server:3000/webhook/gitea/status`
+   - 内容类型: `application/json`
+   - 秘钥: 设置为与WEBHOOK_SECRET相同的值
+   - 触发事件: 选择"Status"
+
+   > 注意: 老端点 `/webhook/gitea` 仍然支持Pull Request审查，但仅作向后兼容使用。
+
+## 功能说明
+
+### PR代码审查
+
+当PR被创建或更新时，系统会自动进行代码审查，提供总体评价和行级评论。
+
+### 单个提交审查
+
+当提交状态变为"success"（如CI通过）时，系统会：
+
+1. 对该提交进行代码审查
+2. 提供总体评价作为提交评论
+3. 尝试找到关联的PR，添加行级评论
+
+这对于增量工作尤其有用，可以只对最新的变更进行审查，避免重复评审已审查过的代码。
 
 ## 开发
 
