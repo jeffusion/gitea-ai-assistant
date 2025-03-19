@@ -184,8 +184,8 @@ export const aiReviewService = {
         };
       });
 
-      // 构建更丰富的提示
-      const summaryPrompt = `作为经验丰富的代码审查专家，请对以下代码变更进行深入审查，提供一个全面详细的评价和建议。
+      // 使用自定义prompt或默认prompt
+      const defaultSummaryPrompt = `作为经验丰富的代码审查专家，请对以下代码变更进行深入审查，提供一个全面详细的评价和建议。
       关注点包括但不限于：代码质量、潜在bug、性能问题、安全问题、最佳实践等。
       请用中文回复，保持专业简洁。
 
@@ -195,7 +195,9 @@ export const aiReviewService = {
       ==== 变更文件的完整信息 ====
       ${JSON.stringify(fileInfo, null, 2)}
 
-      请根据以上信息，特别是考虑每个文件的完整内容和上下文，提供详细的代码审查评价。`;
+      请根据以上信息，特别是考虑每个文件的完整内容和上下文，提供代码审查评价。如果没有发现明显问题，请简短说明代码质量良好即可。`;
+
+      const summaryPrompt = config.openai.customSummaryPrompt || defaultSummaryPrompt;
 
       // 获取总体评价
       const summaryResponse = await openai.chat.completions.create({
@@ -203,7 +205,7 @@ export const aiReviewService = {
         messages: [
           {
             role: 'system',
-            content: '你是一个专业的代码审查助手，擅长提供有建设性的代码评审意见。你会查看代码的完整上下文，而不仅仅是变更部分，从而提供更准确的评价。'
+            content: '你是一个专业的代码审查助手，擅长识别代码中的严重问题和bug。你会查看代码的完整上下文，而不是为了评论而评论。如无明显问题，应给予简短肯定。'
           },
           { role: 'user', content: summaryPrompt }
         ],
@@ -238,10 +240,16 @@ export const aiReviewService = {
         // 获取文件的完整内容作为上下文
         const fileContent = context.fileContents[file.path] || '';
 
-        // 构建提示
-        const filePrompt = `分析以下代码文件的新增代码行，找出潜在问题并提供具体行级评论。
-        只对有问题的代码行提供评论，如果代码行没有明显问题则不需要评论。
-        为每个评论提供行号和具体的改进建议。
+        // 使用自定义prompt或默认prompt
+        const defaultFilePrompt = `分析以下代码文件的新增代码行，只针对存在明显bug或严重问题的代码行提供具体评论。
+        大多数代码行不需要评论，除非它们包含以下问题：
+        - 明显的bug或逻辑错误
+        - 严重的安全漏洞
+        - 可能导致崩溃的代码
+        - 明显的性能瓶颈
+        - 数据一致性问题
+
+        如果没有发现严重问题，请返回空数组。不要为了提供评论而勉强寻找问题。
 
         文件路径: ${file.path}
 
@@ -260,13 +268,15 @@ export const aiReviewService = {
         ]
         只返回JSON数组，不要有其他文本。`;
 
+        const filePrompt = config.openai.customLineCommentPrompt || defaultFilePrompt;
+
         // 获取行级评论
         const lineResponse = await openai.chat.completions.create({
           model: config.openai.model,
           messages: [
             {
               role: 'system',
-              content: '你是一个精确的代码审查助手，只对有问题的代码行提供具体评论。你会考虑文件的完整上下文，而不仅仅是变更部分。请以JSON格式返回结果。'
+              content: '你是一个谨慎的代码审查助手，只对有明显bug或严重问题的代码行提供评论。大多数情况下，如果代码没有严重问题，你应该返回空数组。请以JSON格式返回结果。'
             },
             { role: 'user', content: filePrompt }
           ],

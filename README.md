@@ -51,6 +51,8 @@
 - `OPENAI_BASE_URL`: OpenAI 请求地址
 - `OPENAI_API_KEY`: OpenAI API密钥
 - `OPENAI_MODEL`：OpenAI 使用模型
+- `CUSTOM_SUMMARY_PROMPT`: 自定义总结审查提示 (可选)
+- `CUSTOM_LINE_COMMENT_PROMPT`: 自定义行评论提示 (可选)
 - `PORT`: 应用监听端口 (默认: 3000)
 - `WEBHOOK_SECRET`: Webhook秘钥，用于验证请求来源
 
@@ -119,3 +121,24 @@
 ## 许可证
 
 MIT
+
+## 自定义AI审查提示
+
+默认情况下，AI代码审查工具配置为只对明显的bug和严重问题进行评论。你可以通过环境变量自定义AI使用的提示：
+
+### 自定义总结提示
+
+设置`CUSTOM_SUMMARY_PROMPT`环境变量来自定义代码审查总结。你可以在提示中使用以下变量，它们会在运行时被自动替换：
+
+- `${context.diffContent}` - 代码差异内容
+- `${JSON.stringify(fileInfo, null, 2)}` - 变更文件的完整信息
+
+### 自定义行评论提示
+
+设置`CUSTOM_LINE_COMMENT_PROMPT`环境变量来自定义行级评论生成。你可以在提示中使用以下变量：
+
+- `${file.path}` - 当前文件路径
+- `${fileContent}` - 文件的完整内容
+- `${file.changes.map(c => `${c.lineNumber}: ${c.content} (${c.type === 'add' ? '新增' : '上下文'})`).join('\n')}` - 变更行的上下文
+
+请确保你的自定义提示返回正确的格式，特别是对于行评论，必须返回有效的JSON数组。

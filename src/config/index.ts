@@ -17,6 +17,8 @@ const envSchema = z.object({
   OPENAI_BASE_URL: z.string().url().default('https://api.openai.com/v1'),
   OPENAI_API_KEY: z.string().default('test_openai_key'),
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),
+  CUSTOM_SUMMARY_PROMPT: z.string().optional(),
+  CUSTOM_LINE_COMMENT_PROMPT: z.string().optional(),
 
   // 应用配置
   PORT: z.string().transform(Number).default('3000'),
@@ -47,6 +49,8 @@ export default {
     baseUrl: envParseResult.success ? envParseResult.data.OPENAI_BASE_URL : 'https://api.openai.com/v1',
     apiKey: envParseResult.success ? envParseResult.data.OPENAI_API_KEY : 'test_openai_key',
     model: envParseResult.success ? envParseResult.data.OPENAI_MODEL : 'gpt-4o-mini',
+    customSummaryPrompt: envParseResult.success ? envParseResult.data.CUSTOM_SUMMARY_PROMPT : undefined,
+    customLineCommentPrompt: envParseResult.success ? envParseResult.data.CUSTOM_LINE_COMMENT_PROMPT : undefined,
   },
   app: {
     port: envParseResult.success ? envParseResult.data.PORT : 3000,
