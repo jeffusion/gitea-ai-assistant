@@ -1,7 +1,7 @@
 {
-  "name": "gitea-ai-reviewer",
+  "name": "gitea-assistant",
   "version": "1.0.0",
-  "description": "AI-driven code review for Gitea",
+  "description": "Gitea功能增强助手，包含AI代码审核功能",
   "engines": {
     "bun": ">=1.2.5"
   },

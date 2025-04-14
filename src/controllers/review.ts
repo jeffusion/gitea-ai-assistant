@@ -8,6 +8,13 @@ import { logger } from '../utils/logger';
 // 判断是否为开发环境
 const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
 
+// Gitea webhook事件类型
+enum GiteaEventType {
+  PullRequest = 'pull_request',
+  Status = 'status',
+  Unknown = 'unknown'
+}
+
 /**
  * 验证Webhook请求签名
  */
@@ -48,9 +55,9 @@ function verifyWebhookSignature(body: string, signature: string): boolean {
 }
 
 /**
- * 处理Pull Request事件
+ * 统一处理Gitea Webhook事件
  */
-export async function handlePullRequestEvent(c: Context): Promise<Response> {
+export async function handleGiteaWebhook(c: Context): Promise<Response> {
   try {
     // 验证Webhook签名
     const signature = c.req.header('X-Gitea-Signature') || '';
@@ -64,137 +71,160 @@ export async function handlePullRequestEvent(c: Context): Promise<Response> {
     // 解析请求体
     const body = JSON.parse(rawBody);
 
-    // 仅处理PR打开或更新事件
-    if (
-      body.action !== 'opened' &&
-      body.action !== 'reopened' &&
-      body.action !== 'synchronize' &&
-      body.action !== 'edited'
-    ) {
-      return c.json({ status: 'ignored', message: '无需处理的事件类型' }, 200);
+    // 确定事件类型
+    const eventType = determineEventType(c, body);
+    logger.info(`收到Gitea Webhook事件: ${eventType}`);
+
+    // 根据事件类型路由到相应的处理逻辑
+    switch (eventType) {
+      case GiteaEventType.PullRequest:
+        return await handlePullRequestEvent(c, body);
+      case GiteaEventType.Status:
+        return await handleCommitStatusEvent(c, body);
+      default:
+        logger.warn(`未支持的Webhook事件类型: ${eventType}`);
+        return c.json({ status: 'ignored', message: '未支持的Webhook事件类型' }, 200);
     }
-
-    // 从事件中提取必要信息
-    const {
-      pull_request: pullRequest,
-      repository: repo
-    } = body;
-
-    if (!pullRequest || !repo) {
-      return c.json({ error: '无效的Webhook数据' }, 400);
-    }
-
-    const prNumber = pullRequest.number;
-    const owner = repo.owner.login;
-    const repoName = repo.name;
-
-    logger.info(`收到PR事件`, { owner, repo: repoName, prNumber, action: body.action });
-
-    // 开始异步审查流程
-    reviewPullRequest(owner, repoName, prNumber).catch(error => {
-      logger.error(`审查PR ${owner}/${repoName}#${prNumber} 失败:`, error);
-    });
-
-    // 立即返回以不阻塞Webhook
-    return c.json({ status: 'accepted', message: '代码审查请求已接受' }, 202);
   } catch (error) {
-    logger.error('处理Webhook事件失败:', error);
-    return c.json({ error: '处理Webhook事件失败' }, 500);
+    logger.error('处理Gitea Webhook事件失败:', error);
+    return c.json({ error: '处理Gitea Webhook事件失败' }, 500);
   }
+}
+
+/**
+ * 确定Gitea Webhook事件类型
+ */
+function determineEventType(c: Context, body: any): GiteaEventType {
+  // 优先从请求头获取事件类型
+  const eventHeader = c.req.header('X-Gitea-Event');
+  if (eventHeader) {
+    if (eventHeader === 'pull_request') return GiteaEventType.PullRequest;
+    if (eventHeader === 'status') return GiteaEventType.Status;
+  }
+
+  // 如果没有事件头，尝试从请求体判断
+  if (body.pull_request) return GiteaEventType.PullRequest;
+  if (body.state && (body.sha || body.commit)) return GiteaEventType.Status;
+
+  // 无法确定事件类型
+  return GiteaEventType.Unknown;
+}
+
+/**
+ * 处理Pull Request事件
+ */
+async function handlePullRequestEvent(c: Context, body: any): Promise<Response> {
+  // 仅处理PR打开或更新事件
+  if (
+    body.action !== 'opened' &&
+    body.action !== 'reopened' &&
+    body.action !== 'synchronize' &&
+    body.action !== 'edited'
+  ) {
+    return c.json({ status: 'ignored', message: '无需处理的事件类型' }, 200);
+  }
+
+  // 从事件中提取必要信息
+  const {
+    pull_request: pullRequest,
+    repository: repo
+  } = body;
+
+  if (!pullRequest || !repo) {
+    return c.json({ error: '无效的Webhook数据' }, 400);
+  }
+
+  const prNumber = pullRequest.number;
+  const owner = repo.owner.login;
+  const repoName = repo.name;
+
+  logger.info(`收到PR事件`, { owner, repo: repoName, prNumber, action: body.action });
+
+  // 开始异步审查流程
+  reviewPullRequest(owner, repoName, prNumber).catch(error => {
+    logger.error(`审查PR ${owner}/${repoName}#${prNumber} 失败:`, error);
+  });
+
+  // 立即返回以不阻塞Webhook
+  return c.json({ status: 'accepted', message: '代码审查请求已接受' }, 202);
 }
 
 /**
  * 处理提交状态更新事件
  */
-export async function handleCommitStatusEvent(c: Context): Promise<Response> {
-  try {
-    // 验证Webhook签名
-    const signature = c.req.header('X-Gitea-Signature') || '';
-    const rawBody = await c.req.text();
+async function handleCommitStatusEvent(c: Context, body: any): Promise<Response> {
+  // 记录收到的数据，方便调试
+  logger.debug('收到提交状态webhook数据', {
+    state: body.state,
+    sha: body.sha,
+    commit_id: body.commit?.id,
+    context: body.context,
+    repo: body.repository?.full_name
+  });
 
-    if (!verifyWebhookSignature(rawBody, signature)) {
-      logger.error('Webhook签名验证失败');
-      return c.json({ error: 'Webhook签名验证失败' }, 401);
-    }
-
-    const body = JSON.parse(rawBody);
-
-    // 记录收到的数据，方便调试
-    logger.debug('收到提交状态webhook数据', {
-      state: body.state,
-      sha: body.sha,
-      commit_id: body.commit?.id,
-      context: body.context,
-      repo: body.repository?.full_name
-    });
-
-    // 验证请求体中是否包含必要信息
-    if (!body.commit || !body.repository || !body.state) {
-      logger.error('无效的Webhook数据', { body: JSON.stringify(body).substring(0, 500) });
-      return c.json({ error: '无效的Webhook数据' }, 400);
-    }
-
-    // 只处理成功状态的提交
-    if (body.state !== 'success') {
-      return c.json({ status: 'ignored', message: `忽略非成功状态的提交: ${body.state}` }, 200);
-    }
-
-    // 获取关键信息
-    const commitSha = body.sha || body.commit.id; // 兼容不同版本的Gitea
-    const owner = body.repository.owner.login;
-    const repoName = body.repository.name;
-
-    // 检查提交是否与PR相关
-    let relatedPR: PullRequestDetails | null = null;
-    try {
-      relatedPR = await giteaService.getRelatedPullRequest(owner, repoName, commitSha);
-      if (!relatedPR) {
-        logger.info(`提交 ${commitSha} 不与任何PR关联，跳过审查`);
-        return c.json({ status: 'ignored', message: '提交不与任何PR关联' }, 200);
-      }
-      logger.info(`提交 ${commitSha} 关联到PR #${relatedPR.number}`);
-    } catch (error) {
-      logger.warn(`检查提交 ${commitSha} 是否与PR关联时出错`, error);
-      // 继续处理，因为有可能API临时错误，但提交仍需审查
-    }
-
-    // 提取commit信息
-    const commitInfo = {
-      sha: commitSha,
-      message: body.commit.message || '',
-      added: body.commit.added || [],
-      removed: body.commit.removed || [],
-      modified: body.commit.modified || []
-    };
-
-    logger.info(`收到提交状态更新事件`, {
-      owner,
-      repo: repoName,
-      commitSha,
-      state: body.state,
-      relatedPR: relatedPR?.number || 'unknown',
-      added: commitInfo.added.length,
-      modified: commitInfo.modified.length,
-      removed: commitInfo.removed.length
-    });
-
-    // 如果没有文件变更信息，则忽略
-    if (commitInfo.added.length === 0 && commitInfo.modified.length === 0 && commitInfo.removed.length === 0) {
-      logger.warn('提交没有文件变更信息，忽略审查', { commitSha });
-      return c.json({ status: 'ignored', message: '提交没有文件变更信息' }, 200);
-    }
-
-    // 开始异步审查流程，传入关联的PR信息
-    reviewCommit(owner, repoName, commitSha, commitInfo, relatedPR).catch(error => {
-      logger.error(`审查提交 ${owner}/${repoName}@${commitSha} 失败:`, error);
-    });
-
-    // 立即返回以不阻塞Webhook
-    return c.json({ status: 'accepted', message: '提交代码审查请求已接受' }, 202);
-  } catch (error) {
-    logger.error('处理提交状态Webhook事件失败:', error);
-    return c.json({ error: '处理提交状态Webhook事件失败' }, 500);
+  // 验证请求体中是否包含必要信息
+  if (!body.commit || !body.repository || !body.state) {
+    logger.error('无效的Webhook数据', { body: JSON.stringify(body).substring(0, 500) });
+    return c.json({ error: '无效的Webhook数据' }, 400);
   }
+
+  // 只处理成功状态的提交
+  if (body.state !== 'success') {
+    return c.json({ status: 'ignored', message: `忽略非成功状态的提交: ${body.state}` }, 200);
+  }
+
+  // 获取关键信息
+  const commitSha = body.sha || body.commit.id; // 兼容不同版本的Gitea
+  const owner = body.repository.owner.login;
+  const repoName = body.repository.name;
+
+  // 检查提交是否与PR相关
+  let relatedPR: PullRequestDetails | null = null;
+  try {
+    relatedPR = await giteaService.getRelatedPullRequest(owner, repoName, commitSha);
+    if (!relatedPR) {
+      logger.info(`提交 ${commitSha} 不与任何PR关联，跳过审查`);
+      return c.json({ status: 'ignored', message: '提交不与任何PR关联' }, 200);
+    }
+    logger.info(`提交 ${commitSha} 关联到PR #${relatedPR.number}`);
+  } catch (error) {
+    logger.warn(`检查提交 ${commitSha} 是否与PR关联时出错`, error);
+    // 继续处理，因为有可能API临时错误，但提交仍需审查
+  }
+
+  // 提取commit信息
+  const commitInfo = {
+    sha: commitSha,
+    message: body.commit.message || '',
+    added: body.commit.added || [],
+    removed: body.commit.removed || [],
+    modified: body.commit.modified || []
+  };
+
+  logger.info(`收到提交状态更新事件`, {
+    owner,
+    repo: repoName,
+    commitSha,
+    state: body.state,
+    relatedPR: relatedPR?.number || 'unknown',
+    added: commitInfo.added.length,
+    modified: commitInfo.modified.length,
+    removed: commitInfo.removed.length
+  });
+
+  // 如果没有文件变更信息，则忽略
+  if (commitInfo.added.length === 0 && commitInfo.modified.length === 0 && commitInfo.removed.length === 0) {
+    logger.warn('提交没有文件变更信息，忽略审查', { commitSha });
+    return c.json({ status: 'ignored', message: '提交没有文件变更信息' }, 200);
+  }
+
+  // 开始异步审查流程，传入关联的PR信息
+  reviewCommit(owner, repoName, commitSha, commitInfo, relatedPR).catch(error => {
+    logger.error(`审查提交 ${owner}/${repoName}@${commitSha} 失败:`, error);
+  });
+
+  // 立即返回以不阻塞Webhook
+  return c.json({ status: 'accepted', message: '提交代码审查请求已接受' }, 202);
 }
 
 /**

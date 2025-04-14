@@ -1,6 +1,6 @@
-# AI Code Review for Gitea
+# Gitea Assistant
 
-基于Bun和TypeScript的Gitea代码审查助手，自动为Pull Request和单个提交提供AI驱动的代码审查。
+Gitea功能增强助手，基于Bun和TypeScript开发，提供AI驱动的代码审查等增强功能。
 
 ## 功能特点
 
@@ -68,21 +68,15 @@
 
 2. 在Gitea仓库中配置Webhook
 
-   在Gitea仓库设置中添加两个Webhook:
+   在Gitea仓库设置中添加Webhook:
 
-   **Pull Request审查webhook**:
-   - URL: `http://your-server:3000/webhook/gitea/pull_request`
+   **统一Webhook端点**:
+   - URL: `http://your-server:3000/webhook/gitea`
    - 内容类型: `application/json`
    - 秘钥: 设置为与`WEBHOOK_SECRET`环境变量相同的值
-   - 触发事件: 选择"Pull Request"
+   - 触发事件: 选择"Pull Request"和"Status"事件
 
-   **提交状态审查webhook**:
-   - URL: `http://your-server:3000/webhook/gitea/status`
-   - 内容类型: `application/json`
-   - 秘钥: 设置为与`WEBHOOK_SECRET`环境变量相同的值
-   - 触发事件: 选择"Status"
-
-   > 注意: 老端点 `/webhook/gitea` 仍然支持Pull Request审查，但仅作向后兼容使用。
+   > 注意: 系统使用统一的webhook端点处理所有事件类型，包括Pull Request和Commit Status事件。
 
 ### Webhook签名验证
 
@@ -92,6 +86,7 @@
 2. 在Gitea的Webhook配置中，使用相同的字符串作为"秘钥"
 3. 每次请求时，系统会验证请求头中的`X-Gitea-Signature`
 4. 如果签名验证失败，请求会被拒绝处理
+5. 在开发环境下（`NODE_ENV=development`），如果没有提供签名，系统会跳过验证
 
 验证方法使用SHA-256哈希算法，在处理高负载的情况下这能防止恶意请求并保证请求来源的真实性。
 
@@ -139,6 +134,6 @@ MIT
 
 - `${file.path}` - 当前文件路径
 - `${fileContent}` - 文件的完整内容
-- `${file.changes.map(c => `${c.lineNumber}: ${c.content} (${c.type === 'add' ? '新增' : '上下文'})`).join('\n')}` - 变更行的上下文
+- ```${file.changes.map(c => `${c.lineNumber}: ${c.content} (${c.type === 'add' ? '新增' : '上下文'})`).join('\n')}``` - 变更行的上下文
 
 请确保你的自定义提示返回正确的格式，特别是对于行评论，必须返回有效的JSON数组。

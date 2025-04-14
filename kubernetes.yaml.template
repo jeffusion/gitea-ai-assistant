@@ -1,0 +1,97 @@
+# ConfigMap 用于存储非敏感配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitea-assistant-config
+data:
+  GITEA_API_URL: "http://gitea.kuiper.com/api/v1"
+  OPENAI_BASE_URL: "https://aihubmix.com/v1"
+  OPENAI_MODEL: "gpt-4o-mini"
+  PORT: "3000"
+
+---
+# Secret 用于存储敏感信息
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gitea-assistant-secrets
+type: Opaque
+data:
+  # base64 编码的敏感数据
+  GITEA_ACCESS_TOKEN: "{{GITEA_ACCESS_TOKEN}}"
+  OPENAI_API_KEY: "{{OPENAI_API_KEY}}"
+  WEBHOOK_SECRET: "{{WEBHOOK_SECRET}}"
+
+---
+# Deployment 定义应用程序部署
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitea-assistant
+  labels:
+    app: gitea-assistant
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gitea-assistant
+  template:
+    metadata:
+      labels:
+        app: gitea-assistant
+    spec:
+      containers:
+      - name: gitea-assistant
+        image: registry.kuiper.com/gitea-assistant:{{VERSION}}
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        securityContext:
+          runAsUser: 1001
+          runAsGroup: 1001
+          allowPrivilegeEscalation: false
+        envFrom:
+        - configMapRef:
+            name: gitea-assistant-config
+        - secretRef:
+            name: gitea-assistant-secrets
+
+---
+# Service 暴露应用程序
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitea-assistant
+  labels:
+    app: gitea-assistant
+spec:
+  selector:
+    app: gitea-assistant
+  ports:
+  - port: 3000
+    targetPort: 3000
+    nodePort: 30300
+    name: http
+  type: NodePort

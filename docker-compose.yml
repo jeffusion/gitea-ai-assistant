@@ -1,12 +1,12 @@
 version: '3.8'
 
 services:
-  ai-code-review:
+  gitea-assistant:
     build:
       context: .
       dockerfile: Dockerfile
-    image: registry.kuiper.com/ai-code-review:latest
-    container_name: ai-code-review
+    image: registry.kuiper.com/gitea-assistant:latest
+    container_name: gitea-assistant
     restart: unless-stopped
     ports:
       - "3000:3000"
