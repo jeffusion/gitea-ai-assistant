@@ -1,4 +1,4 @@
-NAME = ai-code-review
+NAME = gitea-assistant
 REGISTRY = docker-hosted.nexus.satfabric.com
 SHA1 = $(shell git rev-parse HEAD)
 REVISION = $(shell git rev-list --count HEAD)
@@ -27,6 +27,7 @@ k8s.yaml:
 	cp ./kubernetes.yaml.template ./kubernetes.yaml
 	sed -i.bak 's@<%= IMAGE_FROM %>@registry.kuiper.com/${NAME}:v${VERSION}@g' ./kubernetes.yaml
 	sed -i.bak 's@<%= APP_NAME %>@${NAME}@g' ./kubernetes.yaml
+	sed -i.bak 's@<%= VERSION %>@${VERSION}@g' ./kubernetes.yaml
 	rm -f ./kubernetes.yaml.bak
 
 .PHONY: help

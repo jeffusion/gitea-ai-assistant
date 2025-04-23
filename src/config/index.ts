@@ -20,6 +20,10 @@ const envSchema = z.object({
   CUSTOM_SUMMARY_PROMPT: z.string().optional(),
   CUSTOM_LINE_COMMENT_PROMPT: z.string().optional(),
 
+  // 飞书配置
+  FEISHU_WEBHOOK_URL: z.string().url(),
+  FEISHU_WEBHOOK_SECRET: z.string().optional(),
+
   // 应用配置
   PORT: z.string().transform(Number).default('3000'),
   WEBHOOK_SECRET: z.string().default('test_webhook_secret'),
@@ -51,6 +55,10 @@ export default {
     model: envParseResult.success ? envParseResult.data.OPENAI_MODEL : 'gpt-4o-mini',
     customSummaryPrompt: envParseResult.success ? envParseResult.data.CUSTOM_SUMMARY_PROMPT : undefined,
     customLineCommentPrompt: envParseResult.success ? envParseResult.data.CUSTOM_LINE_COMMENT_PROMPT : undefined,
+  },
+  feishu: {
+    webhookUrl: envParseResult.success ? envParseResult.data.FEISHU_WEBHOOK_URL : '',
+    webhookSecret: envParseResult.success ? envParseResult.data.FEISHU_WEBHOOK_SECRET : '',
   },
   app: {
     port: envParseResult.success ? envParseResult.data.PORT : 3000,

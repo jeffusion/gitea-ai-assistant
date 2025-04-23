@@ -2,47 +2,49 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: gitea-assistant-config
+  name: <%= APP_NAME %>-config
 data:
-  GITEA_API_URL: "http://gitea.kuiper.com/api/v1"
-  OPENAI_BASE_URL: "https://aihubmix.com/v1"
+  GITEA_API_URL: "http://your-gitea-addr/api/v1"
+  OPENAI_BASE_URL: "{{OPENAI_COMPATIBILITY_URL}}"
   OPENAI_MODEL: "gpt-4o-mini"
   PORT: "3000"
+  FEISHU_WEBHOOK_URL: "{{FEISHU_WEBHOOK_URL}}"
 
 ---
 # Secret 用于存储敏感信息
 apiVersion: v1
 kind: Secret
 metadata:
-  name: gitea-assistant-secrets
+  name: <%= APP_NAME %>-secrets
 type: Opaque
 data:
   # base64 编码的敏感数据
   GITEA_ACCESS_TOKEN: "{{GITEA_ACCESS_TOKEN}}"
   OPENAI_API_KEY: "{{OPENAI_API_KEY}}"
   WEBHOOK_SECRET: "{{WEBHOOK_SECRET}}"
+  FEISHU_WEBHOOK_SECRET: "{{FEISHU_WEBHOOK_SECRET}}"
 
 ---
 # Deployment 定义应用程序部署
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: gitea-assistant
+  name: <%= APP_NAME %>
   labels:
-    app: gitea-assistant
+    app: <%= APP_NAME %>
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: gitea-assistant
+      app: <%= APP_NAME %>
   template:
     metadata:
       labels:
-        app: gitea-assistant
+        app: <%= APP_NAME %>
     spec:
       containers:
-      - name: gitea-assistant
-        image: registry.kuiper.com/gitea-assistant:{{VERSION}}
+      - name: <%= APP_NAME %>
+        image: <%= IMAGE_FROM %>
         imagePullPolicy: Always
         ports:
         - containerPort: 3000
@@ -74,21 +76,21 @@ spec:
           allowPrivilegeEscalation: false
         envFrom:
         - configMapRef:
-            name: gitea-assistant-config
+            name: <%= APP_NAME %>-config
         - secretRef:
-            name: gitea-assistant-secrets
+            name: <%= APP_NAME %>-secrets
 
 ---
 # Service 暴露应用程序
 apiVersion: v1
 kind: Service
 metadata:
-  name: gitea-assistant
+  name: <%= APP_NAME %>
   labels:
-    app: gitea-assistant
+    app: <%= APP_NAME %>
 spec:
   selector:
-    app: gitea-assistant
+    app: <%= APP_NAME %>
   ports:
   - port: 3000
     targetPort: 3000

@@ -1,6 +1,8 @@
 import { Context } from 'hono';
+import { map } from 'lodash-es'
 import { giteaService, PullRequestFile, PullRequestDetails } from '../services/gitea';
 import { aiReviewService } from '../services/ai-review';
+import { feishuService } from '../services/feishu';
 import config from '../config';
 import * as crypto from 'crypto';
 import { logger } from '../utils/logger';
@@ -12,6 +14,7 @@ const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
 enum GiteaEventType {
   PullRequest = 'pull_request',
   Status = 'status',
+  Issue = 'issues',
   Unknown = 'unknown'
 }
 
@@ -55,43 +58,6 @@ function verifyWebhookSignature(body: string, signature: string): boolean {
 }
 
 /**
- * 统一处理Gitea Webhook事件
- */
-export async function handleGiteaWebhook(c: Context): Promise<Response> {
-  try {
-    // 验证Webhook签名
-    const signature = c.req.header('X-Gitea-Signature') || '';
-    const rawBody = await c.req.text();
-
-    if (!verifyWebhookSignature(rawBody, signature)) {
-      logger.error('Webhook签名验证失败');
-      return c.json({ error: 'Webhook签名验证失败' }, 401);
-    }
-
-    // 解析请求体
-    const body = JSON.parse(rawBody);
-
-    // 确定事件类型
-    const eventType = determineEventType(c, body);
-    logger.info(`收到Gitea Webhook事件: ${eventType}`);
-
-    // 根据事件类型路由到相应的处理逻辑
-    switch (eventType) {
-      case GiteaEventType.PullRequest:
-        return await handlePullRequestEvent(c, body);
-      case GiteaEventType.Status:
-        return await handleCommitStatusEvent(c, body);
-      default:
-        logger.warn(`未支持的Webhook事件类型: ${eventType}`);
-        return c.json({ status: 'ignored', message: '未支持的Webhook事件类型' }, 200);
-    }
-  } catch (error) {
-    logger.error('处理Gitea Webhook事件失败:', error);
-    return c.json({ error: '处理Gitea Webhook事件失败' }, 500);
-  }
-}
-
-/**
  * 确定Gitea Webhook事件类型
  */
 function determineEventType(c: Context, body: any): GiteaEventType {
@@ -100,11 +66,13 @@ function determineEventType(c: Context, body: any): GiteaEventType {
   if (eventHeader) {
     if (eventHeader === 'pull_request') return GiteaEventType.PullRequest;
     if (eventHeader === 'status') return GiteaEventType.Status;
+    if (eventHeader === 'issues') return GiteaEventType.Issue;
   }
 
   // 如果没有事件头，尝试从请求体判断
   if (body.pull_request) return GiteaEventType.PullRequest;
   if (body.state && (body.sha || body.commit)) return GiteaEventType.Status;
+  if (body.issue) return GiteaEventType.Issue;
 
   // 无法确定事件类型
   return GiteaEventType.Unknown;
@@ -119,7 +87,8 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
     body.action !== 'opened' &&
     body.action !== 'reopened' &&
     body.action !== 'synchronize' &&
-    body.action !== 'edited'
+    body.action !== 'edited' &&
+    body.action !== 'review_requested'
   ) {
     return c.json({ status: 'ignored', message: '无需处理的事件类型' }, 200);
   }
@@ -137,8 +106,40 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
   const prNumber = pullRequest.number;
   const owner = repo.owner.login;
   const repoName = repo.name;
+  const prTitle = pullRequest.title;
+  const prUrl = pullRequest.html_url;
 
   logger.info(`收到PR事件`, { owner, repo: repoName, prNumber, action: body.action });
+
+  // 处理PR审阅者通知
+  try {
+    // 获取PR的审阅者列表
+    const reviewerUsernames = map(pullRequest.requested_reviewers, reviewer => reviewer.full_name || reviewer.login);
+
+    // 记录审阅者信息
+    if (reviewerUsernames.length > 0) {
+      logger.info(`PR有指定审阅者`, {
+        prNumber,
+        reviewers: reviewerUsernames.join(',')
+      });
+    }
+
+    // 处理PR创建事件，如果有审阅者，则通知
+    if (body.action === 'opened' && reviewerUsernames.length > 0) {
+      await feishuService.sendPrCreatedNotification(prTitle, prUrl, reviewerUsernames);
+    }
+
+    // 处理审阅者指派事件
+    if (body.action === 'review_requested' && body.requested_reviewer) {
+      const newReviewerUsername = body.requested_reviewer.full_name || body.requested_reviewer.login;
+      if (newReviewerUsername) {
+        await feishuService.sendPrReviewerAssignedNotification(prTitle, prUrl, [newReviewerUsername]);
+      }
+    }
+  } catch (error) {
+    logger.error(`处理PR审阅者通知失败:`, error);
+    // 继续执行代码审查流程，不因通知失败而中断
+  }
 
   // 开始异步审查流程
   reviewPullRequest(owner, repoName, prNumber).catch(error => {
@@ -225,6 +226,50 @@ async function handleCommitStatusEvent(c: Context, body: any): Promise<Response>
 
   // 立即返回以不阻塞Webhook
   return c.json({ status: 'accepted', message: '提交代码审查请求已接受' }, 202);
+}
+
+/**
+ * 处理工单事件
+ */
+async function handleIssueEvent(c: Context, body: any): Promise<Response> {
+  const { action, issue, repository } = body;
+
+  if (!issue || !repository) {
+    return c.json({ error: '无效的Webhook数据' }, 400);
+  }
+
+  const issueTitle = issue.title;
+  const issueUrl = issue.html_url;
+  const creatorUsername = issue.user.full_name || issue.user.login;
+  const assigneeUsernames = map(issue.assignees, assignee => assignee.full_name || assignee.login);
+
+  logger.info(`收到工单事件`, {
+    action,
+    issueTitle,
+    issueUrl,
+    creatorUsername,
+    assigneeUsernames: assigneeUsernames.join(',')
+  });
+
+  try {
+    // 处理工单创建事件
+    if (action === 'opened' && assigneeUsernames.length > 0) {
+      await feishuService.sendIssueCreatedNotification(issueTitle, issueUrl, assigneeUsernames);
+    }
+    // 处理工单关闭事件
+    else if (action === 'closed' && creatorUsername) {
+      await feishuService.sendIssueClosedNotification(issueTitle, issueUrl, creatorUsername);
+    }
+    // 处理工单指派事件
+    else if (action === 'assigned' && assigneeUsernames.length > 0) {
+      await feishuService.sendIssueAssignedNotification(issueTitle, issueUrl, assigneeUsernames);
+    }
+  } catch (error) {
+    logger.error('处理工单事件失败:', error);
+    return c.json({ error: '处理工单事件失败' }, 500);
+  }
+
+  return c.json({ status: 'success', message: '工单事件处理完成' }, 200);
 }
 
 /**
@@ -479,5 +524,44 @@ async function reviewCommit(
   } catch (error) {
     logger.error(`审查提交失败:`, error);
     throw error;
+  }
+}
+
+/**
+ * 统一处理Gitea Webhook事件
+ */
+export async function handleGiteaWebhook(c: Context): Promise<Response> {
+  try {
+    // 验证Webhook签名
+    const signature = c.req.header('X-Gitea-Signature') || '';
+    const rawBody = await c.req.text();
+
+    if (!verifyWebhookSignature(rawBody, signature)) {
+      logger.error('Webhook签名验证失败');
+      return c.json({ error: 'Webhook签名验证失败' }, 401);
+    }
+
+    // 解析请求体
+    const body = JSON.parse(rawBody);
+
+    // 确定事件类型
+    const eventType = determineEventType(c, body);
+    logger.info(`收到Gitea Webhook事件: ${eventType}`);
+
+    // 根据事件类型路由到相应的处理逻辑
+    switch (eventType) {
+      case GiteaEventType.PullRequest:
+        return await handlePullRequestEvent(c, body);
+      case GiteaEventType.Status:
+        return await handleCommitStatusEvent(c, body);
+      case GiteaEventType.Issue:
+        return await handleIssueEvent(c, body);
+      default:
+        logger.warn(`未支持的Webhook事件类型: ${eventType}`);
+        return c.json({ status: 'ignored', message: '未支持的Webhook事件类型' }, 200);
+    }
+  } catch (error) {
+    logger.error('处理Gitea Webhook事件失败:', error);
+    return c.json({ error: '处理Gitea Webhook事件失败' }, 500);
   }
 }
