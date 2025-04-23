@@ -1,0 +1,34 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Project Structure
+
+## Main Entry Points
+
+The application entry point is [src/index.ts](mdc:src/index.ts), which sets up the Hono web server and defines the main routes.
+
+## Core Directories
+
+- **src/**: Contains all source code
+  - **controllers/**: Route handlers and business logic
+  - **services/**: Service layer for external API interactions
+  - **config/**: Configuration management
+  - **utils/**: Utility functions
+
+## Configuration Files
+
+- [package.json](mdc:package.json): Project dependencies and scripts
+- [tsconfig.json](mdc:tsconfig.json): TypeScript compiler configuration
+- [Dockerfile](mdc:Dockerfile): Container configuration
+- [kubernetes.yaml](mdc:kubernetes.yaml): Kubernetes deployment configuration
+
+## Build and Deployment
+
+The project uses Bun for development and production:
+- `bun run dev`: Development mode with watch
+- `bun run build`: Build production assets
+- `bun run start`: Run in production
+
+Docker and Kubernetes configurations are available for containerized deployment.

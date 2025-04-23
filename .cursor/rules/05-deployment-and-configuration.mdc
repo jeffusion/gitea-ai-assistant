@@ -1,0 +1,69 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Deployment and Configuration
+
+## Environment Variables
+
+The application is configured through environment variables, defined in [src/config/index.ts](mdc:src/config/index.ts):
+
+- **Gitea Configuration**:
+  - `GITEA_API_URL`: Gitea API endpoint URL
+  - `GITEA_ACCESS_TOKEN`: Access token for Gitea API
+
+- **OpenAI Configuration**:
+  - `OPENAI_BASE_URL`: OpenAI API base URL
+  - `OPENAI_API_KEY`: API key for OpenAI
+  - `OPENAI_MODEL`: Model to use (e.g., "gpt-4o")
+
+- **Server Configuration**:
+  - `PORT`: Server port (default: 3000)
+  - `WEBHOOK_SECRET`: Secret for webhook verification
+
+- **Custom Prompts**:
+  - `CUSTOM_SUMMARY_PROMPT`: Custom prompt for summary reviews
+  - `CUSTOM_LINE_COMMENT_PROMPT`: Custom prompt for line comments
+
+## Deployment Options
+
+### Local Development
+
+```bash
+# Development mode with hot reload
+bun run dev
+
+# Production mode
+bun run build
+bun run start
+```
+
+### Docker Deployment
+
+The [Dockerfile](mdc:Dockerfile) provides containerization support:
+
+```bash
+# Build the Docker image
+docker build -t gitea-assistant:latest .
+
+# Run the container
+docker run -p 3000:3000 --env-file .env gitea-assistant:latest
+```
+
+### Kubernetes Deployment
+
+The [kubernetes.yaml](mdc:kubernetes.yaml) and [kubernetes.yaml.template](mdc:kubernetes.yaml.template) files provide Kubernetes deployment configuration.
+
+Deployment can be managed using:
+```bash
+# Apply configuration
+kubectl apply -f kubernetes.yaml
+```
+
+### Webhook Setup
+
+Configure Gitea webhooks to point to the `/webhook/gitea` endpoint with:
+- Content type: application/json
+- Secret: matching WEBHOOK_SECRET environment variable
+- Events: Pull Request and Status events

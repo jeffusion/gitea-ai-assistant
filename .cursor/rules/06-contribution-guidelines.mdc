@@ -1,0 +1,49 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Contribution Guidelines
+
+## Code Style and Standards
+
+This project follows TypeScript best practices and uses TSLint for code style enforcement:
+
+- Configuration: [tslint.json](mdc:tslint.json)
+- TypeScript settings: [tsconfig.json](mdc:tsconfig.json)
+- Editor config: [.editorconfig](mdc:.editorconfig)
+
+Run the linter to check code style:
+```bash
+bun run lint
+```
+
+## Project Structure Conventions
+
+When contributing to this project, adhere to these structural guidelines:
+
+1. **Controller Layer**:
+   - Business logic should be delegated to services
+   - Controllers should focus on request handling and response formatting
+   - Keep route handlers in the [controllers/](mdc:src/controllers) directory
+
+2. **Service Layer**:
+   - External API interactions belong in the [services/](mdc:src/services) directory
+   - Each service should have a clear, single responsibility
+
+3. **Configuration**:
+   - Environment-based configurations go in [config/index.ts](mdc:src/config/index.ts)
+   - Use environment variables for configurable values
+
+4. **Utils**:
+   - Reusable utility functions belong in [utils/](mdc:src/utils)
+   - Logging should use the custom logger from [utils/logger.ts](mdc:src/utils/logger.ts)
+
+## Pull Request Guidelines
+
+When submitting Pull Requests:
+
+1. Include a clear description of changes
+2. Ensure code passes linting checks
+3. Keep changes focused on a single concern
+4. Test your changes locally before submitting

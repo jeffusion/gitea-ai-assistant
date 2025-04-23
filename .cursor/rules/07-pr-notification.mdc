@@ -1,0 +1,66 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# PR 通知功能
+
+## 概述
+
+系统通过飞书（Feishu）实现 PR 相关的通知功能，主要包括 PR 创建通知和审阅者指派通知。核心实现在 [src/services/feishu.ts](mdc:src/services/feishu.ts) 中。
+
+## 主要功能
+
+### PR 创建通知
+
+当 PR 被创建且有指定审阅者时，系统会自动发送通知：
+- 触发条件：PR 创建事件 + 存在指定审阅者
+- 通知对象：所有指定的审阅者
+- 通知内容：PR 标题和链接
+- 实现位置：[src/controllers/review.ts](mdc:src/controllers/review.ts) 中的 `handlePullRequestEvent` 函数
+
+### 审阅者指派通知
+
+当新的审阅者被指派到 PR 时，系统会发送通知：
+- 触发条件：PR review_requested 事件
+- 通知对象：新指派的审阅者
+- 通知内容：PR 标题和链接
+- 实现位置：同样在 `handlePullRequestEvent` 函数中
+
+## 配置要求
+
+使用通知功能需要配置以下环境变量：
+
+1. **必需配置**
+   - `FEISHU_WEBHOOK_URL`：飞书 Webhook 地址
+
+2. **可选配置**
+   - `FEISHU_WEBHOOK_SECRET`：飞书 Webhook 密钥（可选，用于加强安全性）
+
+## 实现细节
+
+1. **通知处理流程**
+   - Webhook 事件由 [src/controllers/review.ts](mdc:src/controllers/review.ts) 接收和处理
+   - 通知发送由 [src/services/feishu.ts](mdc:src/services/feishu.ts) 实现
+   - 使用飞书的消息 API 发送通知
+
+2. **错误处理**
+   - 通知发送失败不会影响代码审查流程
+   - 所有错误都会被记录但不会中断主流程
+   - 支持失败重试机制
+
+3. **通知格式**
+   - PR 创建通知：使用 🔄 表情符号
+   - 审阅者指派通知：使用 👀 表情符号
+   - 包含 PR 标题和可点击的链接
+
+## 最佳实践
+
+1. **配置建议**
+   - 建议配置 `FEISHU_WEBHOOK_SECRET` 以增强安全性
+   - 确保飞书机器人有足够的权限发送消息
+
+2. **使用注意**
+   - 避免过于频繁的通知以防打扰
+   - 确保 PR 标题清晰以便接收者快速理解
+   - 合理使用审阅者指派功能，避免过多人员参与

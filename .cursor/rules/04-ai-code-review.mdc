@@ -1,0 +1,54 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+# AI Code Review System
+
+## Overview
+
+The AI Code Review system is the core feature of this application. It automatically analyzes code changes in Pull Requests and commits, providing insightful feedback using OpenAI's language models.
+
+## Key Components
+
+- **Review Controller**: [src/controllers/review.ts](mdc:src/controllers/review.ts)
+  - Handles webhook events from Gitea
+  - Routes events to appropriate handlers
+
+- **AI Review Service**: [src/services/ai-review.ts](mdc:src/services/ai-review.ts)
+  - Contains the core logic for AI-powered code review
+  - Generates both summary comments and line-level feedback
+  - Customizable prompts for different review contexts
+
+- **Gitea Service**: [src/services/gitea.ts](mdc:src/services/gitea.ts)
+  - Fetches code diffs and file contents from Gitea API
+  - Posts review comments back to Gitea
+
+## Review Workflow
+
+1. **Trigger**:
+   - Pull Request created/updated or
+   - Commit status changes to "success"
+
+2. **Code Analysis**:
+   - Fetch diff content from Gitea
+   - Process and analyze changes
+   - Generate AI prompts with context
+
+3. **AI Review**:
+   - Send processed data to OpenAI API
+   - Generate summary feedback
+   - Generate line-level comments
+
+4. **Feedback Delivery**:
+   - Post summary comment to PR or commit
+   - Add line comments to specific code sections
+   - Apply formatting for better readability
+
+## Customization
+
+The system supports customizable prompts through environment variables:
+- `CUSTOM_SUMMARY_PROMPT`: For overall review summaries
+- `CUSTOM_LINE_COMMENT_PROMPT`: For line-specific comments
+
+Default prompts are designed to focus on bugs and serious issues rather than style or minor concerns.
