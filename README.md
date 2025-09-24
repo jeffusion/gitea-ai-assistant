@@ -14,6 +14,7 @@ Gitea功能增强助手，基于Bun和TypeScript开发，提供AI驱动的代码
 - ✅ 异步处理机制
 - ✅ 智能PR关联分析
 - ✅ 灵活的审查规则配置
+- ✅ **后台管理页面**: 提供UI界面，用于自动配置项目的Webhook。
 
 ## 架构设计
 
@@ -103,7 +104,8 @@ Gitea功能增强助手，基于Bun和TypeScript开发，提供AI驱动的代码
 ## 配置项
 
 - `GITEA_API_URL`: Gitea API URL (例如: `http://your-gitea-instance.com/api/v1`)
-- `GITEA_ACCESS_TOKEN`: Gitea 访问令牌
+- `GITEA_ACCESS_TOKEN`: 用于代码审查的 Gitea 访问令牌 (需要仓库读权限和评论权限)。
+- `GITEA_ADMIN_TOKEN`: **(可选)** 用于后台管理的 Gitea 管理员令牌 (需要仓库读写及 Webhook 管理权限)。若不提供，则使用 `GITEA_ACCESS_TOKEN`。
 - `OPENAI_BASE_URL`: OpenAI 请求地址
 - `OPENAI_API_KEY`: OpenAI API密钥
 - `OPENAI_MODEL`：OpenAI 使用模型
@@ -112,7 +114,9 @@ Gitea功能增强助手，基于Bun和TypeScript开发，提供AI驱动的代码
 - `PORT`: 应用监听端口 (默认: 3000)
 - `WEBHOOK_SECRET`: Webhook秘钥，用于验证请求来源
 - `FEISHU_WEBHOOK_URL`: 飞书Webhook地址，用于发送通知
-- `FEISHU_WEBHOOK_SECRET`: 飞书Webhook秘钥 (可选)
+- `FEISHU_WEBHOOK_SECRET`: 飞书Webhook秘यो (可选)
+- `ADMIN_PASSWORD`: 后台管理页面的登录密码 (默认: `password`)
+- `JWT_SECRET`: 用于签发后台登录Token的秘钥 (默认会使用一个安全字符串)
 
 ## 使用方法
 
@@ -124,9 +128,18 @@ Gitea功能增强助手，基于Bun和TypeScript开发，提供AI驱动的代码
    bun run start  # 生产模式
    ```
 
-2. 在Gitea仓库中配置Webhook
+2. **(新)** 访问后台管理页面自动配置
 
-   在Gitea仓库设置中添加Webhook:
+   启动服务后，直接在浏览器中访问 `http://your-server:3000`。您会看到一个登录页面。
+   - **登录**: 使用您在环境变量中设置的 `ADMIN_PASSWORD` 进行登录。
+   - **管理仓库**: 登录后，您将看到 Gitea 实例上的仓库列表。
+   - **一键启用/停用**: 点击每行最右侧的按钮，即可为该仓库自动创建或删除 AI 代码审查所需的 Webhook。
+
+   > 强烈推荐使用此方法来代替手动配置，它更简单、更不容易出错。
+
+3. 在Gitea仓库中**手动**配置Webhook
+
+   如果您不想使用后台管理功能，也可以继续手动配置。在Gitea仓库设置中添加Webhook:
 
    **统一Webhook端点**:
    - URL: `http://your-server:3000/webhook/gitea`

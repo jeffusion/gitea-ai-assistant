@@ -3,6 +3,10 @@ import config from '../config';
 import { logger } from '../utils/logger';
 import { LineComment } from './ai-review';
 
+// 打印将要使用的 Admin Token，用于调试
+logger.info(`Gitea Admin Token used: [${config.admin.giteaAdminToken}]`);
+logger.info(`Gitea Access Token (fallback): [${config.gitea.accessToken}]`);
+
 // 创建API客户端
 const giteaClient = axios.create({
   baseURL: config.gitea.apiUrl,
@@ -10,6 +14,17 @@ const giteaClient = axios.create({
     'Authorization': `token ${config.gitea.accessToken}`,
     'Content-Type': 'application/json',
   },
+});
+
+// 创建用于管理操作的API客户端
+const giteaAdminClient = axios.create({
+  baseURL: config.gitea.apiUrl,
+  headers: {
+    'Authorization': `token ${config.admin.giteaAdminToken || config.gitea.accessToken}`,
+    'Content-Type': 'application/json',
+    'User-Agent': 'curl/7.81.0', // 伪装成 curl
+  },
+  proxy: false, // 禁用所有代理
 });
 
 // Gitea服务接口定义
@@ -52,6 +67,12 @@ export interface GiteaService {
 
   // 添加提交评论
   addCommitComment(owner: string, repo: string, commitSha: string, body: string): Promise<void>;
+
+  // 管理后台方法
+  listAllRepositories(page: number, limit: number, query?: string): Promise<{ repos: any[], totalCount: number }>;
+  listWebhooks(owner: string, repo: string): Promise<any[]>;
+  createWebhook(owner: string, repo: string, webhookUrl: string): Promise<void>;
+  deleteWebhook(owner: string, repo: string, hookId: number): Promise<void>;
 }
 
 // PR详情接口
@@ -304,6 +325,64 @@ export const giteaService: GiteaService = {
     } catch (error: any) {
       logger.error('添加提交评论失败:', error);
       throw new Error(`添加提交评论失败: ${error.message}`);
+    }
+  },
+
+  // 获取所有仓库
+  async listAllRepositories(page: number = 1, limit: number = 30, query?: string): Promise<{ repos: any[], totalCount: number }> {
+    try {
+      const response = await giteaAdminClient.get('/repos/search', {
+        params: {
+          page,
+          limit,
+          q: query,
+        },
+      });
+      const totalCount = parseInt(response.headers['x-total-count'] || '0', 10);
+      return { repos: response.data.data, totalCount };
+    } catch (error: any) {
+      logger.error('获取所有仓库列表失败:', error);
+      throw new Error(`获取所有仓库列表失败: ${error.message}`);
+    }
+  },
+
+  // 列出仓库的webhooks
+  async listWebhooks(owner: string, repo: string): Promise<any[]> {
+    try {
+      const response = await giteaAdminClient.get(`/repos/${owner}/${repo}/hooks`);
+      return response.data;
+    } catch (error: any) {
+      logger.error(`获取 ${owner}/${repo} 的 webhook 列表失败:`, error);
+      throw new Error(`获取 webhook 列表失败: ${error.message}`);
+    }
+  },
+
+  // 创建webhook
+  async createWebhook(owner: string, repo: string, webhookUrl: string): Promise<void> {
+    try {
+      await giteaAdminClient.post(`/repos/${owner}/${repo}/hooks`, {
+        type: 'gitea',
+        config: {
+          url: webhookUrl,
+          content_type: 'json',
+          secret: config.app.webhookSecret,
+        },
+        events: ['pull_request', 'status'],
+        active: true,
+      });
+    } catch (error: any) {
+      logger.error(`为 ${owner}/${repo} 创建 webhook 失败:`, error);
+      throw new Error(`创建 webhook 失败: ${error.message}`);
+    }
+  },
+
+  // 删除webhook
+  async deleteWebhook(owner: string, repo: string, hookId: number): Promise<void> {
+    try {
+      await giteaAdminClient.delete(`/repos/${owner}/${repo}/hooks/${hookId}`);
+    } catch (error: any) {
+      logger.error(`删除 ${owner}/${repo} 的 webhook #${hookId} 失败:`, error);
+      throw new Error(`删除 webhook 失败: ${error.message}`);
     }
   },
 };

@@ -33,7 +33,13 @@
 		"esModuleInterop": true,
 
 		"pretty": true,
-		"skipLibCheck": true
+		"skipLibCheck": true,
+
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
 	},
 	"include": [
 		"typings/**/*",

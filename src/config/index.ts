@@ -10,8 +10,9 @@ const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
 // 环境变量验证模式
 const envSchema = z.object({
   // Gitea配置
-  GITEA_API_URL: z.string().url().default('http://localhost:3000/api/v1'),
+  GITEA_API_URL: z.string().url().default('http://localhost:5174/api/v1'),
   GITEA_ACCESS_TOKEN: z.string().default('test_token'),
+  GITEA_ADMIN_TOKEN: z.string().optional(),
 
   // OpenAI配置
   OPENAI_BASE_URL: z.string().url().default('https://api.openai.com/v1'),
@@ -25,8 +26,12 @@ const envSchema = z.object({
   FEISHU_WEBHOOK_SECRET: z.string().optional(),
 
   // 应用配置
-  PORT: z.string().transform(Number).default('3000'),
+  PORT: z.string().transform(Number).default('5174'),
   WEBHOOK_SECRET: z.string().default('test_webhook_secret'),
+
+  // 管理后台配置
+  ADMIN_PASSWORD: z.string().default('password'),
+  JWT_SECRET: z.string().default('a-secure-secret-for-jwt'),
 });
 
 // 处理验证结果
@@ -46,7 +51,7 @@ if (!envParseResult.success) {
 // 导出配置
 export default {
   gitea: {
-    apiUrl: envParseResult.success ? envParseResult.data.GITEA_API_URL : 'http://localhost:3000/api/v1',
+    apiUrl: envParseResult.success ? envParseResult.data.GITEA_API_URL : 'http://localhost:5174/api/v1',
     accessToken: envParseResult.success ? envParseResult.data.GITEA_ACCESS_TOKEN : 'test_token',
   },
   openai: {
@@ -61,7 +66,12 @@ export default {
     webhookSecret: envParseResult.success ? envParseResult.data.FEISHU_WEBHOOK_SECRET : '',
   },
   app: {
-    port: envParseResult.success ? envParseResult.data.PORT : 3000,
+    port: envParseResult.success ? envParseResult.data.PORT : 5174,
     webhookSecret: envParseResult.success ? envParseResult.data.WEBHOOK_SECRET : 'test_webhook_secret',
+  },
+  admin: {
+    password: envParseResult.success ? envParseResult.data.ADMIN_PASSWORD : 'password',
+    jwtSecret: envParseResult.success ? envParseResult.data.JWT_SECRET : 'a-secure-secret-for-jwt',
+    giteaAdminToken: envParseResult.success ? envParseResult.data.GITEA_ADMIN_TOKEN : undefined,
   },
 };

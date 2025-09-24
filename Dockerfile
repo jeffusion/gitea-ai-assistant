@@ -1,42 +1,52 @@
-# 构建阶段
-FROM oven/bun:1 AS builder
+# ---- Stage 1: Frontend Builder ----
+FROM oven/bun:1 as frontend-builder
 
-WORKDIR /app
+WORKDIR /app/frontend
 
-# 仅复制与构建相关的文件
-COPY package.json bun.lock tsconfig.json ./
-COPY src/ ./src/
+# 拷贝前端的 package.json 和 lockfile
+COPY frontend/package.json frontend/bun.lockb ./
 
-# 安装依赖并构建
+# 安装前端依赖
 RUN bun install --frozen-lockfile
+
+# 拷贝所有前端代码
+COPY frontend/ .
+
+# 构建前端静态文件
 RUN bun run build
 
-# 运行阶段
-FROM oven/bun:1-slim AS runner
+
+# ---- Stage 2: Backend Builder ----
+FROM oven/bun:1 as backend-builder
 
 WORKDIR /app
 
-# 创建非root用户
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 bunjs
+# 拷贝后端的 package.json 和 lockfile
+COPY package.json bun.lockb ./
 
-# 仅复制生产所需文件
-COPY --from=builder --chown=bunjs:nodejs /app/dist ./dist
-COPY --from=builder --chown=bunjs:nodejs /app/package.json ./
-COPY --from=builder --chown=bunjs:nodejs /app/bun.lock ./
-
-# 只安装生产依赖
+# 只安装生产环境依赖
 RUN bun install --frozen-lockfile --production
 
-# 切换到非root用户
-USER bunjs
+# 拷贝所有后端代码
+COPY src ./src
+COPY tsconfig.json .
 
-# 暴露端口
+
+# ---- Stage 3: Production ----
+FROM oven/bun:1-slim
+
+WORKDIR /app
+
+# 从后端构建器拷贝依赖和代码
+COPY --from=backend-builder /app/node_modules ./node_modules
+COPY --from=backend-builder /app/src ./src
+COPY --from=backend-builder /app/package.json .
+COPY --from=backend-builder /app/tsconfig.json .
+
+# 从前端构建器拷贝构建好的静态文件到 public 目录
+COPY --from=frontend-builder /app/frontend/dist ./public
+
 EXPOSE 3000
 
-# 设置健康检查
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:3000/ || exit 1
-
-# 设置默认命令
-CMD ["bun", "run", "dist/index.js"]
+# 启动服务
+CMD ["bun", "run", "start"]

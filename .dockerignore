@@ -1,44 +1,9 @@
-# 版本控制
-.git
-.gitignore
-.gitattributes
+# 忽略所有 node_modules
+node_modules/
+frontend/node_modules/
 
-# 依赖目录
-node_modules
-.yarn
-.pnp.*
+# 忽略 .env 文件
+.env
 
-# 构建输出
-dist
-lib
-build
-
-# 开发/测试文件
-test*
-*.test.ts
-jest.config.js
-coverage
-.vscode
-.idea
-
-# 环境文件
-.env*
-!.env.example
-
-# 日志
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# 其他文件
-.DS_Store
-Thumbs.db
-*.gz
-*.zip
-*.tar
-README.md
-CHANGELOG.md
-LICENSE
-docs
+# 忽略 kubernetes.yaml
+kubernetes.yaml
