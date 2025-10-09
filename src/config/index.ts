@@ -27,6 +27,7 @@ const envSchema = z.object({
 
   // 应用配置
   PORT: z.string().transform(Number).default('5174'),
+  BASE_URL: z.string().url().optional(),
   WEBHOOK_SECRET: z.string().default('test_webhook_secret'),
 
   // 管理后台配置
@@ -67,6 +68,7 @@ export default {
   },
   app: {
     port: envParseResult.success ? envParseResult.data.PORT : 5174,
+    baseUrl: envParseResult.success ? envParseResult.data.BASE_URL : undefined,
     webhookSecret: envParseResult.success ? envParseResult.data.WEBHOOK_SECRET : 'test_webhook_secret',
   },
   admin: {

@@ -1,6 +1,9 @@
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { LoginPage } from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
+import ConfigPage from './pages/ConfigPage';
+import { Layout } from './components/Layout';
 import { Toaster } from "@/components/ui/sonner"
 
 function App() {
@@ -14,13 +17,26 @@ function App() {
     );
   }
 
-  const Page = isAuthenticated ? DashboardPage : LoginPage;
+  if (!isAuthenticated) {
+    return (
+      <>
+        <LoginPage />
+        <Toaster theme="dark" />
+      </>
+    );
+  }
 
   return (
-    <>
-      <Page />
+    <Router>
+      <Layout>
+        <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/config" element={<ConfigPage />} />
+        </Routes>
+      </Layout>
       <Toaster theme="dark" />
-    </>
+    </Router>
   );
 }
 

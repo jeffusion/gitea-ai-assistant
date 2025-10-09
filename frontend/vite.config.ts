@@ -18,5 +18,6 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+    allowedHosts: ['nuc8.lan']
   },
 })
