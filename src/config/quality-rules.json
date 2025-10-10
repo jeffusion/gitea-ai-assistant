@@ -1,0 +1,50 @@
+[
+  {
+    "name": "console_log",
+    "pattern": "console\\.log\\s*\\(",
+    "severity": "low",
+    "category": "style",
+    "message": "发现调试语句",
+    "suggestion": "移除调试语句或使用适当的日志库",
+    "languages": ["javascript", "typescript"],
+    "confidence": 0.9
+  },
+  {
+    "name": "todo_comment",
+    "pattern": "//\\s*TODO|/\\*\\s*TODO",
+    "severity": "low",
+    "category": "maintainability",
+    "message": "发现TODO注释",
+    "suggestion": "考虑完成TODO项目或创建issue跟踪",
+    "confidence": 0.8
+  },
+  {
+    "name": "magic_numbers",
+    "pattern": "\\b\\d{2,}\\b",
+    "severity": "low",
+    "category": "maintainability",
+    "message": "发现魔法数字",
+    "suggestion": "考虑使用有意义的常量替换魔法数字",
+    "confidence": 0.6
+  },
+  {
+    "name": "var_declaration",
+    "pattern": "\\bvar\\s+",
+    "severity": "low",
+    "category": "style",
+    "message": "使用了var声明",
+    "suggestion": "使用 let 或 const 获得更好的作用域控制",
+    "languages": ["javascript", "typescript"],
+    "confidence": 0.8
+  },
+  {
+    "name": "equals_without_type",
+    "pattern": "==(?!=)",
+    "severity": "medium",
+    "category": "style",
+    "message": "建议使用严格相等 (===) 而不是 ==",
+    "suggestion": "使用 === 和 !== 进行严格比较以避免类型转换错误",
+    "languages": ["javascript", "typescript"],
+    "confidence": 0.9
+  }
+]

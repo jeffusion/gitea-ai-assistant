@@ -1,0 +1,56 @@
+[
+  {
+    "name": "hardcoded_secrets",
+    "pattern": "(?:password|passwd|pwd|secret|key|token|api[_-]?key)\\s*[:=]\\s*['\\\"][^'\\\"]+['\\\"]|['\\\"][A-Za-z0-9+/=]{32,}['\\\"]|sk-[a-zA-Z0-9]{48}|xoxb-[0-9]+-[0-9]+-[a-zA-Z0-9]+",
+    "severity": "critical",
+    "message": "发现疑似硬编码密钥或敏感信息",
+    "recommendation": "建议将敏感信息移至环境变量或安全的配置管理系统",
+    "cweId": "CWE-798",
+    "confidence": 0.8
+  },
+  {
+    "name": "sql_injection_risk",
+    "pattern": "(?:SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER)\\s+.*\\+.*['\\\"]|['\\\"].*\\+.*(?:SELECT|INSERT|UPDATE|DELETE)",
+    "severity": "high",
+    "message": "发现潜在的SQL注入风险",
+    "recommendation": "建议使用参数化查询或ORM来防止SQL注入",
+    "cweId": "CWE-89",
+    "confidence": 0.7
+  },
+  {
+    "name": "xss_risk",
+    "pattern": "innerHTML\\s*=|document\\.write\\s*\\(|eval\\s*\\(|setTimeout\\s*\\(.*string|setInterval\\s*\\(.*string",
+    "severity": "high",
+    "message": "发现潜在的XSS风险",
+    "recommendation": "避免直接操作DOM，使用安全的模板引擎或框架",
+    "cweId": "CWE-79",
+    "confidence": 0.6
+  },
+  {
+    "name": "path_traversal",
+    "pattern": "\\.\\.\\/|\\.\\.\\\\|%2e%2e%2f|%2e%2e%5c",
+    "severity": "high",
+    "message": "发现潜在的路径遍历漏洞",
+    "recommendation": "对文件路径进行严格验证和净化",
+    "cweId": "CWE-22",
+    "confidence": 0.8
+  },
+  {
+    "name": "weak_crypto",
+    "pattern": "MD5|SHA1|DES|RC4|md5|sha1",
+    "severity": "medium",
+    "message": "使用了弱加密算法",
+    "recommendation": "建议使用更强的加密算法如SHA-256, AES等",
+    "cweId": "CWE-327",
+    "confidence": 0.7
+  },
+  {
+    "name": "command_injection",
+    "pattern": "exec\\s*\\(|system\\s*\\(|shell_exec\\s*\\(|passthru\\s*\\(|Runtime\\.getRuntime\\(\\)\\.exec",
+    "severity": "critical",
+    "message": "发现命令执行功能，可能存在命令注入风险",
+    "recommendation": "避免直接执行用户输入，使用安全的替代方案",
+    "cweId": "CWE-78",
+    "confidence": 0.8
+  }
+]

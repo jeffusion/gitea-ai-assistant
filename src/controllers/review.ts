@@ -6,6 +6,8 @@ import { feishuService } from '../services/feishu';
 import config from '../config';
 import * as crypto from 'crypto';
 import { logger } from '../utils/logger';
+import { AgentFramework } from '../agents/framework';
+import { PRContext } from '../agents/types';
 
 // 判断是否为开发环境
 const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
@@ -279,113 +281,65 @@ async function reviewPullRequest(owner: string, repo: string, prNumber: number):
   try {
     logger.info(`开始审查PR ${owner}/${repo}#${prNumber}`);
 
-    // 如果是开发环境，模拟PR差异和详情
-    let prDetails;
-    let diffContent;
+    const agentFramework = new AgentFramework();
 
-    if (isDev) {
-      // 开发环境中的测试数据
-      logger.info('开发环境: 使用测试数据');
-      prDetails = {
-        id: prNumber,
-        number: prNumber,
-        title: '测试PR',
-        head: {
-          sha: 'abcd1234abcd1234abcd1234abcd1234abcd1234'
-        },
-        base: {
-          repo: {
-            owner: {
-              login: owner
-            },
-            name: repo
-          }
-        }
-      };
+    // 1. 获取PR数据
+    const [prDetails, diffContent] = await Promise.all([
+      giteaService.getPullRequestDetails(owner, repo, prNumber),
+      giteaService.getPullRequestDiff(owner, repo, prNumber),
+    ]);
 
-      // 测试用diff内容
-      diffContent = `diff --git a/test.js b/test.js
-index 1234567..abcdefg 100644
---- a/test.js
-+++ b/test.js
-@@ -1,5 +1,9 @@
- function add(a, b) {
--  return a + b;
-+  return a + b; // 简单的加法函数
- }
-
--console.log(add(1, 2));
-+// 不安全的数据处理
-+function processUserData(data) {
-+  eval(data); // 这里有安全问题
-+}
-+console.log(add(1, 2));`;
-    } else {
-      // 生产环境中从Gitea获取真实数据
-      [prDetails, diffContent] = await Promise.all([
-        giteaService.getPullRequestDetails(owner, repo, prNumber),
-        giteaService.getPullRequestDiff(owner, repo, prNumber)
-      ]);
-    }
-
-    // 提取commit SHA
     const commitId = prDetails.head.sha;
 
-    // 使用增强的AI代码审查服务
-    const reviewResult = await aiReviewService.reviewCode(
+    // 2. 构建PRContext
+    const prContext: PRContext = {
       owner,
       repo,
       prNumber,
+      commitSha: commitId,
       diffContent,
-      commitId
-    );
+      createdAt: new Date().toISOString(),
+    };
 
-    logger.info('代码审查结果', {
+    // 3. 执行多Agent审查
+    const reviewResult = await agentFramework.executeReview(prContext);
+
+    logger.info('多Agent代码审查结果', {
       summary: reviewResult.summary.substring(0, 100) + '...',
-      commentCount: reviewResult.lineComments.length
+      lineCommentCount: reviewResult.lineComments.length,
+      securityFindings: reviewResult.findings.security.length,
+      qualityIssues: reviewResult.findings.quality.length,
     });
 
-    // 添加总结评论
-    if (isDev) {
-      logger.info('开发环境: 模拟添加PR评论', {
-        comment: reviewResult.summary
-      });
-    } else {
-      logger.info('生产环境: 添加PR评论', {
-        owner,
-        repo,
-        prNumber,
-        comment: reviewResult.summary
-      });
-      await giteaService.addPullRequestComment(
-        owner,
-        repo,
-        prNumber,
-        `## AI代码审查结果\n\n${reviewResult.summary}`
-      );
-    }
+    // 4. 添加总结评论
+    await giteaService.addPullRequestComment(
+      owner,
+      repo,
+      prNumber,
+      `## AI代码审查结果\n\n${reviewResult.summary}`
+    );
 
-    // 添加行级评论
+    // 5. 添加行级评论
     if (reviewResult.lineComments.length > 0) {
-      if (isDev) {
-        logger.info('开发环境: 模拟添加行评论', {
-          commentCount: reviewResult.lineComments.length,
-          comments: reviewResult.lineComments
-        });
-      } else {
-        await giteaService.addLineComments(
-          owner,
-          repo,
-          prNumber,
-          commitId,
-          reviewResult.lineComments
-        );
-      }
+      await giteaService.addLineComments(
+        owner,
+        repo,
+        prNumber,
+        commitId,
+        reviewResult.lineComments.map(c => ({...c, comment: c.body})) // Adapt to giteaService
+      );
     }
 
     logger.info(`完成PR ${owner}/${repo}#${prNumber} 的代码审查`);
   } catch (error) {
     logger.error(`审查PR失败:`, error);
+    // 可以在这里添加错误通知，例如通知到飞书
+    await giteaService.addPullRequestComment(
+      owner,
+      repo,
+      prNumber,
+      `❌ AI代码审查失败: ${(error as Error).message}`
+    );
     throw error;
   }
 }
