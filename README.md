@@ -111,6 +111,18 @@ Gitea功能增强助手，基于Bun和TypeScript开发，提供AI驱动的代码
 - `OPENAI_MODEL`：OpenAI 使用模型
 - `CUSTOM_SUMMARY_PROMPT`: 自定义总结审查提示 (可选)
 - `CUSTOM_LINE_COMMENT_PROMPT`: 自定义行评论提示 (可选)
+- `REVIEW_ENGINE`: 审查引擎模式，`legacy` 或 `agent` (默认: `legacy`)
+- `REVIEW_WORKDIR`: Agent 本地仓库 mirror/worktree 工作目录
+- `REVIEW_MODEL_PLANNER`: Agent 规划模型
+- `REVIEW_MODEL_SPECIALIST`: 专家子代理模型
+- `REVIEW_MODEL_JUDGE`: Judge 聚合模型
+- `REVIEW_MAX_PARALLEL_RUNS`: 单机并发审查任务上限
+- `REVIEW_MAX_FILES_PER_RUN`: 单次审查最多处理文件数
+- `REVIEW_MAX_FILE_CONTENT_CHARS`: 单文件上下文最大字符数
+- `REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE`: 自动发布评论最小置信度
+- `REVIEW_ENABLE_HUMAN_GATE`: 是否启用人工审批队列
+- `REVIEW_ALLOWED_COMMANDS`: 本地审查沙箱命令白名单
+- `REVIEW_COMMAND_TIMEOUT_MS`: 单条本地命令超时
 - `PORT`: 应用监听端口 (默认: 3000)
 - `WEBHOOK_SECRET`: Webhook秘钥，用于验证请求来源
 - `FEISHU_WEBHOOK_URL`: 飞书Webhook地址，用于发送通知
@@ -190,6 +202,21 @@ Gitea功能增强助手，基于Bun和TypeScript开发，提供AI驱动的代码
 3. 尝试找到关联的PR，添加行级评论
 
 这对于增量工作尤其有用，可以只对最新的变更进行审查，避免重复评审已审查过的代码。
+
+### Agent 审查模式（新）
+
+当 `REVIEW_ENGINE=agent` 时，系统会启用 Agent 编排流程：
+
+1. Webhook 事件先入队（支持幂等去重）
+2. Worker 在后台拉取任务并执行
+3. 基于本地 clone（mirror + worktree）构建上下文
+4. 多专家代理并行生成 findings
+5. Judge 聚合后按策略自动发布/进入人工审批
+
+管理后台新增审查任务查看接口：
+
+- `GET /admin/api/review/runs`
+- `GET /admin/api/review/runs/:runId`
 
 ## 代码审查规则
 
