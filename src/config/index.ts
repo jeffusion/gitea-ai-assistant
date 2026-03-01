@@ -6,6 +6,7 @@ config();
 
 // 判断是否为开发环境
 const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+const defaultAllowedReviewCommands = ['git', 'rg', 'cat', 'sed', 'wc'];
 
 // 环境变量验证模式
 const envSchema = z.object({
@@ -32,6 +33,46 @@ const envSchema = z.object({
   // 管理后台配置
   ADMIN_PASSWORD: z.string().default('password'),
   JWT_SECRET: z.string().default('a-secure-secret-for-jwt'),
+
+  // Agent审查配置
+  REVIEW_ENGINE: z.enum(['legacy', 'agent']).default('legacy'),
+  REVIEW_WORKDIR: z.string().default('/tmp/gitea-assistant'),
+  REVIEW_MODEL_PLANNER: z.string().default('gpt-4o-mini'),
+  REVIEW_MODEL_SPECIALIST: z.string().default('gpt-4o-mini'),
+  REVIEW_MODEL_JUDGE: z.string().default('gpt-4o-mini'),
+  REVIEW_MAX_PARALLEL_RUNS: z.coerce.number().int().min(1).max(8).default(2),
+  REVIEW_MAX_FILES_PER_RUN: z.coerce.number().int().min(1).max(1000).default(200),
+  REVIEW_MAX_FILE_CONTENT_CHARS: z.coerce.number().int().min(1000).max(1_000_000).default(40_000),
+  REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.8),
+  REVIEW_ENABLE_HUMAN_GATE: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value) => value === 'true'),
+  REVIEW_ALLOWED_COMMANDS: z.string().default(defaultAllowedReviewCommands.join(',')),
+  REVIEW_COMMAND_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(10000),
+
+  // 向量记忆和学习系统配置
+  QDRANT_URL: z.preprocess(
+    (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
+    z.string().url().optional()
+  ),
+  ENABLE_MEMORY: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  FEW_SHOT_EXAMPLES_COUNT: z.coerce.number().int().min(0).max(20).default(10),
+
+  // Reflection和Debate配置（第三阶段）
+  ENABLE_REFLECTION: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  MAX_REFLECTION_ROUNDS: z.coerce.number().int().min(1).max(5).default(2),
+  ENABLE_DEBATE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  DEBATE_THRESHOLD: z.enum(['high', 'medium']).default('high'),
 });
 
 // 处理验证结果
@@ -73,5 +114,32 @@ export default {
     password: envParseResult.success ? envParseResult.data.ADMIN_PASSWORD : 'password',
     jwtSecret: envParseResult.success ? envParseResult.data.JWT_SECRET : 'a-secure-secret-for-jwt',
     giteaAdminToken: envParseResult.success ? envParseResult.data.GITEA_ADMIN_TOKEN : undefined,
+  },
+  review: {
+    engine: envParseResult.success ? envParseResult.data.REVIEW_ENGINE : 'legacy',
+    workdir: envParseResult.success ? envParseResult.data.REVIEW_WORKDIR : '/tmp/gitea-assistant',
+    modelPlanner: envParseResult.success ? envParseResult.data.REVIEW_MODEL_PLANNER : 'gpt-4o-mini',
+    modelSpecialist: envParseResult.success ? envParseResult.data.REVIEW_MODEL_SPECIALIST : 'gpt-4o-mini',
+    modelJudge: envParseResult.success ? envParseResult.data.REVIEW_MODEL_JUDGE : 'gpt-4o-mini',
+    maxParallelRuns: envParseResult.success ? envParseResult.data.REVIEW_MAX_PARALLEL_RUNS : 2,
+    maxFilesPerRun: envParseResult.success ? envParseResult.data.REVIEW_MAX_FILES_PER_RUN : 200,
+    maxFileContentChars: envParseResult.success ? envParseResult.data.REVIEW_MAX_FILE_CONTENT_CHARS : 40_000,
+    autoPublishMinConfidence: envParseResult.success
+      ? envParseResult.data.REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE
+      : 0.8,
+    enableHumanGate: envParseResult.success ? envParseResult.data.REVIEW_ENABLE_HUMAN_GATE : true,
+    allowedCommands: envParseResult.success
+      ? envParseResult.data.REVIEW_ALLOWED_COMMANDS.split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+      : defaultAllowedReviewCommands,
+    commandTimeoutMs: envParseResult.success ? envParseResult.data.REVIEW_COMMAND_TIMEOUT_MS : 10000,
+    qdrantUrl: envParseResult.success ? envParseResult.data.QDRANT_URL : undefined,
+    enableMemory: envParseResult.success ? envParseResult.data.ENABLE_MEMORY : false,
+    fewShotExamplesCount: envParseResult.success ? envParseResult.data.FEW_SHOT_EXAMPLES_COUNT : 10,
+    enableReflection: envParseResult.success ? envParseResult.data.ENABLE_REFLECTION : false,
+    maxReflectionRounds: envParseResult.success ? envParseResult.data.MAX_REFLECTION_ROUNDS : 2,
+    enableDebate: envParseResult.success ? envParseResult.data.ENABLE_DEBATE : false,
+    debateThreshold: envParseResult.success ? envParseResult.data.DEBATE_THRESHOLD : 'high',
   },
 };
