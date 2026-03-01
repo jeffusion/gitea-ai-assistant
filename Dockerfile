@@ -4,7 +4,7 @@ FROM oven/bun:1 as frontend-builder
 WORKDIR /app/frontend
 
 # 拷贝前端的 package.json 和 lockfile
-COPY frontend/package.json frontend/bun.lockb ./
+COPY frontend/package.json frontend/bun.lock* ./
 
 # 安装前端依赖
 RUN bun install --frozen-lockfile
@@ -22,7 +22,7 @@ FROM oven/bun:1 as backend-builder
 WORKDIR /app
 
 # 拷贝后端的 package.json 和 lockfile
-COPY package.json bun.lockb ./
+COPY package.json bun.lock* ./
 
 # 只安装生产环境依赖
 RUN bun install --frozen-lockfile --production

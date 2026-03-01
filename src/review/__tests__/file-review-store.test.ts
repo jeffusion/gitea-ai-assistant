@@ -351,7 +351,10 @@ describe('FileReviewStore', () => {
       const p3 = makePRPayload();
 
       await store.createOrReuseRun(p1);
+      // Ensure distinct timestamps for sorting
+      await new Promise(r => setTimeout(r, 5));
       await store.createOrReuseRun(p2);
+      await new Promise(r => setTimeout(r, 5));
       await store.createOrReuseRun(p3);
 
       const runs = await store.listRuns();
