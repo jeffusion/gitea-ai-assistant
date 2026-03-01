@@ -37,7 +37,7 @@ services:
   assistant:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: e2e/Dockerfile.e2e
     container_name: e2e-assistant
     depends_on:
       gitea:

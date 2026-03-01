@@ -70,6 +70,7 @@ pushd "${CLONE_DIR}/repo" > /dev/null
 git config user.email "e2e@test.local"
 git config user.name "E2E Bot"
 
+mkdir -p src
 cat > src/auth.ts << 'TSEOF'
 export function authenticate(token: string): boolean {
   // 正确的认证实现
@@ -84,7 +85,6 @@ function verifyToken(token: string): boolean {
 }
 TSEOF
 
-mkdir -p src
 git add -A
 git commit -m "initial: add auth module" --allow-empty 2>/dev/null || true
 git push origin main 2>/dev/null || true

@@ -106,8 +106,12 @@ fi
 
 # ─── 测试 5: Review Run 状态检查 ───
 echo "[TEST 5] Review Run 状态"
-RUNS=$(curl -sf "${ASSISTANT_URL}/admin/api/review/runs" 2>/dev/null || echo "[]")
-RUN_COUNT=$(echo "${RUNS}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d) if isinstance(d,list) else len(d.get('runs',[])))" 2>/dev/null || echo "0")
+ADMIN_JWT=$(curl -sf -X POST "${ASSISTANT_URL}/admin/api/login" \
+  -H "Content-Type: application/json" \
+  -d '{"password":"password"}' | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || echo "")
+RUNS=$(curl -sf "${ASSISTANT_URL}/admin/api/review/runs" \
+  -H "Authorization: Bearer ${ADMIN_JWT}" 2>/dev/null || echo "[]")
+RUN_COUNT=$(echo "${RUNS}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('data',d if isinstance(d,list) else [])))" 2>/dev/null || echo "0")
 
 if [ "${RUN_COUNT}" -gt "0" ]; then
   echo "  ✅ PASS: 发现 ${RUN_COUNT} 个 review run(s)"
@@ -116,7 +120,7 @@ if [ "${RUN_COUNT}" -gt "0" ]; then
   echo "${RUNS}" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
-runs = data if isinstance(data, list) else data.get('runs', [])
+runs = data.get('data', data if isinstance(data, list) else data.get('runs', []))
 for r in runs[:3]:
     print(f\"    - {r.get('id','?')[:8]}... status={r.get('status','?')} attempts={r.get('attempts','?')}\")
 " 2>/dev/null || true
