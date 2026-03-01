@@ -3,7 +3,10 @@ import { jwt } from 'hono/jwt';
 import { serveStatic } from 'hono/bun';
 import { handleGiteaWebhook } from './controllers/review';
 import { adminController } from './controllers/admin';
+import { feedbackRouter, initializeFeedbackSystem } from './controllers/feedback';
 import config from './config';
+import { reviewEngine } from './review/engine';
+import OpenAI from 'openai';
 
 // 创建Hono应用实例
 const app = new Hono();
@@ -39,8 +42,9 @@ app.route('/admin/api', adminController.publicRoutes);
 
 // 受保护的路由
 const adminProtected = new Hono();
-adminProtected.use('/*', jwt({ secret: config.admin.jwtSecret }));
+adminProtected.use('/*', jwt({ secret: config.admin.jwtSecret, alg: 'HS256' }));
 adminProtected.route('/', adminController.protectedRoutes);
+adminProtected.route('/feedback', feedbackRouter);
 app.route('/admin/api', adminProtected);
 
 
@@ -56,6 +60,24 @@ app.get('*', serveStatic({ path: './public/index.html' }));
 // 启动服务器
 const port = config.app.port;
 console.log(`⚡️ 服务启动在 http://localhost:${port}`);
+
+reviewEngine.start().catch((error) => {
+  console.error('❌ 启动Agent Review Engine失败', error);
+});
+
+// 初始化反馈系统（总是初始化，记忆系统可选）
+const openaiClient = new OpenAI({
+  baseURL: config.openai.baseUrl,
+  apiKey: config.openai.apiKey,
+});
+const reviewStore = reviewEngine.getStore();
+initializeFeedbackSystem(openaiClient, reviewStore);
+
+if (config.review.enableMemory) {
+  console.log('✅ 反馈系统已初始化（含向量记忆）');
+} else {
+  console.log('✅ 反馈系统已初始化（不含向量记忆）');
+}
 
 export default {
   port,

@@ -1,11 +1,12 @@
 import axios from 'axios';
 import config from '../config';
 import { logger } from '../utils/logger';
-import { LineComment } from './ai-review';
 
-// 打印将要使用的 Admin Token，用于调试
-logger.info(`Gitea Admin Token used: [${config.admin.giteaAdminToken}]`);
-logger.info(`Gitea Access Token (fallback): [${config.gitea.accessToken}]`);
+export interface LineComment {
+  path: string;
+  line: number;
+  comment: string;
+}
 
 // 创建API客户端
 const giteaClient = axios.create({

@@ -1,9 +1,10 @@
 import { Context } from 'hono';
-import { map } from 'lodash-es'
+import { map } from 'lodash-es';
 import { giteaService, PullRequestFile, PullRequestDetails } from '../services/gitea';
 import { aiReviewService } from '../services/ai-review';
 import { feishuService } from '../services/feishu';
 import config from '../config';
+import { reviewEngine } from '../review/engine';
 import * as crypto from 'crypto';
 import { logger } from '../utils/logger';
 
@@ -78,6 +79,19 @@ function determineEventType(c: Context, body: any): GiteaEventType {
   return GiteaEventType.Unknown;
 }
 
+function resolveCloneUrl(repo: any): string | null {
+  if (repo?.clone_url && typeof repo.clone_url === 'string') {
+    return repo.clone_url;
+  }
+  if (repo?.ssh_url && typeof repo.ssh_url === 'string') {
+    return repo.ssh_url;
+  }
+  if (repo?.html_url && typeof repo.html_url === 'string') {
+    return `${repo.html_url}.git`;
+  }
+  return null;
+}
+
 /**
  * 处理Pull Request事件
  */
@@ -141,7 +155,44 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
     // 继续执行代码审查流程，不因通知失败而中断
   }
 
-  // 开始异步审查流程
+  if (config.review.engine === 'agent') {
+    // Fork PR策略：始终clone base repo（保证有baseSha），headCloneUrl作为额外remote（保证有headSha）
+    const baseCloneUrl = resolveCloneUrl(repo);
+    const headSha = pullRequest.head?.sha;
+    const baseSha = pullRequest.base?.sha;
+    if (!baseCloneUrl || !headSha || !baseSha) {
+      return c.json({ error: '缺少Agent审查所需字段(clone_url/base sha/head sha)' }, 400);
+    }
+
+    // 检测fork PR：head.repo存在且与base repo不同
+    const headCloneUrl = pullRequest.head?.repo ? resolveCloneUrl(pullRequest.head.repo) : undefined;
+    const isForkPR = headCloneUrl && headCloneUrl !== baseCloneUrl;
+
+    // 包含baseSha以支持retarget场景：相同headSha但baseSha变化时需要重新审查
+    const idempotencyKey = `${owner}/${repoName}#${prNumber}:${baseSha}...${headSha}`;
+    const { run, reused } = await reviewEngine.enqueuePullRequest({
+      eventType: 'pull_request',
+      idempotencyKey,
+      owner,
+      repo: repoName,
+      cloneUrl: baseCloneUrl,
+      headCloneUrl: isForkPR ? headCloneUrl : undefined,
+      prNumber,
+      baseSha,
+      headSha,
+    });
+
+    return c.json(
+      {
+        status: reused ? 'deduplicated' : 'accepted',
+        message: reused ? '审查任务已存在，已去重' : 'Agent代码审查任务已入队',
+        runId: run.id,
+      },
+      202
+    );
+  }
+
+  // Legacy模式：开始异步审查流程
   reviewPullRequest(owner, repoName, prNumber).catch(error => {
     logger.error(`审查PR ${owner}/${repoName}#${prNumber} 失败:`, error);
   });
@@ -213,7 +264,36 @@ async function handleCommitStatusEvent(c: Context, body: any): Promise<Response>
     removed: commitInfo.removed.length
   });
 
-  // 如果没有文件变更信息，则忽略
+  // Agent模式优先处理：从本地仓库派生diff，不依赖webhook文件列表
+  if (config.review.engine === 'agent') {
+    const cloneUrl = resolveCloneUrl(body.repository);
+    if (!cloneUrl) {
+      return c.json({ error: '缺少Agent审查所需字段(clone_url)' }, 400);
+    }
+
+    const idempotencyKey = `${owner}/${repoName}@${commitSha}`;
+    const { run, reused } = await reviewEngine.enqueueCommit({
+      eventType: 'commit_status',
+      idempotencyKey,
+      owner,
+      repo: repoName,
+      cloneUrl,
+      commitSha,
+      commitMessage: commitInfo.message,
+      relatedPrNumber: relatedPR?.number,
+    });
+
+    return c.json(
+      {
+        status: reused ? 'deduplicated' : 'accepted',
+        message: reused ? '审查任务已存在，已去重' : 'Agent提交审查任务已入队',
+        runId: run.id,
+      },
+      202
+    );
+  }
+
+  // Legacy模式：需要webhook文件列表
   if (commitInfo.added.length === 0 && commitInfo.modified.length === 0 && commitInfo.removed.length === 0) {
     logger.warn('提交没有文件变更信息，忽略审查', { commitSha });
     return c.json({ status: 'ignored', message: '提交没有文件变更信息' }, 200);

@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
 import { sign } from 'hono/jwt';
-import config from '@/config';
-import { giteaService } from '@/services/gitea';
-import { logger } from '@/utils/logger';
+import config from '../config';
+import { giteaService } from '../services/gitea';
+import { logger } from '../utils/logger';
+import { reviewEngine } from '../review/engine';
 
 const publicRoutes = new Hono();
 const protectedRoutes = new Hono();
@@ -87,6 +88,33 @@ protectedRoutes.delete('/repositories/:owner/:repo/webhook/:hookId', async (c) =
   } catch (error: any) {
     logger.error(`删除 ${owner}/${repo} 的 Webhook 失败:`, error);
     return c.json({ message: 'Failed to delete webhook', error: error.message }, 500);
+  }
+});
+
+// 查询审查任务
+protectedRoutes.get('/review/runs', async (c) => {
+  try {
+    const limit = parseInt(c.req.query('limit') || '50', 10);
+    const runs = await reviewEngine.listRuns(limit);
+    return c.json({ data: runs });
+  } catch (error: any) {
+    logger.error('获取审查任务列表失败:', error);
+    return c.json({ message: 'Failed to fetch review runs', error: error.message }, 500);
+  }
+});
+
+// 查询审查任务详情
+protectedRoutes.get('/review/runs/:runId', async (c) => {
+  try {
+    const { runId } = c.req.param();
+    const result = await reviewEngine.getRunDetails(runId);
+    if (!result) {
+      return c.json({ message: 'Run not found' }, 404);
+    }
+    return c.json(result);
+  } catch (error: any) {
+    logger.error('获取审查任务详情失败:', error);
+    return c.json({ message: 'Failed to fetch review run details', error: error.message }, 500);
   }
 });
 
