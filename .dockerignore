@@ -1,10 +1,48 @@
-# 忽略所有 node_modules
-node_modules/
-frontend/node_modules/
+# Git
+.git
+.gitignore
+.github
 
-# 忽略 .env 文件
+# Docker (prevent recursion)
+Dockerfile
+docker-compose*.yml
+
+# Build outputs (rebuilt in container)
+dist
+
+# Node modules (installed in container)
+node_modules
+frontend/node_modules
+
+# Logs
+logs
+*.log
+
+# Test files
+*.test.ts
+*.spec.ts
+__tests__
+coverage
+e2e
+
+# Development files
 .env
-
-# 忽略 kubernetes.yaml
-kubernetes.yaml
+.env.*
 config-overrides.json
+
+# IDE and editor files
+.vscode
+.idea
+.cursor
+.sisyphus
+*.swp
+*.swo
+.DS_Store
+
+# Documentation (not needed in container)
+*.md
+docs
+
+# CI/CD config
+.releaserc.json
+biome.json

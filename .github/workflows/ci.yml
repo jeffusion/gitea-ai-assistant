@@ -22,7 +22,6 @@ jobs:
 
       - name: Lint
         run: bun run lint
-        continue-on-error: true  # Pre-existing lint violations — non-blocking until cleanup
 
       - name: Type check
         run: bun run build

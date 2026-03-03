@@ -4,23 +4,23 @@ on:
   push:
     branches:
       - main
-    tags:
-      - 'v*'
 
 permissions:
-  contents: read
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write
   packages: write
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-
 jobs:
-  test:
+  release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -32,7 +32,6 @@ jobs:
 
       - name: Lint
         run: bun run lint
-        continue-on-error: true
 
       - name: Type check
         run: bun run build
@@ -40,42 +39,36 @@ jobs:
       - name: Run tests
         run: bun test
 
-  docker:
-    needs: test
-    runs-on: ubuntu-latest
+      - name: Run semantic-release
+        run: bunx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
+      # Docker build and push
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=
-            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Extract version from package.json
+        id: package-version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected version: $VERSION"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/gitea-ai-assistant:latest
+            ghcr.io/${{ github.repository_owner }}/gitea-ai-assistant:${{ steps.package-version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
