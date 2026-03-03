@@ -3,3 +3,5 @@ dist/
 .env
 kubernetes.yaml
 config-overrides.json
+.sisyphus/
+e2e/.env.e2e
