@@ -4,6 +4,7 @@ import { serveStatic } from 'hono/bun';
 import { handleGiteaWebhook } from './controllers/review';
 import { adminController } from './controllers/admin';
 import { feedbackRouter, initializeFeedbackSystem } from './controllers/feedback';
+import { configRouter } from './controllers/config';
 import config from './config';
 import { reviewEngine } from './review/engine';
 import OpenAI from 'openai';
@@ -45,6 +46,7 @@ const adminProtected = new Hono();
 adminProtected.use('/*', jwt({ secret: config.admin.jwtSecret, alg: 'HS256' }));
 adminProtected.route('/', adminController.protectedRoutes);
 adminProtected.route('/feedback', feedbackRouter);
+adminProtected.route('/config', configRouter);
 app.route('/admin/api', adminProtected);
 
 
