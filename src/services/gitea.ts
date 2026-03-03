@@ -1,17 +1,18 @@
 import axios from 'axios';
 import config from '../config';
 import { logger } from '../utils/logger';
-import { LineComment } from './ai-review';
 
-// 打印将要使用的 Admin Token，用于调试
-logger.info(`Gitea Admin Token used: [${config.admin.giteaAdminToken}]`);
-logger.info(`Gitea Access Token (fallback): [${config.gitea.accessToken}]`);
+export interface LineComment {
+  path: string;
+  line: number;
+  comment: string;
+}
 
 // 创建API客户端
 const giteaClient = axios.create({
   baseURL: config.gitea.apiUrl,
   headers: {
-    'Authorization': `token ${config.gitea.accessToken}`,
+    Authorization: `token ${config.gitea.accessToken}`,
     'Content-Type': 'application/json',
   },
 });
@@ -20,7 +21,7 @@ const giteaClient = axios.create({
 const giteaAdminClient = axios.create({
   baseURL: config.gitea.apiUrl,
   headers: {
-    'Authorization': `token ${config.admin.giteaAdminToken || config.gitea.accessToken}`,
+    Authorization: `token ${config.admin.giteaAdminToken || config.gitea.accessToken}`,
     'Content-Type': 'application/json',
     'User-Agent': 'curl/7.81.0', // 伪装成 curl
   },
@@ -45,13 +46,22 @@ export interface GiteaService {
   getCommitFiles(owner: string, repo: string, commitSha: string): Promise<PullRequestFile[]>;
 
   // 获取与提交关联的Pull Request
-  getRelatedPullRequest(owner: string, repo: string, commitSha: string): Promise<PullRequestDetails | null>;
+  getRelatedPullRequest(
+    owner: string,
+    repo: string,
+    commitSha: string
+  ): Promise<PullRequestDetails | null>;
 
   // 获取文件内容
   getFileContent(owner: string, repo: string, path: string, ref?: string): Promise<string>;
 
   // 获取引用的相关文件
-  getRelatedFiles(owner: string, repo: string, files: PullRequestFile[], commitSha: string): Promise<Record<string, string>>;
+  getRelatedFiles(
+    owner: string,
+    repo: string,
+    files: PullRequestFile[],
+    commitSha: string
+  ): Promise<Record<string, string>>;
 
   // 添加PR评论
   addPullRequestComment(owner: string, repo: string, prNumber: number, body: string): Promise<void>;
@@ -69,7 +79,11 @@ export interface GiteaService {
   addCommitComment(owner: string, repo: string, commitSha: string, body: string): Promise<void>;
 
   // 管理后台方法
-  listAllRepositories(page: number, limit: number, query?: string): Promise<{ repos: any[], totalCount: number }>;
+  listAllRepositories(
+    page: number,
+    limit: number,
+    query?: string
+  ): Promise<{ repos: any[]; totalCount: number }>;
   listWebhooks(owner: string, repo: string): Promise<any[]>;
   createWebhook(owner: string, repo: string, webhookUrl: string): Promise<void>;
   deleteWebhook(owner: string, repo: string, hookId: number): Promise<void>;
@@ -117,7 +131,11 @@ export const giteaService: GiteaService = {
   },
 
   // 获取PR详情
-  async getPullRequestDetails(owner: string, repo: string, prNumber: number): Promise<PullRequestDetails> {
+  async getPullRequestDetails(
+    owner: string,
+    repo: string,
+    prNumber: number
+  ): Promise<PullRequestDetails> {
     try {
       const response = await giteaClient.get(`/repos/${owner}/${repo}/pulls/${prNumber}`);
       return response.data;
@@ -128,7 +146,11 @@ export const giteaService: GiteaService = {
   },
 
   // 获取PR变更的文件列表
-  async getPullRequestFiles(owner: string, repo: string, prNumber: number): Promise<PullRequestFile[]> {
+  async getPullRequestFiles(
+    owner: string,
+    repo: string,
+    prNumber: number
+  ): Promise<PullRequestFile[]> {
     try {
       const response = await giteaClient.get(`/repos/${owner}/${repo}/pulls/${prNumber}/files`);
       return response.data || [];
@@ -152,7 +174,9 @@ export const giteaService: GiteaService = {
       }
 
       // 使用官方API获取差异，使用diff格式
-      const diffResponse = await giteaClient.get(`/repos/${owner}/${repo}/git/commits/${commitSha}.diff`);
+      const diffResponse = await giteaClient.get(
+        `/repos/${owner}/${repo}/git/commits/${commitSha}.diff`
+      );
       return diffResponse.data || '';
     } catch (error: any) {
       logger.error('获取提交差异失败:', error);
@@ -174,10 +198,9 @@ export const giteaService: GiteaService = {
       if (response.data.files) {
         // 如果API返回了文件列表，则使用它
         return response.data.files;
-      } else {
-        // 否则返回空数组，依赖控制器中webhook提供的文件列表
-        return [];
       }
+      // 否则返回空数组，依赖控制器中webhook提供的文件列表
+      return [];
     } catch (error: any) {
       logger.error('获取提交文件列表失败:', error);
       throw new Error(`获取提交文件列表失败: ${error.message}`);
@@ -185,7 +208,11 @@ export const giteaService: GiteaService = {
   },
 
   // 获取与提交关联的Pull Request
-  async getRelatedPullRequest(owner: string, repo: string, commitSha: string): Promise<PullRequestDetails | null> {
+  async getRelatedPullRequest(
+    owner: string,
+    repo: string,
+    commitSha: string
+  ): Promise<PullRequestDetails | null> {
     try {
       // 获取仓库中所有开放的PR
       const response = await giteaClient.get(`/repos/${owner}/${repo}/pulls?state=open`);
@@ -197,7 +224,9 @@ export const giteaService: GiteaService = {
           const prDetails = await giteaService.getPullRequestDetails(owner, repo, pr.number);
 
           // 检查PR的提交列表
-          const commitsResponse = await giteaClient.get(`/repos/${owner}/${repo}/pulls/${pr.number}/commits`);
+          const commitsResponse = await giteaClient.get(
+            `/repos/${owner}/${repo}/pulls/${pr.number}/commits`
+          );
           const commits = commitsResponse.data || [];
 
           // 检查提交是否在PR中
@@ -238,7 +267,12 @@ export const giteaService: GiteaService = {
   },
 
   // 获取引用的相关文件
-  async getRelatedFiles(owner: string, repo: string, files: PullRequestFile[], commitSha: string): Promise<Record<string, string>> {
+  async getRelatedFiles(
+    owner: string,
+    repo: string,
+    files: PullRequestFile[],
+    commitSha: string
+  ): Promise<Record<string, string>> {
     const result: Record<string, string> = {};
 
     // 对每个修改过的文件，获取其完整内容
@@ -260,7 +294,12 @@ export const giteaService: GiteaService = {
   },
 
   // 添加PR评论
-  async addPullRequestComment(owner: string, repo: string, prNumber: number, body: string): Promise<void> {
+  async addPullRequestComment(
+    owner: string,
+    repo: string,
+    prNumber: number,
+    body: string
+  ): Promise<void> {
     try {
       await giteaClient.post(`/repos/${owner}/${repo}/issues/${prNumber}/comments`, { body });
     } catch (error: any) {
@@ -287,7 +326,7 @@ export const giteaService: GiteaService = {
       await giteaClient.post(`/repos/${owner}/${repo}/pulls/${prNumber}/reviews`, {
         event: 'COMMENT',
         commit_id: commitId,
-        comments: comments.map(comment => ({
+        comments: comments.map((comment) => ({
           path: comment.path,
           body: comment.comment,
           new_position: comment.line,
@@ -307,7 +346,7 @@ export const giteaService: GiteaService = {
             commit_id: commitId,
             path: comment.path,
             line: comment.line,
-            position: comment.line,  // Gitea使用position参数表示行号
+            position: comment.line, // Gitea使用position参数表示行号
           });
         }
         logger.info(`成功逐条添加 ${comments.length} 条评论`);
@@ -319,7 +358,12 @@ export const giteaService: GiteaService = {
   },
 
   // 添加提交评论
-  async addCommitComment(owner: string, repo: string, commitSha: string, body: string): Promise<void> {
+  async addCommitComment(
+    owner: string,
+    repo: string,
+    commitSha: string,
+    body: string
+  ): Promise<void> {
     try {
       await giteaClient.post(`/repos/${owner}/${repo}/git/commits/${commitSha}/comments`, { body });
     } catch (error: any) {
@@ -329,7 +373,11 @@ export const giteaService: GiteaService = {
   },
 
   // 获取所有仓库
-  async listAllRepositories(page: number = 1, limit: number = 30, query?: string): Promise<{ repos: any[], totalCount: number }> {
+  async listAllRepositories(
+    page = 1,
+    limit = 30,
+    query?: string
+  ): Promise<{ repos: any[]; totalCount: number }> {
     try {
       const response = await giteaAdminClient.get('/repos/search', {
         params: {
@@ -338,7 +386,7 @@ export const giteaService: GiteaService = {
           q: query,
         },
       });
-      const totalCount = parseInt(response.headers['x-total-count'] || '0', 10);
+      const totalCount = Number.parseInt(response.headers['x-total-count'] || '0', 10);
       return { repos: response.data.data, totalCount };
     } catch (error: any) {
       logger.error('获取所有仓库列表失败:', error);

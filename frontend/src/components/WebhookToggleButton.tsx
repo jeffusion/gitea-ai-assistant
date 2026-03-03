@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from "sonner";
 
@@ -32,14 +33,26 @@ export function WebhookToggleButton({ repoName, status, hookId }: WebhookToggleB
 
   return (
     <Button
-      variant={status === 'active' ? 'destructive' : 'default'}
+      variant={status === 'active' ? 'outline' : 'default'}
       size="sm"
+      className={
+        status === 'active'
+          ? "border-rose-500/50 bg-transparent text-rose-500 hover:bg-rose-500/10 hover:text-rose-400 transition-colors"
+          : "bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-300 hover:shadow-[0_0_15px_rgba(45,212,191,0.5)] tech-glow"
+      }
       onClick={() => mutation.mutate()}
       disabled={mutation.isPending}
     >
-      {mutation.isPending
-        ? '处理中...'
-        : status === 'active' ? '停用' : '启用'}
+      {mutation.isPending ? (
+        <>
+          <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+          <span className="font-mono text-xs">处理中...</span>
+        </>
+      ) : status === 'active' ? (
+        <span className="font-mono text-xs">停用</span>
+      ) : (
+        <span className="font-mono text-xs">启用</span>
+      )}
     </Button>
   );
 }

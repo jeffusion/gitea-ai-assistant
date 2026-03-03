@@ -1,0 +1,16 @@
+# E2E 测试用简化 Dockerfile（跳过 frontend 构建）
+FROM oven/bun:1
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y git ripgrep curl && rm -rf /var/lib/apt/lists/*
+
+COPY package.json bun.lock* bun.lockb* ./
+RUN bun install --no-frozen-lockfile
+
+COPY src ./src
+COPY tsconfig.json .
+
+EXPOSE 3000
+
+CMD ["bun", "run", "start"]

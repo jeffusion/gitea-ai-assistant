@@ -28,7 +28,7 @@ function formatMessage(level: LogLevel, message: string, meta?: any): string {
   if (meta) {
     try {
       formattedMessage += ` - ${JSON.stringify(meta)}`;
-    } catch (error) {
+    } catch (_error) {
       formattedMessage += ` - ${meta}`;
     }
   }

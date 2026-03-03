@@ -1,0 +1,508 @@
+import { describe, expect, mock, test } from 'bun:test';
+import { z } from 'zod';
+import { SpecialistAgent } from '../agents/specialist-agent';
+import { ToolRegistry } from '../tools/registry';
+import type { Tool } from '../tools/types';
+import type { FindingCategory, ReviewContext, ReviewRun } from '../types';
+
+function makeRun(overrides: Partial<ReviewRun> = {}): ReviewRun {
+  return {
+    id: 'run-test-001',
+    idempotencyKey: 'idem-test',
+    eventType: 'pull_request',
+    status: 'in_progress',
+    owner: 'test-owner',
+    repo: 'test-repo',
+    cloneUrl: 'https://example.com/repo.git',
+    prNumber: 1,
+    baseSha: 'aaa',
+    headSha: 'bbb',
+    attempts: 0,
+    maxAttempts: 2,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+function makeContext(overrides: Partial<ReviewContext> = {}): ReviewContext {
+  return {
+    workspacePath: '/tmp/test-workspace',
+    mirrorPath: '/tmp/test-mirror',
+    diff: '--- a/src/foo.ts\n+++ b/src/foo.ts\n@@ -1,3 +1,4 @@\n+const x = null;\n export function foo() {}',
+    changedFiles: [{ path: 'src/foo.ts', status: 'M', additions: 1, deletions: 0 }],
+    parsedDiff: [
+      {
+        path: 'src/foo.ts',
+        changes: [{ lineNumber: 1, content: 'const x = null;', type: 'add' }],
+      },
+    ],
+    fileContents: { 'src/foo.ts': 'const x = null;\nexport function foo() {}' },
+    ...overrides,
+  };
+}
+
+function makeDummyTool(name = 'search_code'): Tool {
+  return {
+    name,
+    description: 'Search code in the workspace',
+    parameters: z.object({ query: z.string() }),
+    execute: async () => ({ results: [] }),
+  };
+}
+
+type ChatCreateParams = {
+  model: string;
+  temperature: number;
+  response_format?: { type: string };
+  messages: any[];
+  tools?: any[];
+  tool_choice?: string;
+};
+
+function createMockOpenAI(responses: Array<() => any>) {
+  let callIndex = 0;
+  const calls: ChatCreateParams[] = [];
+
+  return {
+    client: {
+      chat: {
+        completions: {
+          create: async (params: ChatCreateParams) => {
+            calls.push(params);
+            const responseFn = responses[callIndex] ?? responses[responses.length - 1];
+            callIndex++;
+            return responseFn();
+          },
+        },
+      },
+    },
+    getCalls: () => calls,
+  };
+}
+
+function toolCallResponse(toolCalls: Array<{ id: string; name: string; args: any }>) {
+  return {
+    choices: [
+      {
+        message: {
+          role: 'assistant',
+          content: null,
+          tool_calls: toolCalls.map((tc) => ({
+            id: tc.id,
+            type: 'function',
+            function: { name: tc.name, arguments: JSON.stringify(tc.args) },
+          })),
+        },
+      },
+    ],
+  };
+}
+
+function jsonResponse(data: any) {
+  return {
+    choices: [
+      {
+        message: {
+          role: 'assistant',
+          content: JSON.stringify(data),
+        },
+      },
+    ],
+  };
+}
+
+function emptyResponse() {
+  return { choices: [{ message: { role: 'assistant', content: null } }] };
+}
+
+describe('SpecialistAgent ReAct loop', () => {
+  const category: FindingCategory = 'correctness';
+
+  test('empty diff returns empty findings without calling OpenAI', async () => {
+    const { client } = createMockOpenAI([]);
+    const agent = new SpecialistAgent(client as any, 'gpt-4', category, 'TestAgent', 'bugs');
+    const result = await agent.review(makeRun(), makeContext({ diff: '   ' }));
+    expect(result.findings).toHaveLength(0);
+    expect(result.agentName).toBe('TestAgent');
+  });
+
+  test('no toolRegistry → uses legacy single-call mode', async () => {
+    const finding = {
+      severity: 'high',
+      confidence: 0.9,
+      path: 'src/foo.ts',
+      line: 1,
+      title: 'Null assignment',
+      detail: 'x is null',
+      evidence: 'const x = null',
+      suggestion: 'Use undefined',
+    };
+
+    const { client, getCalls } = createMockOpenAI([() => jsonResponse({ findings: [finding] })]);
+
+    const agent = new SpecialistAgent(client as any, 'gpt-4', category, 'TestAgent', 'bugs');
+    const result = await agent.review(makeRun(), makeContext());
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].severity).toBe('high');
+    expect(result.findings[0].category).toBe('correctness');
+    expect(result.findings[0].fingerprint).toBeTruthy();
+
+    const calls = getCalls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].response_format).toEqual({ type: 'json_object' });
+  });
+
+  test('ReAct: tool call → tool result → final JSON findings', async () => {
+    const registry = new ToolRegistry();
+    const executeFn = mock(async () => ({ results: ['some code match'] }));
+    registry.register({ ...makeDummyTool(), execute: executeFn });
+
+    const finding = {
+      severity: 'medium',
+      confidence: 0.85,
+      path: 'src/foo.ts',
+      line: 1,
+      title: 'Potential null',
+      detail: 'Null assigned',
+      evidence: 'const x = null',
+      suggestion: 'Check usage',
+    };
+
+    const { client, getCalls } = createMockOpenAI([
+      () => toolCallResponse([{ id: 'call_1', name: 'search_code', args: { query: 'null' } }]),
+      () => jsonResponse({ findings: [finding], need_more_investigation: false }),
+    ]);
+
+    const agent = new SpecialistAgent(
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
+    );
+    const result = await agent.review(makeRun(), makeContext());
+
+    expect(executeFn).toHaveBeenCalledTimes(1);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].category).toBe('correctness');
+
+    const calls = getCalls();
+    expect(calls).toHaveLength(2);
+  });
+
+  test('ReAct: last iteration forces json_object + tool_choice=none', async () => {
+    const registry = new ToolRegistry();
+    registry.register(makeDummyTool());
+
+    const { client, getCalls } = createMockOpenAI([
+      () => toolCallResponse([{ id: 'call_1', name: 'search_code', args: { query: 'x' } }]),
+      () => toolCallResponse([{ id: 'call_2', name: 'search_code', args: { query: 'y' } }]),
+      () => toolCallResponse([{ id: 'call_3', name: 'search_code', args: { query: 'z' } }]),
+      () => toolCallResponse([{ id: 'call_4', name: 'search_code', args: { query: 'w' } }]),
+      () => jsonResponse({ findings: [], need_more_investigation: false }),
+    ]);
+
+    const agent = new SpecialistAgent(
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
+    );
+    await agent.review(makeRun(), makeContext());
+
+    const calls = getCalls();
+    expect(calls).toHaveLength(5);
+
+    for (let i = 0; i < 4; i++) {
+      expect(calls[i].tool_choice).toBe('auto');
+      expect(calls[i].response_format).toBeUndefined();
+    }
+    expect(calls[4].tool_choice).toBe('none');
+    expect(calls[4].response_format).toEqual({ type: 'json_object' });
+  });
+
+  test('ReAct: dead-loop prevention — need_more_investigation=true but no tool call injects user prompt', async () => {
+    const registry = new ToolRegistry();
+    registry.register(makeDummyTool());
+
+    const _callCount = 0;
+    const { client, getCalls } = createMockOpenAI([
+      () => jsonResponse({ findings: [], need_more_investigation: true }),
+      () => jsonResponse({ findings: [], need_more_investigation: false }),
+    ]);
+
+    const agent = new SpecialistAgent(
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
+    );
+    const _result = await agent.review(makeRun(), makeContext());
+
+    const calls = getCalls();
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+
+    const secondCallMessages = calls[1].messages;
+    const lastUserMsg = secondCallMessages.filter((m: any) => m.role === 'user').pop();
+    expect(lastUserMsg.content).toContain('使用工具');
+  });
+
+  test('ReAct: fingerprint dedup across iterations — later finding with same fp overwrites', async () => {
+    const registry = new ToolRegistry();
+    registry.register(makeDummyTool());
+
+    const findingV1 = {
+      severity: 'low' as const,
+      confidence: 0.6,
+      path: 'src/foo.ts',
+      line: 1,
+      title: 'Null issue',
+      detail: 'First version',
+      evidence: 'const x = null',
+      suggestion: 'Fix v1',
+      fingerprint: 'shared-fp-123',
+    };
+
+    const findingV2 = {
+      ...findingV1,
+      severity: 'high' as const,
+      confidence: 0.95,
+      detail: 'Second version - more confident',
+      suggestion: 'Fix v2',
+    };
+
+    const { client } = createMockOpenAI([
+      () => jsonResponse({ findings: [findingV1], need_more_investigation: true }),
+      () => jsonResponse({ findings: [findingV2], need_more_investigation: false }),
+    ]);
+
+    const agent = new SpecialistAgent(
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
+    );
+    const result = await agent.review(makeRun(), makeContext());
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].severity).toBe('high');
+    expect(result.findings[0].confidence).toBe(0.95);
+    expect(result.findings[0].detail).toBe('Second version - more confident');
+  });
+
+  test('ReAct: multiple unique fingerprints accumulate', async () => {
+    const registry = new ToolRegistry();
+    registry.register(makeDummyTool());
+
+    const finding1 = {
+      severity: 'high' as const,
+      confidence: 0.9,
+      path: 'src/foo.ts',
+      line: 1,
+      title: 'Bug A',
+      detail: 'Detail A',
+      evidence: 'Evidence A',
+      suggestion: 'Fix A',
+      fingerprint: 'fp-aaa',
+    };
+    const finding2 = {
+      severity: 'medium' as const,
+      confidence: 0.8,
+      path: 'src/bar.ts',
+      line: 5,
+      title: 'Bug B',
+      detail: 'Detail B',
+      evidence: 'Evidence B',
+      suggestion: 'Fix B',
+      fingerprint: 'fp-bbb',
+    };
+
+    const { client } = createMockOpenAI([
+      () => jsonResponse({ findings: [finding1], need_more_investigation: true }),
+      () => jsonResponse({ findings: [finding2], need_more_investigation: false }),
+    ]);
+
+    const agent = new SpecialistAgent(
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
+    );
+    const result = await agent.review(makeRun(), makeContext());
+
+    expect(result.findings).toHaveLength(2);
+    const fps = result.findings.map((f) => f.fingerprint);
+    expect(fps).toContain('fp-aaa');
+    expect(fps).toContain('fp-bbb');
+  });
+
+  test('ReAct: OpenAI error returns empty findings gracefully', async () => {
+    const registry = new ToolRegistry();
+    registry.register(makeDummyTool());
+
+    const { client } = createMockOpenAI([
+      () => {
+        throw new Error('API rate limited');
+      },
+    ]);
+
+    const agent = new SpecialistAgent(
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
+    );
+    const result = await agent.review(makeRun(), makeContext());
+
+    expect(result.findings).toHaveLength(0);
+    expect(result.agentName).toBe('TestAgent');
+  });
+
+  test('ReAct: unknown tool call returns error result to model', async () => {
+    const registry = new ToolRegistry();
+    registry.register(makeDummyTool('search_code'));
+
+    const { client, getCalls } = createMockOpenAI([
+      () => toolCallResponse([{ id: 'call_1', name: 'nonexistent_tool', args: {} }]),
+      () => jsonResponse({ findings: [], need_more_investigation: false }),
+    ]);
+
+    const agent = new SpecialistAgent(
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
+    );
+    const _result = await agent.review(makeRun(), makeContext());
+
+    const calls = getCalls();
+    expect(calls).toHaveLength(2);
+    const toolResultMsg = calls[1].messages.find(
+      (m: any) => m.role === 'tool' && m.tool_call_id === 'call_1'
+    );
+    expect(toolResultMsg).toBeTruthy();
+    const parsed = JSON.parse(toolResultMsg.content);
+    expect(parsed.error).toContain('未找到');
+  });
+
+  test('ReAct: tool execution error is captured and returned to model', async () => {
+    const registry = new ToolRegistry();
+    registry.register({
+      ...makeDummyTool(),
+      execute: async () => {
+        throw new Error('Sandbox timeout');
+      },
+    });
+
+    const { client, getCalls } = createMockOpenAI([
+      () => toolCallResponse([{ id: 'call_1', name: 'search_code', args: { query: 'x' } }]),
+      () => jsonResponse({ findings: [], need_more_investigation: false }),
+    ]);
+
+    const agent = new SpecialistAgent(
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
+    );
+    await agent.review(makeRun(), makeContext());
+
+    const calls = getCalls();
+    const toolResultMsg = calls[1].messages.find(
+      (m: any) => m.role === 'tool' && m.tool_call_id === 'call_1'
+    );
+    const parsed = JSON.parse(toolResultMsg.content);
+    expect(parsed.error).toContain('Sandbox timeout');
+  });
+
+  test('ReAct: empty choice content ends loop', async () => {
+    const registry = new ToolRegistry();
+    registry.register(makeDummyTool());
+
+    const { client } = createMockOpenAI([() => emptyResponse()]);
+
+    const agent = new SpecialistAgent(
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
+    );
+    const result = await agent.review(makeRun(), makeContext());
+
+    expect(result.findings).toHaveLength(0);
+  });
+
+  test('ReAct: malformed JSON response ends loop gracefully', async () => {
+    const registry = new ToolRegistry();
+    registry.register(makeDummyTool());
+
+    const { client } = createMockOpenAI([
+      () => ({ choices: [{ message: { role: 'assistant', content: 'not valid json {{{' } }] }),
+    ]);
+
+    const agent = new SpecialistAgent(
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
+    );
+    const result = await agent.review(makeRun(), makeContext());
+
+    expect(result.findings).toHaveLength(0);
+  });
+
+  test('ReAct: auto-generates fingerprint when finding has none', async () => {
+    const registry = new ToolRegistry();
+    registry.register(makeDummyTool());
+
+    const finding = {
+      severity: 'high' as const,
+      confidence: 0.9,
+      path: 'src/foo.ts',
+      line: 1,
+      title: 'Missing null check',
+      detail: 'Detail',
+      evidence: 'Evidence',
+      suggestion: 'Add check',
+    };
+
+    const { client } = createMockOpenAI([
+      () => jsonResponse({ findings: [finding], need_more_investigation: false }),
+    ]);
+
+    const agent = new SpecialistAgent(
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
+    );
+    const result = await agent.review(makeRun(), makeContext());
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].fingerprint).toBeTruthy();
+    expect(result.findings[0].fingerprint.length).toBeGreaterThan(0);
+  });
+});

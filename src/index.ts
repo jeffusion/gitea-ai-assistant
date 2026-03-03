@@ -1,9 +1,13 @@
 import { Hono } from 'hono';
-import { jwt } from 'hono/jwt';
 import { serveStatic } from 'hono/bun';
-import { handleGiteaWebhook } from './controllers/review';
-import { adminController } from './controllers/admin';
+import { jwt } from 'hono/jwt';
+import OpenAI from 'openai';
 import config from './config';
+import { adminController } from './controllers/admin';
+import { configRouter } from './controllers/config';
+import { feedbackRouter, initializeFeedbackSystem } from './controllers/feedback';
+import { handleGiteaWebhook } from './controllers/review';
+import { reviewEngine } from './review/engine';
 
 // 创建Hono应用实例
 const app = new Hono();
@@ -21,12 +25,12 @@ app.get('/', (c) => {
     webhookSecurityEnabled: webhookSecretConfigured,
     configuration: {
       webhookEndpoints: {
-        unified: '/webhook/gitea (支持Pull Request和Commit Status事件)'
+        unified: '/webhook/gitea (支持Pull Request和Commit Status事件)',
       },
       signature: webhookSecretConfigured
         ? '签名验证已启用 (使用X-Gitea-Signature头)'
-        : '警告: 签名验证未配置，建议设置WEBHOOK_SECRET环境变量'
-    }
+        : '警告: 签名验证未配置，建议设置WEBHOOK_SECRET环境变量',
+    },
   });
 });
 
@@ -39,10 +43,11 @@ app.route('/admin/api', adminController.publicRoutes);
 
 // 受保护的路由
 const adminProtected = new Hono();
-adminProtected.use('/*', jwt({ secret: config.admin.jwtSecret }));
+adminProtected.use('/*', jwt({ secret: config.admin.jwtSecret, alg: 'HS256' }));
 adminProtected.route('/', adminController.protectedRoutes);
+adminProtected.route('/feedback', feedbackRouter);
+adminProtected.route('/config', configRouter);
 app.route('/admin/api', adminProtected);
-
 
 // --- 前端静态文件服务 ---
 
@@ -52,10 +57,27 @@ app.use('/*', serveStatic({ root: './public' }));
 // 对于所有未匹配到的GET请求，返回 index.html，以支持SPA路由
 app.get('*', serveStatic({ path: './public/index.html' }));
 
-
 // 启动服务器
 const port = config.app.port;
 console.log(`⚡️ 服务启动在 http://localhost:${port}`);
+
+reviewEngine.start().catch((error) => {
+  console.error('❌ 启动Agent Review Engine失败', error);
+});
+
+// 初始化反馈系统（总是初始化，记忆系统可选）
+const openaiClient = new OpenAI({
+  baseURL: config.openai.baseUrl,
+  apiKey: config.openai.apiKey,
+});
+const reviewStore = reviewEngine.getStore();
+initializeFeedbackSystem(openaiClient, reviewStore);
+
+if (config.review.enableMemory) {
+  console.log('✅ 反馈系统已初始化（含向量记忆）');
+} else {
+  console.log('✅ 反馈系统已初始化（不含向量记忆）');
+}
 
 export default {
   port,

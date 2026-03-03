@@ -7,3 +7,4 @@ frontend/node_modules/
 
 # 忽略 kubernetes.yaml
 kubernetes.yaml
+config-overrides.json

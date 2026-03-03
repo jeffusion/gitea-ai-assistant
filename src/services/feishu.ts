@@ -1,6 +1,6 @@
-import { logger } from '../utils/logger';
+import * as crypto from 'node:crypto';
 import config from '../config';
-import * as crypto from 'crypto';
+import { logger } from '../utils/logger';
 
 export class FeishuService {
   private webhookUrl: string;
@@ -42,14 +42,14 @@ export class FeishuService {
       const message: any = {
         msg_type: 'text',
         content: {
-          text: content
-        }
+          text: content,
+        },
       };
 
       // 如果需要@用户，添加at信息
       if (usernames.length > 0) {
         message.content.text += '\n';
-        usernames.forEach(username => {
+        usernames.forEach((username) => {
           message.content.text += `@${username} `;
         });
       }
@@ -85,7 +85,11 @@ export class FeishuService {
    * @param issueUrl 工单链接
    * @param assigneeUsernames 被指派人用户名列表
    */
-  async sendIssueCreatedNotification(issueTitle: string, issueUrl: string, assigneeUsernames: string[]): Promise<void> {
+  async sendIssueCreatedNotification(
+    issueTitle: string,
+    issueUrl: string,
+    assigneeUsernames: string[]
+  ): Promise<void> {
     const content = `📝 新工单已创建\n标题: ${issueTitle}\n链接: ${issueUrl}`;
     await this.sendMessage(content, assigneeUsernames);
   }
@@ -96,7 +100,11 @@ export class FeishuService {
    * @param issueUrl 工单链接
    * @param creatorUsername 创建者用户名
    */
-  async sendIssueClosedNotification(issueTitle: string, issueUrl: string, creatorUsername: string): Promise<void> {
+  async sendIssueClosedNotification(
+    issueTitle: string,
+    issueUrl: string,
+    creatorUsername: string
+  ): Promise<void> {
     const content = `✅ 工单已关闭\n标题: ${issueTitle}\n链接: ${issueUrl}`;
     await this.sendMessage(content, [creatorUsername]);
   }
@@ -107,7 +115,11 @@ export class FeishuService {
    * @param issueUrl 工单链接
    * @param assigneeUsernames 被指派人用户名列表
    */
-  async sendIssueAssignedNotification(issueTitle: string, issueUrl: string, assigneeUsernames: string[]): Promise<void> {
+  async sendIssueAssignedNotification(
+    issueTitle: string,
+    issueUrl: string,
+    assigneeUsernames: string[]
+  ): Promise<void> {
     const content = `👤 工单已指派给你\n标题: ${issueTitle}\n链接: ${issueUrl}`;
     await this.sendMessage(content, assigneeUsernames);
   }
@@ -118,7 +130,11 @@ export class FeishuService {
    * @param prUrl PR链接
    * @param reviewerUsernames 审阅者用户名列表
    */
-  async sendPrCreatedNotification(prTitle: string, prUrl: string, reviewerUsernames: string[]): Promise<void> {
+  async sendPrCreatedNotification(
+    prTitle: string,
+    prUrl: string,
+    reviewerUsernames: string[]
+  ): Promise<void> {
     const content = `🔄 新PR等待你审阅\n标题: ${prTitle}\n链接: ${prUrl}`;
     await this.sendMessage(content, reviewerUsernames);
   }
@@ -129,7 +145,11 @@ export class FeishuService {
    * @param prUrl PR链接
    * @param reviewerUsernames 审阅者用户名列表
    */
-  async sendPrReviewerAssignedNotification(prTitle: string, prUrl: string, reviewerUsernames: string[]): Promise<void> {
+  async sendPrReviewerAssignedNotification(
+    prTitle: string,
+    prUrl: string,
+    reviewerUsernames: string[]
+  ): Promise<void> {
     const content = `👀 你被指定为PR审阅者\n标题: ${prTitle}\n链接: ${prUrl}`;
     await this.sendMessage(content, reviewerUsernames);
   }

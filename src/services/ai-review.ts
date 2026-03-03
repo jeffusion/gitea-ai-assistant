@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import config from '../config';
 import { logger } from '../utils/logger';
-import { giteaService, PullRequestFile } from './gitea';
+import { PullRequestFile, giteaService } from './gitea';
 
 // 创建OpenAI客户端
 const openai = new OpenAI({
@@ -92,7 +92,7 @@ export const aiReviewService = {
         logger.warn('提交差异为空，无法进行代码审查');
         return {
           summary: '提交差异为空，无法进行代码审查',
-          lineComments: []
+          lineComments: [],
         };
       }
 
@@ -112,7 +112,7 @@ export const aiReviewService = {
       const context: ReviewContext = {
         changedFiles: files,
         fileContents,
-        diffContent
+        diffContent,
       };
 
       // 使用上下文进行总体评价
@@ -153,7 +153,7 @@ export const aiReviewService = {
       return {
         changedFiles,
         fileContents,
-        diffContent
+        diffContent,
       };
     } catch (error: any) {
       logger.error('获取审查上下文失败:', error);
@@ -161,7 +161,7 @@ export const aiReviewService = {
       return {
         changedFiles: [],
         fileContents: {},
-        diffContent
+        diffContent,
       };
     }
   },
@@ -174,13 +174,13 @@ export const aiReviewService = {
   async generateSummary(context: ReviewContext): Promise<string> {
     try {
       // 准备上下文信息
-      const fileInfo = context.changedFiles.map(file => {
+      const fileInfo = context.changedFiles.map((file) => {
         return {
           path: file.filename,
           status: file.status,
           additions: file.additions,
           deletions: file.deletions,
-          content: context.fileContents[file.filename] || '无法获取文件内容'
+          content: context.fileContents[file.filename] || '无法获取文件内容',
         };
       });
 
@@ -205,9 +205,10 @@ export const aiReviewService = {
         messages: [
           {
             role: 'system',
-            content: '你是一个专业的代码审查助手，擅长识别代码中的严重问题和bug。你会查看代码的完整上下文，而不是为了评论而评论。如无明显问题，应给予简短肯定。'
+            content:
+              '你是一个专业的代码审查助手，擅长识别代码中的严重问题和bug。你会查看代码的完整上下文，而不是为了评论而评论。如无明显问题，应给予简短肯定。',
           },
-          { role: 'user', content: summaryPrompt }
+          { role: 'user', content: summaryPrompt },
         ],
         temperature: 0.1,
       });
@@ -234,7 +235,7 @@ export const aiReviewService = {
       // 对每个文件的变更行进行审查
       for (const file of diffFiles) {
         // 只对添加的行进行评论
-        const addedLines = file.changes.filter(change => change.type === 'add');
+        const addedLines = file.changes.filter((change) => change.type === 'add');
         if (addedLines.length === 0) continue;
 
         // 获取文件的完整内容作为上下文
@@ -257,7 +258,7 @@ export const aiReviewService = {
         ${fileContent}
 
         变更部分上下文:
-        ${file.changes.map(c => `${c.lineNumber}: ${c.content} (${c.type === 'add' ? '新增' : '上下文'})`).join('\n')}
+        ${file.changes.map((c) => `${c.lineNumber}: ${c.content} (${c.type === 'add' ? '新增' : '上下文'})`).join('\n')}
 
         请以JSON格式返回评论，格式如下:
         [
@@ -276,9 +277,10 @@ export const aiReviewService = {
           messages: [
             {
               role: 'system',
-              content: '你是一个谨慎的代码审查助手，只对有明显bug或严重问题的代码行提供评论。大多数情况下，如果代码没有严重问题，你应该返回空数组。请以JSON格式返回结果。'
+              content:
+                '你是一个谨慎的代码审查助手，只对有明显bug或严重问题的代码行提供评论。大多数情况下，如果代码没有严重问题，你应该返回空数组。请以JSON格式返回结果。',
             },
-            { role: 'user', content: filePrompt }
+            { role: 'user', content: filePrompt },
           ],
           temperature: 0.1,
           response_format: { type: 'json_object' },
@@ -290,7 +292,9 @@ export const aiReviewService = {
         try {
           // 解析JSON响应
           const responseObject = JSON.parse(content);
-          const comments = Array.isArray(responseObject) ? responseObject : (responseObject.comments || []);
+          const comments = Array.isArray(responseObject)
+            ? responseObject
+            : responseObject.comments || [];
 
           // 添加到结果中
           for (const comment of comments) {
@@ -298,7 +302,7 @@ export const aiReviewService = {
               lineComments.push({
                 path: file.path,
                 line: comment.line,
-                comment: comment.comment
+                comment: comment.comment,
               });
             }
           }
@@ -321,17 +325,17 @@ export const aiReviewService = {
    */
   parseDiff(diffContent: string): Array<{
     path: string;
-    changes: Array<{ lineNumber: number; content: string; type: 'add' | 'context' }>
+    changes: Array<{ lineNumber: number; content: string; type: 'add' | 'context' }>;
   }> {
     const files: Array<{
       path: string;
-      changes: Array<{ lineNumber: number; content: string; type: 'add' | 'context' }>
+      changes: Array<{ lineNumber: number; content: string; type: 'add' | 'context' }>;
     }> = [];
 
     const diffLines = diffContent.split('\n');
     let currentFile: {
       path: string;
-      changes: Array<{ lineNumber: number; content: string; type: 'add' | 'context' }>
+      changes: Array<{ lineNumber: number; content: string; type: 'add' | 'context' }>;
     } | null = null;
 
     let lineNumber = 0;
@@ -355,8 +359,8 @@ export const aiReviewService = {
       // Hunk头，记录起始行号
       else if (line.startsWith('@@')) {
         const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-        if (match && match[1]) {
-          lineNumber = parseInt(match[1], 10) - 1; // 因为下面会+1
+        if (match?.[1]) {
+          lineNumber = Number.parseInt(match[1], 10) - 1; // 因为下面会+1
           inHunk = true;
         }
       }
@@ -368,7 +372,7 @@ export const aiReviewService = {
           currentFile.changes.push({
             lineNumber,
             content: line.substring(1),
-            type: 'add'
+            type: 'add',
           });
         } else if (line.startsWith(' ')) {
           // 上下文行
@@ -376,7 +380,7 @@ export const aiReviewService = {
           currentFile.changes.push({
             lineNumber,
             content: line.substring(1),
-            type: 'context'
+            type: 'context',
           });
         } else if (line.startsWith('-')) {
           // 删除的行，不增加行号
@@ -394,5 +398,5 @@ export const aiReviewService = {
     }
 
     return files;
-  }
+  },
 };
