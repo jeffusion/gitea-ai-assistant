@@ -193,7 +193,8 @@ export const CONFIG_FIELDS: ConfigFieldMeta[] = [
     envKey: 'WEBHOOK_SECRET',
     group: 'app',
     label: 'Webhook 密钥',
-    description: '用于验证 Gitea Webhook 请求来源的 HMAC 密钥，修改需通过 .env 配置并同步更新 Gitea',
+    description:
+      '用于验证 Gitea Webhook 请求来源的 HMAC 密钥，修改需通过 .env 配置并同步更新 Gitea',
     type: 'string',
     sensitive: true,
     readonly: true,

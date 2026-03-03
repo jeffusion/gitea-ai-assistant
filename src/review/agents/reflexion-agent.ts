@@ -1,15 +1,18 @@
-import OpenAI from 'openai';
-import { SpecialistAgent } from './specialist-agent';
-import { CriticAgent, CritiqueResult } from './critic-agent';
-import { AgentResult, FindingCategory, ReviewContext, ReviewRun, Finding } from '../types';
-import { ToolRegistry } from '../tools/registry';
-import { LearningSystem } from '../learning/learning-system';
-import { logger } from '../../utils/logger';
-import { findingResponseSchema } from '../schema/finding-schema';
 import { createHash } from 'node:crypto';
+import OpenAI from 'openai';
+import { logger } from '../../utils/logger';
+import { LearningSystem } from '../learning/learning-system';
+import { findingResponseSchema } from '../schema/finding-schema';
+import { ToolRegistry } from '../tools/registry';
+import { AgentResult, Finding, FindingCategory, ReviewContext, ReviewRun } from '../types';
+import { CriticAgent, CritiqueResult } from './critic-agent';
+import { SpecialistAgent } from './specialist-agent';
 
 function buildFingerprint(category: string, path: string, line: number, title: string): string {
-  return createHash('sha256').update(`${category}:${path}:${line}:${title}`).digest('hex').slice(0, 24);
+  return createHash('sha256')
+    .update(`${category}:${path}:${line}:${title}`)
+    .digest('hex')
+    .slice(0, 24);
 }
 
 export class ReflexionAgent extends SpecialistAgent {
@@ -31,7 +34,7 @@ export class ReflexionAgent extends SpecialistAgent {
   async reviewWithReflection(
     run: ReviewRun,
     context: ReviewContext,
-    maxReflectionRounds: number = 2
+    maxReflectionRounds = 2
   ): Promise<AgentResult> {
     let bestFindings: Omit<Finding, 'id' | 'runId' | 'published'>[] = [];
     let bestQualityScore = 0;
@@ -165,7 +168,9 @@ ${context.diff.slice(0, 3000)}
       return validated.findings.map((finding) => ({
         ...finding,
         category: this.category,
-        fingerprint: finding.fingerprint || buildFingerprint(this.category, finding.path, finding.line, finding.title),
+        fingerprint:
+          finding.fingerprint ||
+          buildFingerprint(this.category, finding.path, finding.line, finding.title),
       }));
     } catch (error) {
       logger.error(`${this.agentName} Refine失败`, {

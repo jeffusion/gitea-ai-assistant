@@ -1,8 +1,8 @@
-import { readFile, lstat } from 'node:fs/promises';
+import { lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { DiffFile, ReviewContext, ReviewRun, ChangedFile } from '../types';
-import { SandboxExec } from './sandbox-exec';
+import { ChangedFile, DiffFile, ReviewContext, ReviewRun } from '../types';
 import { LocalRepoManager } from './local-repo-manager';
+import { SandboxExec } from './sandbox-exec';
 
 function toStatus(status: string): ChangedFile['status'] {
   const value = status.trim().charAt(0).toUpperCase();
@@ -33,7 +33,11 @@ export class DiffExtractor {
     return this.sandboxExec;
   }
 
-  async buildContext(run: ReviewRun, mirrorPath: string, workspacePath: string): Promise<ReviewContext> {
+  async buildContext(
+    run: ReviewRun,
+    mirrorPath: string,
+    workspacePath: string
+  ): Promise<ReviewContext> {
     const targetSha = run.headSha || run.commitSha;
     if (!targetSha) {
       throw new Error('缺少 target sha，无法构建审查上下文');
@@ -41,7 +45,8 @@ export class DiffExtractor {
 
     let baseSha = run.baseSha;
     if (!baseSha) {
-      baseSha = await this.localRepoManager.resolveCommitParent(workspacePath, targetSha) || undefined;
+      baseSha =
+        (await this.localRepoManager.resolveCommitParent(workspacePath, targetSha)) || undefined;
     }
 
     // Root commit场景：没有parent，使用git show获取完整diff
@@ -55,7 +60,7 @@ export class DiffExtractor {
       : await this.getChangedFiles(workspacePath, baseSha!, targetSha);
 
     // 构建允许的文件路径集合，确保parsedDiff也受REVIEW_MAX_FILES_PER_RUN限制
-    const allowedPaths = new Set(changedFiles.map(f => f.path));
+    const allowedPaths = new Set(changedFiles.map((f) => f.path));
     const parsedDiff = this.parseDiff(diff, allowedPaths);
 
     const fileContents = await this.readChangedFileContents(workspacePath, changedFiles);
@@ -86,32 +91,51 @@ export class DiffExtractor {
     targetSha: string
   ): Promise<string> {
     if (eventType === 'pull_request') {
-      const response = await this.sandboxExec.run('git', ['diff', '--unified=3', `${baseSha}...${targetSha}`], {
-        cwd: workspacePath,
-        timeoutMs: this.commandTimeoutMs,
-      });
+      const response = await this.sandboxExec.run(
+        'git',
+        ['diff', '--unified=3', `${baseSha}...${targetSha}`],
+        {
+          cwd: workspacePath,
+          timeoutMs: this.commandTimeoutMs,
+        }
+      );
       return response.stdout;
     }
 
-    const response = await this.sandboxExec.run('git', ['show', '--format=', '--unified=3', targetSha], {
-      cwd: workspacePath,
-      timeoutMs: this.commandTimeoutMs,
-    });
+    const response = await this.sandboxExec.run(
+      'git',
+      ['show', '--format=', '--unified=3', targetSha],
+      {
+        cwd: workspacePath,
+        timeoutMs: this.commandTimeoutMs,
+      }
+    );
     return response.stdout;
   }
 
-  private async getRootCommitChangedFiles(workspacePath: string, sha: string): Promise<ChangedFile[]> {
+  private async getRootCommitChangedFiles(
+    workspacePath: string,
+    sha: string
+  ): Promise<ChangedFile[]> {
     // Root commit：所有文件都是新增的（A状态）
     // --root flag是必需的，否则diff-tree对root commit返回空输出
-    const statusResult = await this.sandboxExec.run('git', ['diff-tree', '--root', '--no-commit-id', '--name-status', '-r', sha], {
-      cwd: workspacePath,
-      timeoutMs: this.commandTimeoutMs,
-    });
+    const statusResult = await this.sandboxExec.run(
+      'git',
+      ['diff-tree', '--root', '--no-commit-id', '--name-status', '-r', sha],
+      {
+        cwd: workspacePath,
+        timeoutMs: this.commandTimeoutMs,
+      }
+    );
 
-    const numStatResult = await this.sandboxExec.run('git', ['diff-tree', '--root', '--no-commit-id', '--numstat', '-r', sha], {
-      cwd: workspacePath,
-      timeoutMs: this.commandTimeoutMs,
-    });
+    const numStatResult = await this.sandboxExec.run(
+      'git',
+      ['diff-tree', '--root', '--no-commit-id', '--numstat', '-r', sha],
+      {
+        cwd: workspacePath,
+        timeoutMs: this.commandTimeoutMs,
+      }
+    );
 
     const numMap = new Map<string, { additions: number; deletions: number }>();
     for (const line of numStatResult.stdout.split('\n')) {
@@ -155,16 +179,28 @@ export class DiffExtractor {
     return changedFiles;
   }
 
-  private async getChangedFiles(workspacePath: string, baseSha: string, targetSha: string): Promise<ChangedFile[]> {
-    const statusResult = await this.sandboxExec.run('git', ['diff', '--name-status', `${baseSha}...${targetSha}`], {
-      cwd: workspacePath,
-      timeoutMs: this.commandTimeoutMs,
-    });
+  private async getChangedFiles(
+    workspacePath: string,
+    baseSha: string,
+    targetSha: string
+  ): Promise<ChangedFile[]> {
+    const statusResult = await this.sandboxExec.run(
+      'git',
+      ['diff', '--name-status', `${baseSha}...${targetSha}`],
+      {
+        cwd: workspacePath,
+        timeoutMs: this.commandTimeoutMs,
+      }
+    );
 
-    const numStatResult = await this.sandboxExec.run('git', ['diff', '--numstat', `${baseSha}...${targetSha}`], {
-      cwd: workspacePath,
-      timeoutMs: this.commandTimeoutMs,
-    });
+    const numStatResult = await this.sandboxExec.run(
+      'git',
+      ['diff', '--numstat', `${baseSha}...${targetSha}`],
+      {
+        cwd: workspacePath,
+        timeoutMs: this.commandTimeoutMs,
+      }
+    );
 
     const numMap = new Map<string, { additions: number; deletions: number }>();
     for (const line of numStatResult.stdout.split('\n')) {
@@ -229,9 +265,7 @@ export class DiffExtractor {
 
         const content = await readFile(filePath, 'utf-8');
         result[file.path] = content.slice(0, this.maxFileContentChars);
-      } catch {
-        continue;
-      }
+      } catch {}
     }
 
     return result;
@@ -277,7 +311,7 @@ export class DiffExtractor {
 
       if (line.startsWith('@@')) {
         const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-        if (match && match[1]) {
+        if (match?.[1]) {
           lineNumber = Number.parseInt(match[1], 10) - 1;
           inHunk = true;
         }

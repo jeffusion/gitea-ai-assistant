@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
-import { SpecialistAgent } from './specialist-agent';
-import { Finding, FindingSeverity } from '../types';
 import { logger } from '../../utils/logger';
+import { Finding, FindingSeverity } from '../types';
+import { SpecialistAgent } from './specialist-agent';
 
 interface AgentOpinion {
   agentName: string;
@@ -23,7 +23,7 @@ export class DebateOrchestrator {
   async conductDebate(
     finding: Omit<Finding, 'id' | 'runId' | 'published'>,
     agents: SpecialistAgent[],
-    maxRounds: number = 2
+    maxRounds = 2
   ): Promise<Omit<Finding, 'id' | 'runId' | 'published'>> {
     if (agents.length < 2) {
       logger.debug('Debate需要至少2个agents，跳过');
@@ -213,13 +213,15 @@ ${otherOpinions
 
       // 返回当前意见（从opinions Map中获取）
       const currentOpinion = opinions.get(agentName);
-      return currentOpinion || {
-        agentName,
-        confidence: 0.5,
-        severity: 'medium',
-        reasoning: '修订失败',
-        isValid: true,
-      };
+      return (
+        currentOpinion || {
+          agentName,
+          confidence: 0.5,
+          severity: 'medium',
+          reasoning: '修订失败',
+          isValid: true,
+        }
+      );
     }
   }
 
@@ -297,11 +299,15 @@ ${otherOpinions
       severityVotes[vote.severity] += vote.confidence;
     });
 
-    const agreedSeverity = (Object.entries(severityVotes).sort((a, b) => b[1] - a[1])[0][0] as FindingSeverity) || finding.severity;
+    const agreedSeverity =
+      (Object.entries(severityVotes).sort((a, b) => b[1] - a[1])[0][0] as FindingSeverity) ||
+      finding.severity;
 
     // 综合推理
     const synthesizedDetail = `${finding.detail}\n\n**专家Debate意见汇总：**\n${validVotes
-      .map((v) => `- ${v.agentName} (${v.severity}, 置信度${v.confidence.toFixed(2)}): ${v.reasoning}`)
+      .map(
+        (v) => `- ${v.agentName} (${v.severity}, 置信度${v.confidence.toFixed(2)}): ${v.reasoning}`
+      )
       .join('\n')}`;
 
     logger.info('Debate达成共识', {

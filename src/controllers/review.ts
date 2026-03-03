@@ -1,11 +1,11 @@
+import * as crypto from 'node:crypto';
 import { Context } from 'hono';
 import { map } from 'lodash-es';
-import { giteaService, PullRequestFile, PullRequestDetails } from '../services/gitea';
-import { aiReviewService } from '../services/ai-review';
-import { feishuService } from '../services/feishu';
 import config from '../config';
 import { reviewEngine } from '../review/engine';
-import * as crypto from 'crypto';
+import { aiReviewService } from '../services/ai-review';
+import { feishuService } from '../services/feishu';
+import { PullRequestDetails, PullRequestFile, giteaService } from '../services/gitea';
 import { logger } from '../utils/logger';
 
 // 判断是否为开发环境
@@ -16,7 +16,7 @@ enum GiteaEventType {
   PullRequest = 'pull_request',
   Status = 'status',
   Issue = 'issues',
-  Unknown = 'unknown'
+  Unknown = 'unknown',
 }
 
 /**
@@ -48,10 +48,7 @@ function verifyWebhookSignature(body: string, signature: string): boolean {
   // Gitea的签名没有前缀，直接比较
   try {
     // 使用timingSafeEqual进行常量时间比较，防止时序攻击
-    return crypto.timingSafeEqual(
-      Buffer.from(calculatedSignature),
-      Buffer.from(signature)
-    );
+    return crypto.timingSafeEqual(Buffer.from(calculatedSignature), Buffer.from(signature));
   } catch (error) {
     logger.error('签名验证失败', error);
     return false;
@@ -108,10 +105,7 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
   }
 
   // 从事件中提取必要信息
-  const {
-    pull_request: pullRequest,
-    repository: repo
-  } = body;
+  const { pull_request: pullRequest, repository: repo } = body;
 
   if (!pullRequest || !repo) {
     return c.json({ error: '无效的Webhook数据' }, 400);
@@ -123,18 +117,21 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
   const prTitle = pullRequest.title;
   const prUrl = pullRequest.html_url;
 
-  logger.info(`收到PR事件`, { owner, repo: repoName, prNumber, action: body.action });
+  logger.info('收到PR事件', { owner, repo: repoName, prNumber, action: body.action });
 
   // 处理PR审阅者通知
   try {
     // 获取PR的审阅者列表
-    const reviewerUsernames = map(pullRequest.requested_reviewers, reviewer => reviewer.full_name || reviewer.login);
+    const reviewerUsernames = map(
+      pullRequest.requested_reviewers,
+      (reviewer) => reviewer.full_name || reviewer.login
+    );
 
     // 记录审阅者信息
     if (reviewerUsernames.length > 0) {
-      logger.info(`PR有指定审阅者`, {
+      logger.info('PR有指定审阅者', {
         prNumber,
-        reviewers: reviewerUsernames.join(',')
+        reviewers: reviewerUsernames.join(','),
       });
     }
 
@@ -145,13 +142,16 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
 
     // 处理审阅者指派事件
     if (body.action === 'review_requested' && body.requested_reviewer) {
-      const newReviewerUsername = body.requested_reviewer.full_name || body.requested_reviewer.login;
+      const newReviewerUsername =
+        body.requested_reviewer.full_name || body.requested_reviewer.login;
       if (newReviewerUsername) {
-        await feishuService.sendPrReviewerAssignedNotification(prTitle, prUrl, [newReviewerUsername]);
+        await feishuService.sendPrReviewerAssignedNotification(prTitle, prUrl, [
+          newReviewerUsername,
+        ]);
       }
     }
   } catch (error) {
-    logger.error(`处理PR审阅者通知失败:`, error);
+    logger.error('处理PR审阅者通知失败:', error);
     // 继续执行代码审查流程，不因通知失败而中断
   }
 
@@ -165,7 +165,9 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
     }
 
     // 检测fork PR：head.repo存在且与base repo不同
-    const headCloneUrl = pullRequest.head?.repo ? resolveCloneUrl(pullRequest.head.repo) : undefined;
+    const headCloneUrl = pullRequest.head?.repo
+      ? resolveCloneUrl(pullRequest.head.repo)
+      : undefined;
     const isForkPR = headCloneUrl && headCloneUrl !== baseCloneUrl;
 
     // 包含baseSha以支持retarget场景：相同headSha但baseSha变化时需要重新审查
@@ -193,7 +195,7 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
   }
 
   // Legacy模式：开始异步审查流程
-  reviewPullRequest(owner, repoName, prNumber).catch(error => {
+  reviewPullRequest(owner, repoName, prNumber).catch((error) => {
     logger.error(`审查PR ${owner}/${repoName}#${prNumber} 失败:`, error);
   });
 
@@ -211,7 +213,7 @@ async function handleCommitStatusEvent(c: Context, body: any): Promise<Response>
     sha: body.sha,
     commit_id: body.commit?.id,
     context: body.context,
-    repo: body.repository?.full_name
+    repo: body.repository?.full_name,
   });
 
   // 验证请求体中是否包含必要信息
@@ -250,10 +252,10 @@ async function handleCommitStatusEvent(c: Context, body: any): Promise<Response>
     message: body.commit.message || '',
     added: body.commit.added || [],
     removed: body.commit.removed || [],
-    modified: body.commit.modified || []
+    modified: body.commit.modified || [],
   };
 
-  logger.info(`收到提交状态更新事件`, {
+  logger.info('收到提交状态更新事件', {
     owner,
     repo: repoName,
     commitSha,
@@ -261,7 +263,7 @@ async function handleCommitStatusEvent(c: Context, body: any): Promise<Response>
     relatedPR: relatedPR?.number || 'unknown',
     added: commitInfo.added.length,
     modified: commitInfo.modified.length,
-    removed: commitInfo.removed.length
+    removed: commitInfo.removed.length,
   });
 
   // Agent模式优先处理：从本地仓库派生diff，不依赖webhook文件列表
@@ -294,13 +296,17 @@ async function handleCommitStatusEvent(c: Context, body: any): Promise<Response>
   }
 
   // Legacy模式：需要webhook文件列表
-  if (commitInfo.added.length === 0 && commitInfo.modified.length === 0 && commitInfo.removed.length === 0) {
+  if (
+    commitInfo.added.length === 0 &&
+    commitInfo.modified.length === 0 &&
+    commitInfo.removed.length === 0
+  ) {
     logger.warn('提交没有文件变更信息，忽略审查', { commitSha });
     return c.json({ status: 'ignored', message: '提交没有文件变更信息' }, 200);
   }
 
   // 开始异步审查流程，传入关联的PR信息
-  reviewCommit(owner, repoName, commitSha, commitInfo, relatedPR).catch(error => {
+  reviewCommit(owner, repoName, commitSha, commitInfo, relatedPR).catch((error) => {
     logger.error(`审查提交 ${owner}/${repoName}@${commitSha} 失败:`, error);
   });
 
@@ -321,14 +327,17 @@ async function handleIssueEvent(c: Context, body: any): Promise<Response> {
   const issueTitle = issue.title;
   const issueUrl = issue.html_url;
   const creatorUsername = issue.user.full_name || issue.user.login;
-  const assigneeUsernames = map(issue.assignees, assignee => assignee.full_name || assignee.login);
+  const assigneeUsernames = map(
+    issue.assignees,
+    (assignee) => assignee.full_name || assignee.login
+  );
 
-  logger.info(`收到工单事件`, {
+  logger.info('收到工单事件', {
     action,
     issueTitle,
     issueUrl,
     creatorUsername,
-    assigneeUsernames: assigneeUsernames.join(',')
+    assigneeUsernames: assigneeUsernames.join(','),
   });
 
   try {
@@ -371,16 +380,16 @@ async function reviewPullRequest(owner: string, repo: string, prNumber: number):
         number: prNumber,
         title: '测试PR',
         head: {
-          sha: 'abcd1234abcd1234abcd1234abcd1234abcd1234'
+          sha: 'abcd1234abcd1234abcd1234abcd1234abcd1234',
         },
         base: {
           repo: {
             owner: {
-              login: owner
+              login: owner,
             },
-            name: repo
-          }
-        }
+            name: repo,
+          },
+        },
       };
 
       // 测试用diff内容
@@ -404,7 +413,7 @@ index 1234567..abcdefg 100644
       // 生产环境中从Gitea获取真实数据
       [prDetails, diffContent] = await Promise.all([
         giteaService.getPullRequestDetails(owner, repo, prNumber),
-        giteaService.getPullRequestDiff(owner, repo, prNumber)
+        giteaService.getPullRequestDiff(owner, repo, prNumber),
       ]);
     }
 
@@ -421,21 +430,21 @@ index 1234567..abcdefg 100644
     );
 
     logger.info('代码审查结果', {
-      summary: reviewResult.summary.substring(0, 100) + '...',
-      commentCount: reviewResult.lineComments.length
+      summary: `${reviewResult.summary.substring(0, 100)}...`,
+      commentCount: reviewResult.lineComments.length,
     });
 
     // 添加总结评论
     if (isDev) {
       logger.info('开发环境: 模拟添加PR评论', {
-        comment: reviewResult.summary
+        comment: reviewResult.summary,
       });
     } else {
       logger.info('生产环境: 添加PR评论', {
         owner,
         repo,
         prNumber,
-        comment: reviewResult.summary
+        comment: reviewResult.summary,
       });
       await giteaService.addPullRequestComment(
         owner,
@@ -450,7 +459,7 @@ index 1234567..abcdefg 100644
       if (isDev) {
         logger.info('开发环境: 模拟添加行评论', {
           commentCount: reviewResult.lineComments.length,
-          comments: reviewResult.lineComments
+          comments: reviewResult.lineComments,
         });
       } else {
         await giteaService.addLineComments(
@@ -465,7 +474,7 @@ index 1234567..abcdefg 100644
 
     logger.info(`完成PR ${owner}/${repo}#${prNumber} 的代码审查`);
   } catch (error) {
-    logger.error(`审查PR失败:`, error);
+    logger.error('审查PR失败:', error);
     throw error;
   }
 }
@@ -478,21 +487,22 @@ async function reviewCommit(
   repo: string,
   commitSha: string,
   commitInfo: {
-    sha: string,
-    message: string,
-    added: string[],
-    modified: string[],
-    removed: string[]
+    sha: string;
+    message: string;
+    added: string[];
+    modified: string[];
+    removed: string[];
   },
   relatedPR?: PullRequestDetails | null
 ): Promise<void> {
   try {
     logger.info(`开始审查提交 ${owner}/${repo}@${commitSha}`);
     logger.info('提交信息', {
-      message: commitInfo.message.substring(0, 100) + (commitInfo.message.length > 100 ? '...' : ''),
+      message:
+        commitInfo.message.substring(0, 100) + (commitInfo.message.length > 100 ? '...' : ''),
       added: commitInfo.added.length,
       modified: commitInfo.modified.length,
-      removed: commitInfo.removed.length
+      removed: commitInfo.removed.length,
     });
 
     // 如果是开发环境，打印更多信息但不执行实际审查
@@ -503,47 +513,42 @@ async function reviewCommit(
         commitSha,
         added: commitInfo.added,
         modified: commitInfo.modified,
-        removed: commitInfo.removed
+        removed: commitInfo.removed,
       });
       return;
     }
 
     // 创建自定义文件列表，因为Gitea API不直接提供
     const webhookFiles: PullRequestFile[] = [
-      ...commitInfo.added.map(filename => ({
+      ...commitInfo.added.map((filename) => ({
         filename,
         status: 'added',
         additions: 0, // 不知道具体行数
         deletions: 0,
-        changes: 0
+        changes: 0,
       })),
-      ...commitInfo.modified.map(filename => ({
+      ...commitInfo.modified.map((filename) => ({
         filename,
         status: 'modified',
         additions: 0,
         deletions: 0,
-        changes: 0
+        changes: 0,
       })),
-      ...commitInfo.removed.map(filename => ({
+      ...commitInfo.removed.map((filename) => ({
         filename,
         status: 'removed',
         additions: 0,
         deletions: 0,
-        changes: 0
-      }))
+        changes: 0,
+      })),
     ];
 
     // 使用AI审查服务分析提交，并传入webhook提供的文件列表
-    const reviewResult = await aiReviewService.reviewCommit(
-      owner,
-      repo,
-      commitSha,
-      webhookFiles
-    );
+    const reviewResult = await aiReviewService.reviewCommit(owner, repo, commitSha, webhookFiles);
 
     logger.info('提交代码审查结果', {
-      summary: reviewResult.summary.substring(0, 100) + '...',
-      commentCount: reviewResult.lineComments.length
+      summary: `${reviewResult.summary.substring(0, 100)}...`,
+      commentCount: reviewResult.lineComments.length,
     });
 
     // 添加总结评论到提交
@@ -562,7 +567,7 @@ async function reviewCommit(
     // 尝试使用传入的PR信息，或者查找相关的PR
     try {
       // 如果已经有关联PR，直接使用
-      if (relatedPR && relatedPR.number) {
+      if (relatedPR?.number) {
         logger.info(`使用已知关联的PR #${relatedPR.number}`);
 
         // 添加行级评论
@@ -579,7 +584,7 @@ async function reviewCommit(
         // 否则尝试查找
         logger.info('尝试查找与提交关联的PR');
         const response = await giteaService.getRelatedPullRequest(owner, repo, commitSha);
-        if (response && response.number) {
+        if (response?.number) {
           logger.info(`找到与提交关联的PR #${response.number}`);
 
           // 添加行级评论
@@ -602,7 +607,7 @@ async function reviewCommit(
 
     logger.info(`完成提交 ${owner}/${repo}@${commitSha} 的代码审查`);
   } catch (error) {
-    logger.error(`审查提交失败:`, error);
+    logger.error('审查提交失败:', error);
     throw error;
   }
 }

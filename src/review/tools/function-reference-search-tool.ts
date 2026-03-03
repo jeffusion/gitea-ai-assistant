@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { Tool } from './types';
 import { SandboxExec } from '../context/sandbox-exec';
+import { Tool } from './types';
 
 // 转义正则元字符，将identifier中的特殊字符转义为字面量
 function escapeRegex(str: string): string {
@@ -10,7 +10,8 @@ function escapeRegex(str: string): string {
 export function createFunctionReferenceSearchTool(sandbox: SandboxExec): Tool {
   return {
     name: 'search_function_references',
-    description: '搜索指定函数、方法或类的所有引用和定义（支持所有编程语言）。用于理解代码影响范围和调用关系。',
+    description:
+      '搜索指定函数、方法或类的所有引用和定义（支持所有编程语言）。用于理解代码影响范围和调用关系。',
     parameters: z.object({
       identifier: z.string().describe('要搜索的标识符（函数名、类名、方法名等）'),
       file_types: z
@@ -31,25 +32,25 @@ export function createFunctionReferenceSearchTool(sandbox: SandboxExec): Tool {
 
       // 定义调用模式（适配多种语言）
       const callPatterns: string[] = [
-        `${escapedId}\\s*\\(`,              // 直接调用: functionName(
-        `\\.${escapedId}\\s*\\(`,           // 方法调用: obj.methodName(
-        `::${escapedId}\\s*\\(`,            // C++/Rust静态调用: Class::method(
-        `${escapedId}\\s*<[^>]+>\\s*\\(`,   // 泛型调用: functionName<T>( (修复：限制<>内容)
+        `${escapedId}\\s*\\(`, // 直接调用: functionName(
+        `\\.${escapedId}\\s*\\(`, // 方法调用: obj.methodName(
+        `::${escapedId}\\s*\\(`, // C++/Rust静态调用: Class::method(
+        `${escapedId}\\s*<[^>]+>\\s*\\(`, // 泛型调用: functionName<T>( (修复：限制<>内容)
       ];
 
       // 定义声明模式（多语言）
       const definitionPatterns: string[] = [
-        `func\\s+${escapedId}\\s*\\(`,           // Go: func functionName(
-        `fn\\s+${escapedId}\\s*\\(`,             // Rust: fn functionName(
-        `def\\s+${escapedId}\\s*\\(`,            // Python: def functionName(
-        `function\\s+${escapedId}\\s*\\(`,       // JavaScript: function functionName(
-        `${escapedId}\\s*:\\s*function`,         // JS对象方法: methodName: function
+        `func\\s+${escapedId}\\s*\\(`, // Go: func functionName(
+        `fn\\s+${escapedId}\\s*\\(`, // Rust: fn functionName(
+        `def\\s+${escapedId}\\s*\\(`, // Python: def functionName(
+        `function\\s+${escapedId}\\s*\\(`, // JavaScript: function functionName(
+        `${escapedId}\\s*:\\s*function`, // JS对象方法: methodName: function
         `${escapedId}\\s*=\\s*\\([^)]*\\)\\s*=>`, // Arrow function: const fn = () => (修复：限制参数)
-        `class\\s+${escapedId}\\s*[{<]`,         // 类定义: class ClassName {
-        `interface\\s+${escapedId}\\s*[{<]`,     // 接口: interface InterfaceName {
-        `type\\s+${escapedId}\\s*=`,             // 类型别名: type TypeName =
-        `struct\\s+${escapedId}\\s*[{]`,         // Go/Rust struct: struct StructName {
-        `public\\s+[^(]*\\s+${escapedId}\\s*\\(`,  // Java方法: public void methodName(
+        `class\\s+${escapedId}\\s*[{<]`, // 类定义: class ClassName {
+        `interface\\s+${escapedId}\\s*[{<]`, // 接口: interface InterfaceName {
+        `type\\s+${escapedId}\\s*=`, // 类型别名: type TypeName =
+        `struct\\s+${escapedId}\\s*[{]`, // Go/Rust struct: struct StructName {
+        `public\\s+[^(]*\\s+${escapedId}\\s*\\(`, // Java方法: public void methodName(
         `private\\s+[^(]*\\s+${escapedId}\\s*\\(`, // Java私有方法
       ];
 
@@ -133,7 +134,7 @@ export function createFunctionReferenceSearchTool(sandbox: SandboxExec): Tool {
       }
 
       // 去重（同一位置可能同时匹配调用和定义模式）
-      const uniqueRefs = new Map<string, typeof allReferences[0]>();
+      const uniqueRefs = new Map<string, (typeof allReferences)[0]>();
       for (const ref of allReferences) {
         const key = `${ref.path}:${ref.line}`;
         if (!uniqueRefs.has(key)) {

@@ -8,12 +8,12 @@
  * Bun-friendly IO: reads via readFile, writes atomically via temp+rename.
  */
 
-import { z } from 'zod';
-import { dirname, resolve } from 'node:path';
-import { rename, mkdir, writeFile, readFile } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 import { config as dotenvConfig } from 'dotenv';
+import { z } from 'zod';
 
 // Load .env before any process.env access (must precede singleton construction)
 dotenvConfig();
@@ -79,7 +79,7 @@ const envSchema = z.object({
   // Memory & learning
   QDRANT_URL: z.preprocess(
     (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
-    z.string().url().optional(),
+    z.string().url().optional()
   ),
   ENABLE_MEMORY: z
     .enum(['true', 'false'])
@@ -203,7 +203,6 @@ const DEV_FALLBACK_CONFIG: AppConfig = {
     debateThreshold: 'high',
   },
 };
-
 
 // ---------------------------------------------------------------------------
 // ConfigManager
@@ -394,7 +393,6 @@ class ConfigManager {
     }
     return 'default';
   }
-
 }
 
 // ---------------------------------------------------------------------------

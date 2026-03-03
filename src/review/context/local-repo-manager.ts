@@ -1,8 +1,8 @@
+import { createHash } from 'node:crypto';
 import { access, mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
-import { SandboxExec } from './sandbox-exec';
 import { logger } from '../../utils/logger';
+import { SandboxExec } from './sandbox-exec';
 
 export interface LocalRepoPaths {
   mirrorPath: string;
@@ -91,16 +91,24 @@ export class LocalRepoManager {
 
       if (!mirrorExists) {
         logger.info('创建本地 mirror 仓库', { owner, repo, mirrorPath });
-        await this.sandboxExec.run('git', [...authArgs, 'clone', '--mirror', cloneUrl, mirrorPath], {
-          cwd: this.workDir,
-          timeoutMs: this.commandTimeoutMs,
-        });
+        await this.sandboxExec.run(
+          'git',
+          [...authArgs, 'clone', '--mirror', cloneUrl, mirrorPath],
+          {
+            cwd: this.workDir,
+            timeoutMs: this.commandTimeoutMs,
+          }
+        );
       } else {
         // 更新remote URL（不含认证信息）
-        await this.sandboxExec.run('git', ['--git-dir', mirrorPath, 'remote', 'set-url', 'origin', cloneUrl], {
-          cwd: this.workDir,
-          timeoutMs: this.commandTimeoutMs,
-        });
+        await this.sandboxExec.run(
+          'git',
+          ['--git-dir', mirrorPath, 'remote', 'set-url', 'origin', cloneUrl],
+          {
+            cwd: this.workDir,
+            timeoutMs: this.commandTimeoutMs,
+          }
+        );
         // fetch使用认证参数
         await this.sandboxExec.run(
           'git',
@@ -117,28 +125,47 @@ export class LocalRepoManager {
         logger.info('Fork PR检测，添加head remote', { owner, repo, headCloneUrl });
 
         // 检查head remote是否已存在，存在则更新URL
-        const remoteListResult = await this.sandboxExec.run('git', ['--git-dir', mirrorPath, 'remote'], {
-          cwd: this.workDir,
-          timeoutMs: this.commandTimeoutMs,
-        });
+        const remoteListResult = await this.sandboxExec.run(
+          'git',
+          ['--git-dir', mirrorPath, 'remote'],
+          {
+            cwd: this.workDir,
+            timeoutMs: this.commandTimeoutMs,
+          }
+        );
         const hasHeadRemote = remoteListResult.stdout.includes('head');
 
         if (hasHeadRemote) {
-          await this.sandboxExec.run('git', ['--git-dir', mirrorPath, 'remote', 'set-url', 'head', headCloneUrl], {
-            cwd: this.workDir,
-            timeoutMs: this.commandTimeoutMs,
-          });
+          await this.sandboxExec.run(
+            'git',
+            ['--git-dir', mirrorPath, 'remote', 'set-url', 'head', headCloneUrl],
+            {
+              cwd: this.workDir,
+              timeoutMs: this.commandTimeoutMs,
+            }
+          );
         } else {
-          await this.sandboxExec.run('git', ['--git-dir', mirrorPath, 'remote', 'add', 'head', headCloneUrl], {
-            cwd: this.workDir,
-            timeoutMs: this.commandTimeoutMs,
-          });
+          await this.sandboxExec.run(
+            'git',
+            ['--git-dir', mirrorPath, 'remote', 'add', 'head', headCloneUrl],
+            {
+              cwd: this.workDir,
+              timeoutMs: this.commandTimeoutMs,
+            }
+          );
         }
 
         // Fetch head remote
         await this.sandboxExec.run(
           'git',
-          [...authArgs, '--git-dir', mirrorPath, 'fetch', 'head', '+refs/heads/*:refs/remotes/head/*'],
+          [
+            ...authArgs,
+            '--git-dir',
+            mirrorPath,
+            'fetch',
+            'head',
+            '+refs/heads/*:refs/remotes/head/*',
+          ],
           {
             cwd: this.workDir,
             timeoutMs: this.commandTimeoutMs,
@@ -156,10 +183,14 @@ export class LocalRepoManager {
         timeoutMs: this.commandTimeoutMs,
       });
 
-      await this.sandboxExec.run('git', ['--git-dir', mirrorPath, 'worktree', 'add', '--detach', workspacePath, targetSha], {
-        cwd: this.workDir,
-        timeoutMs: this.commandTimeoutMs,
-      });
+      await this.sandboxExec.run(
+        'git',
+        ['--git-dir', mirrorPath, 'worktree', 'add', '--detach', workspacePath, targetSha],
+        {
+          cwd: this.workDir,
+          timeoutMs: this.commandTimeoutMs,
+        }
+      );
     } finally {
       // 确保锁总是被释放，在所有mirror-mutating操作（fetch/prune/add）完成后释放
       unlock();

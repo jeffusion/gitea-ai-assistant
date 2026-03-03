@@ -1,18 +1,14 @@
 import { z } from 'zod';
-import { Tool } from './types';
 import { SandboxExec } from '../context/sandbox-exec';
+import { Tool } from './types';
 
 export function createCodeSearchTool(sandbox: SandboxExec): Tool {
   return {
     name: 'search_code',
-    description:
-      '在代码库中搜索匹配给定模式的代码，支持正则表达式。用于发现相似问题或影响范围。',
+    description: '在代码库中搜索匹配给定模式的代码，支持正则表达式。用于发现相似问题或影响范围。',
     parameters: z.object({
       pattern: z.string().describe('要搜索的正则表达式模式'),
-      file_types: z
-        .array(z.string())
-        .optional()
-        .describe('限制搜索的文件类型，如["ts", "js"]'),
+      file_types: z.array(z.string()).optional().describe('限制搜索的文件类型，如["ts", "js"]'),
       max_results: z.number().default(20).describe('最大返回结果数'),
     }),
     execute: async (params, context) => {

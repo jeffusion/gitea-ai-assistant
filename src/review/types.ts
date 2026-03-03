@@ -2,20 +2,11 @@ export type ReviewEngineMode = 'legacy' | 'agent';
 
 export type ReviewEventType = 'pull_request' | 'commit_status';
 
-export type ReviewRunStatus =
-  | 'queued'
-  | 'in_progress'
-  | 'succeeded'
-  | 'failed'
-  | 'ignored';
+export type ReviewRunStatus = 'queued' | 'in_progress' | 'succeeded' | 'failed' | 'ignored';
 
 export type FindingSeverity = 'high' | 'medium' | 'low';
 
-export type FindingCategory =
-  | 'correctness'
-  | 'security'
-  | 'reliability'
-  | 'maintainability';
+export type FindingCategory = 'correctness' | 'security' | 'reliability' | 'maintainability';
 
 export interface ReviewRun {
   id: string;

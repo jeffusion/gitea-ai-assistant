@@ -1,6 +1,6 @@
+import { z } from 'zod';
 import zodToJsonSchema from 'zod-to-json-schema';
 import type { JsonSchema7Type } from 'zod-to-json-schema';
-import { z } from 'zod';
 import { Tool } from './types';
 
 export class ToolRegistry {

@@ -1,14 +1,17 @@
-import OpenAI from 'openai';
 import { createHash } from 'node:crypto';
+import OpenAI from 'openai';
 import { logger } from '../../utils/logger';
-import { findingResponseSchema } from '../schema/finding-schema';
-import { AgentResult, Finding, FindingCategory, ReviewContext, ReviewRun } from '../types';
-import { ToolRegistry } from '../tools/registry';
-import type { ToolResult, ToolExecutionContext } from '../tools/types';
 import type { LearningSystem } from '../learning/learning-system';
+import { findingResponseSchema } from '../schema/finding-schema';
+import { ToolRegistry } from '../tools/registry';
+import type { ToolExecutionContext, ToolResult } from '../tools/types';
+import { AgentResult, Finding, FindingCategory, ReviewContext, ReviewRun } from '../types';
 
 function buildFingerprint(category: string, path: string, line: number, title: string): string {
-  return createHash('sha256').update(`${category}:${path}:${line}:${title}`).digest('hex').slice(0, 24);
+  return createHash('sha256')
+    .update(`${category}:${path}:${line}:${title}`)
+    .digest('hex')
+    .slice(0, 24);
 }
 
 function toCompactContext(context: ReviewContext): string {
@@ -58,7 +61,10 @@ function toCompactContext(context: ReviewContext): string {
   let result = tryBuild(maxChangesPerFile, maxFileContentsEntries);
 
   // 如果超过限制，逐步缩减
-  while (result.length > MAX_CONTEXT_CHARS && (maxChangesPerFile > 20 || maxFileContentsEntries > 0)) {
+  while (
+    result.length > MAX_CONTEXT_CHARS &&
+    (maxChangesPerFile > 20 || maxFileContentsEntries > 0)
+  ) {
     if (maxChangesPerFile > 20) {
       maxChangesPerFile = Math.max(20, Math.floor(maxChangesPerFile * 0.7));
     } else if (maxFileContentsEntries > 0) {
@@ -74,7 +80,7 @@ function toCompactContext(context: ReviewContext): string {
       originalSize: result.length,
       limit: MAX_CONTEXT_CHARS,
     });
-    result = result.slice(0, MAX_CONTEXT_CHARS) + '\n... [truncated]';
+    result = `${result.slice(0, MAX_CONTEXT_CHARS)}\n... [truncated]`;
   }
 
   return result;
@@ -137,7 +143,8 @@ ${toCompactContext(context)}`;
       const findings = parsed.findings.map((item) => ({
         ...item,
         category: this.category,
-        fingerprint: item.fingerprint || buildFingerprint(this.category, item.path, item.line, item.title),
+        fingerprint:
+          item.fingerprint || buildFingerprint(this.category, item.path, item.line, item.title),
       }));
 
       return {
@@ -259,7 +266,9 @@ confidence取值范围0到1。line必须是正整数且引用新增行。`,
               // 使用schema验证findings，防止畸形数据流入发布系统
               const validated = findingResponseSchema.parse({ findings: parsed.findings });
               for (const item of validated.findings) {
-                const fp = item.fingerprint || buildFingerprint(this.category, item.path, item.line, item.title);
+                const fp =
+                  item.fingerprint ||
+                  buildFingerprint(this.category, item.path, item.line, item.title);
                 // 基于 fingerprint 去重：后续迭代产生的同一 finding 覆盖前一次
                 findingsMap.set(fp, {
                   ...item,
@@ -278,7 +287,8 @@ confidence取值范围0到1。line必须是正整数且引用新增行。`,
             messages.push(choice.message as OpenAI.Chat.ChatCompletionMessageParam);
             messages.push({
               role: 'user',
-              content: '请使用工具进行更深入的调查。如果你已经获得了足够的信息，请将 need_more_investigation 设为 false 并输出最终结果。',
+              content:
+                '请使用工具进行更深入的调查。如果你已经获得了足够的信息，请将 need_more_investigation 设为 false 并输出最终结果。',
             });
           } catch (parseError) {
             logger.error(`${this.agentName} 解析响应失败`, {

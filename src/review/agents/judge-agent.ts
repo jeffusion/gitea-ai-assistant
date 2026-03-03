@@ -1,4 +1,4 @@
-import { ReviewDecision, Finding } from '../types';
+import { Finding, ReviewDecision } from '../types';
 
 const severityWeight: Record<Finding['severity'], number> = {
   high: 3,

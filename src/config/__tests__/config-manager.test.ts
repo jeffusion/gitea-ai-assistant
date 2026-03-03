@@ -11,27 +11,48 @@ declare module 'bun:test' {
 }
 
 // @ts-expect-error bun:test is provided by Bun at runtime
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { unlink, readFile } from 'node:fs/promises';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
+import { readFile, unlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { AppConfig } from '../config-manager';
 
 // ── All env keys in the Zod schema ──────────────────────────────────────────
 const SCHEMA_KEYS = [
-  'GITEA_API_URL', 'GITEA_ACCESS_TOKEN', 'GITEA_ADMIN_TOKEN',
-  'OPENAI_BASE_URL', 'OPENAI_API_KEY', 'OPENAI_MODEL',
-  'CUSTOM_SUMMARY_PROMPT', 'CUSTOM_LINE_COMMENT_PROMPT',
-  'FEISHU_WEBHOOK_URL', 'FEISHU_WEBHOOK_SECRET',
-  'PORT', 'WEBHOOK_SECRET', 'ADMIN_PASSWORD', 'JWT_SECRET',
-  'REVIEW_ENGINE', 'REVIEW_WORKDIR', 'REVIEW_MODEL_PLANNER',
-  'REVIEW_MODEL_SPECIALIST', 'REVIEW_MODEL_JUDGE',
-  'REVIEW_MAX_PARALLEL_RUNS', 'REVIEW_MAX_FILES_PER_RUN',
-  'REVIEW_MAX_FILE_CONTENT_CHARS', 'REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE',
-  'REVIEW_ENABLE_HUMAN_GATE', 'REVIEW_ALLOWED_COMMANDS', 'REVIEW_COMMAND_TIMEOUT_MS',
-  'QDRANT_URL', 'ENABLE_MEMORY', 'FEW_SHOT_EXAMPLES_COUNT',
-  'ENABLE_REFLECTION', 'MAX_REFLECTION_ROUNDS', 'ENABLE_DEBATE', 'DEBATE_THRESHOLD',
+  'GITEA_API_URL',
+  'GITEA_ACCESS_TOKEN',
+  'GITEA_ADMIN_TOKEN',
+  'OPENAI_BASE_URL',
+  'OPENAI_API_KEY',
+  'OPENAI_MODEL',
+  'CUSTOM_SUMMARY_PROMPT',
+  'CUSTOM_LINE_COMMENT_PROMPT',
+  'FEISHU_WEBHOOK_URL',
+  'FEISHU_WEBHOOK_SECRET',
+  'PORT',
+  'WEBHOOK_SECRET',
+  'ADMIN_PASSWORD',
+  'JWT_SECRET',
+  'REVIEW_ENGINE',
+  'REVIEW_WORKDIR',
+  'REVIEW_MODEL_PLANNER',
+  'REVIEW_MODEL_SPECIALIST',
+  'REVIEW_MODEL_JUDGE',
+  'REVIEW_MAX_PARALLEL_RUNS',
+  'REVIEW_MAX_FILES_PER_RUN',
+  'REVIEW_MAX_FILE_CONTENT_CHARS',
+  'REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE',
+  'REVIEW_ENABLE_HUMAN_GATE',
+  'REVIEW_ALLOWED_COMMANDS',
+  'REVIEW_COMMAND_TIMEOUT_MS',
+  'QDRANT_URL',
+  'ENABLE_MEMORY',
+  'FEW_SHOT_EXAMPLES_COUNT',
+  'ENABLE_REFLECTION',
+  'MAX_REFLECTION_ROUNDS',
+  'ENABLE_DEBATE',
+  'DEBATE_THRESHOLD',
 ] as const;
 
 const CONTROL_KEYS = ['CONFIG_OVERRIDES_PATH', 'NODE_ENV'] as const;
@@ -80,7 +101,11 @@ describe('ConfigManager', () => {
         process.env[key] = savedEnv[key]!;
       }
     }
-    try { await unlink(tmpPath); } catch { /* ok if missing */ }
+    try {
+      await unlink(tmpPath);
+    } catch {
+      /* ok if missing */
+    }
   });
 
   // ─── 1. Layering: defaults < env < override ─────────────────────────

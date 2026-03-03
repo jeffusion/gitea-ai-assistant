@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { JudgeAgent } from '../agents/judge-agent';
 import type { Finding } from '../types';
 
@@ -6,7 +6,7 @@ type TestFinding = Omit<Finding, 'id' | 'runId' | 'published'>;
 
 function makeFinding(overrides: Partial<TestFinding> = {}): TestFinding {
   return {
-    fingerprint: 'fp-' + Math.random().toString(36).slice(2, 8),
+    fingerprint: `fp-${Math.random().toString(36).slice(2, 8)}`,
     category: 'correctness',
     severity: 'medium',
     confidence: 0.8,
@@ -34,8 +34,8 @@ describe('JudgeAgent', () => {
   test('duplicate fingerprints → keeps highest weighted', () => {
     const fp = 'same-fingerprint';
     const findings: TestFinding[] = [
-      makeFinding({ fingerprint: fp, severity: 'low', confidence: 0.9 }),     // weight: 1 * 0.9 = 0.9
-      makeFinding({ fingerprint: fp, severity: 'high', confidence: 0.5 }),    // weight: 3 * 0.5 = 1.5  ← winner
+      makeFinding({ fingerprint: fp, severity: 'low', confidence: 0.9 }), // weight: 1 * 0.9 = 0.9
+      makeFinding({ fingerprint: fp, severity: 'high', confidence: 0.5 }), // weight: 3 * 0.5 = 1.5  ← winner
       makeFinding({ fingerprint: fp, severity: 'medium', confidence: 0.6 }), // weight: 2 * 0.6 = 1.2
     ];
     const result = judge.judge(findings);
@@ -59,8 +59,8 @@ describe('JudgeAgent', () => {
   // ─── Sorting by severity × confidence ───
   test('findings sorted by weight descending', () => {
     const findings: TestFinding[] = [
-      makeFinding({ fingerprint: 'a', severity: 'low', confidence: 0.9 }),     // 1 * 0.9 = 0.9
-      makeFinding({ fingerprint: 'b', severity: 'high', confidence: 0.8 }),    // 3 * 0.8 = 2.4
+      makeFinding({ fingerprint: 'a', severity: 'low', confidence: 0.9 }), // 1 * 0.9 = 0.9
+      makeFinding({ fingerprint: 'b', severity: 'high', confidence: 0.8 }), // 3 * 0.8 = 2.4
       makeFinding({ fingerprint: 'c', severity: 'medium', confidence: 0.7 }), // 2 * 0.7 = 1.4
     ];
     const result = judge.judge(findings);
@@ -99,10 +99,10 @@ describe('JudgeAgent', () => {
   // ─── Dedup + sort combined ───
   test('dedup then sort: complex scenario', () => {
     const findings: TestFinding[] = [
-      makeFinding({ fingerprint: 'x', severity: 'low', confidence: 0.3 }),     // weight 0.3 — will be overridden
-      makeFinding({ fingerprint: 'y', severity: 'high', confidence: 0.9 }),    // weight 2.7 — unique
+      makeFinding({ fingerprint: 'x', severity: 'low', confidence: 0.3 }), // weight 0.3 — will be overridden
+      makeFinding({ fingerprint: 'y', severity: 'high', confidence: 0.9 }), // weight 2.7 — unique
       makeFinding({ fingerprint: 'x', severity: 'medium', confidence: 0.8 }), // weight 1.6 — overrides x
-      makeFinding({ fingerprint: 'z', severity: 'high', confidence: 0.5 }),    // weight 1.5 — unique
+      makeFinding({ fingerprint: 'z', severity: 'high', confidence: 0.5 }), // weight 1.5 — unique
     ];
     const result = judge.judge(findings);
     expect(result.findings).toHaveLength(3); // x, y, z (deduped)

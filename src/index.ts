@@ -1,13 +1,13 @@
 import { Hono } from 'hono';
-import { jwt } from 'hono/jwt';
 import { serveStatic } from 'hono/bun';
-import { handleGiteaWebhook } from './controllers/review';
-import { adminController } from './controllers/admin';
-import { feedbackRouter, initializeFeedbackSystem } from './controllers/feedback';
-import { configRouter } from './controllers/config';
-import config from './config';
-import { reviewEngine } from './review/engine';
+import { jwt } from 'hono/jwt';
 import OpenAI from 'openai';
+import config from './config';
+import { adminController } from './controllers/admin';
+import { configRouter } from './controllers/config';
+import { feedbackRouter, initializeFeedbackSystem } from './controllers/feedback';
+import { handleGiteaWebhook } from './controllers/review';
+import { reviewEngine } from './review/engine';
 
 // 创建Hono应用实例
 const app = new Hono();
@@ -25,12 +25,12 @@ app.get('/', (c) => {
     webhookSecurityEnabled: webhookSecretConfigured,
     configuration: {
       webhookEndpoints: {
-        unified: '/webhook/gitea (支持Pull Request和Commit Status事件)'
+        unified: '/webhook/gitea (支持Pull Request和Commit Status事件)',
       },
       signature: webhookSecretConfigured
         ? '签名验证已启用 (使用X-Gitea-Signature头)'
-        : '警告: 签名验证未配置，建议设置WEBHOOK_SECRET环境变量'
-    }
+        : '警告: 签名验证未配置，建议设置WEBHOOK_SECRET环境变量',
+    },
   });
 });
 
@@ -49,7 +49,6 @@ adminProtected.route('/feedback', feedbackRouter);
 adminProtected.route('/config', configRouter);
 app.route('/admin/api', adminProtected);
 
-
 // --- 前端静态文件服务 ---
 
 // 优先服务于 public 目录下的静态文件
@@ -57,7 +56,6 @@ app.use('/*', serveStatic({ root: './public' }));
 
 // 对于所有未匹配到的GET请求，返回 index.html，以支持SPA路由
 app.get('*', serveStatic({ path: './public/index.html' }));
-
 
 // 启动服务器
 const port = config.app.port;

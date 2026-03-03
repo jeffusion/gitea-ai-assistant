@@ -1,19 +1,17 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { FileReviewStore } from '../store/file-review-store';
 import { JudgeAgent } from '../agents/judge-agent';
 import { applyPublishPolicy } from '../policy/publish-policy';
-import type {
-  PullRequestReviewPayload,
-  Finding,
-  ReviewRun,
-} from '../types';
+import { FileReviewStore } from '../store/file-review-store';
+import type { Finding, PullRequestReviewPayload } from '../types';
 
 type PartialFinding = Omit<Finding, 'id' | 'runId' | 'published'>;
 
-function makePRPayload(overrides: Partial<PullRequestReviewPayload> = {}): PullRequestReviewPayload {
+function makePRPayload(
+  overrides: Partial<PullRequestReviewPayload> = {}
+): PullRequestReviewPayload {
   return {
     idempotencyKey: 'test/repo#1:aaa...bbb',
     eventType: 'pull_request',
@@ -27,7 +25,10 @@ function makePRPayload(overrides: Partial<PullRequestReviewPayload> = {}): PullR
   };
 }
 
-function makeAgentFindings(count: number, severity: 'high' | 'medium' | 'low' = 'high'): PartialFinding[] {
+function makeAgentFindings(
+  count: number,
+  severity: 'high' | 'medium' | 'low' = 'high'
+): PartialFinding[] {
   return Array.from({ length: count }, (_, i) => ({
     fingerprint: `fp-${severity}-${i}`,
     category: 'correctness' as const,

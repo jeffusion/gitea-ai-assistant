@@ -1,9 +1,9 @@
-import { describe, test, expect, mock } from 'bun:test';
+import { describe, expect, mock, test } from 'bun:test';
+import { z } from 'zod';
 import { SpecialistAgent } from '../agents/specialist-agent';
 import { ToolRegistry } from '../tools/registry';
-import { z } from 'zod';
-import type { ReviewRun, ReviewContext, FindingCategory } from '../types';
 import type { Tool } from '../tools/types';
+import type { FindingCategory, ReviewContext, ReviewRun } from '../types';
 
 function makeRun(overrides: Partial<ReviewRun> = {}): ReviewRun {
   return {
@@ -139,9 +139,7 @@ describe('SpecialistAgent ReAct loop', () => {
       suggestion: 'Use undefined',
     };
 
-    const { client, getCalls } = createMockOpenAI([
-      () => jsonResponse({ findings: [finding] }),
-    ]);
+    const { client, getCalls } = createMockOpenAI([() => jsonResponse({ findings: [finding] })]);
 
     const agent = new SpecialistAgent(client as any, 'gpt-4', category, 'TestAgent', 'bugs');
     const result = await agent.review(makeRun(), makeContext());
@@ -178,7 +176,12 @@ describe('SpecialistAgent ReAct loop', () => {
     ]);
 
     const agent = new SpecialistAgent(
-      client as any, 'gpt-4', category, 'TestAgent', 'bugs', registry
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
     );
     const result = await agent.review(makeRun(), makeContext());
 
@@ -203,7 +206,12 @@ describe('SpecialistAgent ReAct loop', () => {
     ]);
 
     const agent = new SpecialistAgent(
-      client as any, 'gpt-4', category, 'TestAgent', 'bugs', registry
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
     );
     await agent.review(makeRun(), makeContext());
 
@@ -222,16 +230,21 @@ describe('SpecialistAgent ReAct loop', () => {
     const registry = new ToolRegistry();
     registry.register(makeDummyTool());
 
-    let callCount = 0;
+    const _callCount = 0;
     const { client, getCalls } = createMockOpenAI([
       () => jsonResponse({ findings: [], need_more_investigation: true }),
       () => jsonResponse({ findings: [], need_more_investigation: false }),
     ]);
 
     const agent = new SpecialistAgent(
-      client as any, 'gpt-4', category, 'TestAgent', 'bugs', registry
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
     );
-    const result = await agent.review(makeRun(), makeContext());
+    const _result = await agent.review(makeRun(), makeContext());
 
     const calls = getCalls();
     expect(calls.length).toBeGreaterThanOrEqual(2);
@@ -271,7 +284,12 @@ describe('SpecialistAgent ReAct loop', () => {
     ]);
 
     const agent = new SpecialistAgent(
-      client as any, 'gpt-4', category, 'TestAgent', 'bugs', registry
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
     );
     const result = await agent.review(makeRun(), makeContext());
 
@@ -314,7 +332,12 @@ describe('SpecialistAgent ReAct loop', () => {
     ]);
 
     const agent = new SpecialistAgent(
-      client as any, 'gpt-4', category, 'TestAgent', 'bugs', registry
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
     );
     const result = await agent.review(makeRun(), makeContext());
 
@@ -329,11 +352,18 @@ describe('SpecialistAgent ReAct loop', () => {
     registry.register(makeDummyTool());
 
     const { client } = createMockOpenAI([
-      () => { throw new Error('API rate limited'); },
+      () => {
+        throw new Error('API rate limited');
+      },
     ]);
 
     const agent = new SpecialistAgent(
-      client as any, 'gpt-4', category, 'TestAgent', 'bugs', registry
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
     );
     const result = await agent.review(makeRun(), makeContext());
 
@@ -351,9 +381,14 @@ describe('SpecialistAgent ReAct loop', () => {
     ]);
 
     const agent = new SpecialistAgent(
-      client as any, 'gpt-4', category, 'TestAgent', 'bugs', registry
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
     );
-    const result = await agent.review(makeRun(), makeContext());
+    const _result = await agent.review(makeRun(), makeContext());
 
     const calls = getCalls();
     expect(calls).toHaveLength(2);
@@ -369,7 +404,9 @@ describe('SpecialistAgent ReAct loop', () => {
     const registry = new ToolRegistry();
     registry.register({
       ...makeDummyTool(),
-      execute: async () => { throw new Error('Sandbox timeout'); },
+      execute: async () => {
+        throw new Error('Sandbox timeout');
+      },
     });
 
     const { client, getCalls } = createMockOpenAI([
@@ -378,7 +415,12 @@ describe('SpecialistAgent ReAct loop', () => {
     ]);
 
     const agent = new SpecialistAgent(
-      client as any, 'gpt-4', category, 'TestAgent', 'bugs', registry
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
     );
     await agent.review(makeRun(), makeContext());
 
@@ -397,7 +439,12 @@ describe('SpecialistAgent ReAct loop', () => {
     const { client } = createMockOpenAI([() => emptyResponse()]);
 
     const agent = new SpecialistAgent(
-      client as any, 'gpt-4', category, 'TestAgent', 'bugs', registry
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
     );
     const result = await agent.review(makeRun(), makeContext());
 
@@ -413,7 +460,12 @@ describe('SpecialistAgent ReAct loop', () => {
     ]);
 
     const agent = new SpecialistAgent(
-      client as any, 'gpt-4', category, 'TestAgent', 'bugs', registry
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
     );
     const result = await agent.review(makeRun(), makeContext());
 
@@ -440,7 +492,12 @@ describe('SpecialistAgent ReAct loop', () => {
     ]);
 
     const agent = new SpecialistAgent(
-      client as any, 'gpt-4', category, 'TestAgent', 'bugs', registry
+      client as any,
+      'gpt-4',
+      category,
+      'TestAgent',
+      'bugs',
+      registry
     );
     const result = await agent.review(makeRun(), makeContext());
 

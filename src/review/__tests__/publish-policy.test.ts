@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { applyPublishPolicy } from '../policy/publish-policy';
 import type { Finding } from '../types';
 
@@ -6,7 +6,7 @@ type TestFinding = Omit<Finding, 'id' | 'runId' | 'published'>;
 
 function makeFinding(overrides: Partial<TestFinding> = {}): TestFinding {
   return {
-    fingerprint: 'fp-' + Math.random().toString(36).slice(2, 8),
+    fingerprint: `fp-${Math.random().toString(36).slice(2, 8)}`,
     category: 'correctness',
     severity: 'medium',
     confidence: 0.9,
@@ -113,11 +113,11 @@ describe('applyPublishPolicy', () => {
   // ─── Mixed findings ───
   test('mixed findings split correctly', () => {
     const findings: TestFinding[] = [
-      makeFinding({ severity: 'high', confidence: 0.95 }),  // → publishable
+      makeFinding({ severity: 'high', confidence: 0.95 }), // → publishable
       makeFinding({ severity: 'medium', confidence: 0.85 }), // → publishable
-      makeFinding({ severity: 'low', confidence: 0.9 }),     // → dropped (low severity, humanGate off)
-      makeFinding({ severity: 'high', confidence: 0.5 }),    // → dropped (low confidence)
-      makeFinding({ severity: 'medium', confidence: 0.6 }),  // → dropped (low confidence)
+      makeFinding({ severity: 'low', confidence: 0.9 }), // → dropped (low severity, humanGate off)
+      makeFinding({ severity: 'high', confidence: 0.5 }), // → dropped (low confidence)
+      makeFinding({ severity: 'medium', confidence: 0.6 }), // → dropped (low confidence)
     ];
     const result = applyPublishPolicy(findings, MIN_CONFIDENCE, false);
     expect(result.publishable).toHaveLength(2);
@@ -127,9 +127,9 @@ describe('applyPublishPolicy', () => {
 
   test('mixed findings with humanGate on', () => {
     const findings: TestFinding[] = [
-      makeFinding({ severity: 'high', confidence: 0.95 }),  // → publishable
-      makeFinding({ severity: 'low', confidence: 0.9 }),     // → gated
-      makeFinding({ severity: 'high', confidence: 0.5 }),    // → gated
+      makeFinding({ severity: 'high', confidence: 0.95 }), // → publishable
+      makeFinding({ severity: 'low', confidence: 0.9 }), // → gated
+      makeFinding({ severity: 'high', confidence: 0.5 }), // → gated
     ];
     const result = applyPublishPolicy(findings, MIN_CONFIDENCE, true);
     expect(result.publishable).toHaveLength(1);
@@ -161,7 +161,7 @@ describe('applyPublishPolicy', () => {
     const result = applyPublishPolicy(findings, MIN_CONFIDENCE, false);
     // Policy doesn't care about fingerprint - each finding evaluated independently
     expect(result.publishable).toHaveLength(2); // high+medium
-    expect(result.dropped).toHaveLength(1);      // low severity
+    expect(result.dropped).toHaveLength(1); // low severity
   });
 
   // ─── Different minConfidence thresholds ───

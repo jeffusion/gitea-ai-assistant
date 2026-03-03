@@ -1,13 +1,15 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { FileReviewStore } from '../store/file-review-store';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { FileReviewStore } from '../store/file-review-store';
 import type { PullRequestReviewPayload } from '../types';
 
-function makePRPayload(overrides: Partial<PullRequestReviewPayload> = {}): PullRequestReviewPayload {
+function makePRPayload(
+  overrides: Partial<PullRequestReviewPayload> = {}
+): PullRequestReviewPayload {
   return {
-    idempotencyKey: 'idem-' + Math.random().toString(36).slice(2, 8),
+    idempotencyKey: `idem-${Math.random().toString(36).slice(2, 8)}`,
     eventType: 'pull_request',
     owner: 'test-owner',
     repo: 'test-repo',
@@ -305,17 +307,37 @@ describe('FileReviewStore', () => {
 
       await store.addFindings(run.id, [
         {
-          id: 'f1', runId: run.id, fingerprint: 'fp1', category: 'correctness',
-          severity: 'high', confidence: 0.9, path: 'a.ts', line: 1,
-          title: 'Old', detail: 'd', evidence: 'e', suggestion: 's', published: false,
+          id: 'f1',
+          runId: run.id,
+          fingerprint: 'fp1',
+          category: 'correctness',
+          severity: 'high',
+          confidence: 0.9,
+          path: 'a.ts',
+          line: 1,
+          title: 'Old',
+          detail: 'd',
+          evidence: 'e',
+          suggestion: 's',
+          published: false,
         },
       ]);
 
       await store.addFindings(run.id, [
         {
-          id: 'f2', runId: run.id, fingerprint: 'fp2', category: 'security',
-          severity: 'medium', confidence: 0.8, path: 'b.ts', line: 2,
-          title: 'New', detail: 'd', evidence: 'e', suggestion: 's', published: false,
+          id: 'f2',
+          runId: run.id,
+          fingerprint: 'fp2',
+          category: 'security',
+          severity: 'medium',
+          confidence: 0.8,
+          path: 'b.ts',
+          line: 2,
+          title: 'New',
+          detail: 'd',
+          evidence: 'e',
+          suggestion: 's',
+          published: false,
         },
       ]);
 
@@ -329,9 +351,19 @@ describe('FileReviewStore', () => {
       const { run } = await store.createOrReuseRun(payload);
       await store.addFindings(run.id, [
         {
-          id: 'f1', runId: run.id, fingerprint: 'fp1', category: 'correctness',
-          severity: 'high', confidence: 0.9, path: 'a.ts', line: 1,
-          title: 'Bug', detail: 'd', evidence: 'e', suggestion: 's', published: false,
+          id: 'f1',
+          runId: run.id,
+          fingerprint: 'fp1',
+          category: 'correctness',
+          severity: 'high',
+          confidence: 0.9,
+          path: 'a.ts',
+          line: 1,
+          title: 'Bug',
+          detail: 'd',
+          evidence: 'e',
+          suggestion: 's',
+          published: false,
         },
       ]);
 
@@ -352,9 +384,9 @@ describe('FileReviewStore', () => {
 
       await store.createOrReuseRun(p1);
       // Ensure distinct timestamps for sorting
-      await new Promise(r => setTimeout(r, 5));
+      await new Promise((r) => setTimeout(r, 5));
       await store.createOrReuseRun(p2);
-      await new Promise(r => setTimeout(r, 5));
+      await new Promise((r) => setTimeout(r, 5));
       await store.createOrReuseRun(p3);
 
       const runs = await store.listRuns();

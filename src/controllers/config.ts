@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { configManager, type AppConfig } from '../config/config-manager';
+import { type AppConfig, configManager } from '../config/config-manager';
 import { CONFIG_FIELDS, CONFIG_GROUPS, type ConfigFieldMeta } from '../config/config-schema';
 import { logger } from '../utils/logger';
 
@@ -19,9 +19,7 @@ const INTEGER_FIELDS = new Set([
 ]);
 
 /** Fast lookup from envKey → field metadata. */
-const FIELDS_MAP = new Map<string, ConfigFieldMeta>(
-  CONFIG_FIELDS.map((f) => [f.envKey, f]),
-);
+const FIELDS_MAP = new Map<string, ConfigFieldMeta>(CONFIG_FIELDS.map((f) => [f.envKey, f]));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -31,50 +29,84 @@ const FIELDS_MAP = new Map<string, ConfigFieldMeta>(
  */
 function getEffectiveValue(
   envKey: string,
-  current: AppConfig,
+  current: AppConfig
 ): string | number | boolean | undefined {
   switch (envKey) {
     // Gitea
-    case 'GITEA_API_URL':                      return current.gitea.apiUrl;
-    case 'GITEA_ACCESS_TOKEN':                 return current.gitea.accessToken;
-    case 'GITEA_ADMIN_TOKEN':                  return current.admin.giteaAdminToken;
+    case 'GITEA_API_URL':
+      return current.gitea.apiUrl;
+    case 'GITEA_ACCESS_TOKEN':
+      return current.gitea.accessToken;
+    case 'GITEA_ADMIN_TOKEN':
+      return current.admin.giteaAdminToken;
     // OpenAI
-    case 'OPENAI_BASE_URL':                    return current.openai.baseUrl;
-    case 'OPENAI_API_KEY':                     return current.openai.apiKey;
-    case 'OPENAI_MODEL':                       return current.openai.model;
-    case 'CUSTOM_SUMMARY_PROMPT':              return current.openai.customSummaryPrompt;
-    case 'CUSTOM_LINE_COMMENT_PROMPT':         return current.openai.customLineCommentPrompt;
+    case 'OPENAI_BASE_URL':
+      return current.openai.baseUrl;
+    case 'OPENAI_API_KEY':
+      return current.openai.apiKey;
+    case 'OPENAI_MODEL':
+      return current.openai.model;
+    case 'CUSTOM_SUMMARY_PROMPT':
+      return current.openai.customSummaryPrompt;
+    case 'CUSTOM_LINE_COMMENT_PROMPT':
+      return current.openai.customLineCommentPrompt;
     // Feishu
-    case 'FEISHU_WEBHOOK_URL':                 return current.feishu.webhookUrl;
-    case 'FEISHU_WEBHOOK_SECRET':              return current.feishu.webhookSecret;
+    case 'FEISHU_WEBHOOK_URL':
+      return current.feishu.webhookUrl;
+    case 'FEISHU_WEBHOOK_SECRET':
+      return current.feishu.webhookSecret;
     // App
-    case 'PORT':                               return current.app.port;
-    case 'WEBHOOK_SECRET':                     return current.app.webhookSecret;
+    case 'PORT':
+      return current.app.port;
+    case 'WEBHOOK_SECRET':
+      return current.app.webhookSecret;
     // Admin
-    case 'ADMIN_PASSWORD':                     return current.admin.password;
-    case 'JWT_SECRET':                         return current.admin.jwtSecret;
+    case 'ADMIN_PASSWORD':
+      return current.admin.password;
+    case 'JWT_SECRET':
+      return current.admin.jwtSecret;
     // Review
-    case 'REVIEW_ENGINE':                      return current.review.engine;
-    case 'REVIEW_WORKDIR':                     return current.review.workdir;
-    case 'REVIEW_MODEL_PLANNER':               return current.review.modelPlanner;
-    case 'REVIEW_MODEL_SPECIALIST':            return current.review.modelSpecialist;
-    case 'REVIEW_MODEL_JUDGE':                 return current.review.modelJudge;
-    case 'REVIEW_MAX_PARALLEL_RUNS':           return current.review.maxParallelRuns;
-    case 'REVIEW_MAX_FILES_PER_RUN':           return current.review.maxFilesPerRun;
-    case 'REVIEW_MAX_FILE_CONTENT_CHARS':      return current.review.maxFileContentChars;
-    case 'REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE': return current.review.autoPublishMinConfidence;
-    case 'REVIEW_ENABLE_HUMAN_GATE':           return current.review.enableHumanGate;
-    case 'REVIEW_ALLOWED_COMMANDS':            return current.review.allowedCommands.join(',');
-    case 'REVIEW_COMMAND_TIMEOUT_MS':          return current.review.commandTimeoutMs;
+    case 'REVIEW_ENGINE':
+      return current.review.engine;
+    case 'REVIEW_WORKDIR':
+      return current.review.workdir;
+    case 'REVIEW_MODEL_PLANNER':
+      return current.review.modelPlanner;
+    case 'REVIEW_MODEL_SPECIALIST':
+      return current.review.modelSpecialist;
+    case 'REVIEW_MODEL_JUDGE':
+      return current.review.modelJudge;
+    case 'REVIEW_MAX_PARALLEL_RUNS':
+      return current.review.maxParallelRuns;
+    case 'REVIEW_MAX_FILES_PER_RUN':
+      return current.review.maxFilesPerRun;
+    case 'REVIEW_MAX_FILE_CONTENT_CHARS':
+      return current.review.maxFileContentChars;
+    case 'REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE':
+      return current.review.autoPublishMinConfidence;
+    case 'REVIEW_ENABLE_HUMAN_GATE':
+      return current.review.enableHumanGate;
+    case 'REVIEW_ALLOWED_COMMANDS':
+      return current.review.allowedCommands.join(',');
+    case 'REVIEW_COMMAND_TIMEOUT_MS':
+      return current.review.commandTimeoutMs;
     // Memory
-    case 'QDRANT_URL':                         return current.review.qdrantUrl;
-    case 'ENABLE_MEMORY':                      return current.review.enableMemory;
-    case 'FEW_SHOT_EXAMPLES_COUNT':            return current.review.fewShotExamplesCount;
-    case 'ENABLE_REFLECTION':                  return current.review.enableReflection;
-    case 'MAX_REFLECTION_ROUNDS':              return current.review.maxReflectionRounds;
-    case 'ENABLE_DEBATE':                      return current.review.enableDebate;
-    case 'DEBATE_THRESHOLD':                   return current.review.debateThreshold;
-    default:                                   return undefined;
+    case 'QDRANT_URL':
+      return current.review.qdrantUrl;
+    case 'ENABLE_MEMORY':
+      return current.review.enableMemory;
+    case 'FEW_SHOT_EXAMPLES_COUNT':
+      return current.review.fewShotExamplesCount;
+    case 'ENABLE_REFLECTION':
+      return current.review.enableReflection;
+    case 'MAX_REFLECTION_ROUNDS':
+      return current.review.maxReflectionRounds;
+    case 'ENABLE_DEBATE':
+      return current.review.enableDebate;
+    case 'DEBATE_THRESHOLD':
+      return current.review.debateThreshold;
+    default:
+      return undefined;
   }
 }
 
@@ -106,7 +138,7 @@ function validateField(field: ConfigFieldMeta, key: string, value: string): stri
     }
     case 'number': {
       const num = Number(value);
-      if (isNaN(num)) {
+      if (Number.isNaN(num)) {
         return `${field.label}（${key}）必须是有效的数字`;
       }
       if (INTEGER_FIELDS.has(key) && !Number.isInteger(num)) {
@@ -255,7 +287,7 @@ configRouter.post('/reset', async (c) => {
     if (unknownKeys.length > 0) {
       return c.json(
         { message: '保存配置失败', error: `未知配置项: ${unknownKeys.join(', ')}` },
-        400,
+        400
       );
     }
 

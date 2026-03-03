@@ -44,7 +44,11 @@ export class SandboxExec {
     });
   }
 
-  async run(command: string, args: string[], options: SandboxRunOptions): Promise<SandboxCommandResult> {
+  async run(
+    command: string,
+    args: string[],
+    options: SandboxRunOptions
+  ): Promise<SandboxCommandResult> {
     if (!this.allowedCommands.has(command)) {
       throw new Error(`命令未在白名单中: ${command}`);
     }

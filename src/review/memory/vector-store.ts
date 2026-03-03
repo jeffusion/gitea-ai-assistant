@@ -1,8 +1,8 @@
 import { QdrantClient } from '@qdrant/js-client-rest';
 import OpenAI from 'openai';
-import { MemoryEntry, MemorySearchResult } from './types';
-import { Finding } from '../types';
 import { logger } from '../../utils/logger';
+import { Finding } from '../types';
+import { MemoryEntry, MemorySearchResult } from './types';
 
 export class VectorMemoryStore {
   private client: QdrantClient;
@@ -70,11 +70,7 @@ export class VectorMemoryStore {
     });
   }
 
-  async searchSimilar(
-    query: string,
-    limit: number = 5,
-    filter?: any
-  ): Promise<MemorySearchResult[]> {
+  async searchSimilar(query: string, limit = 5, filter?: any): Promise<MemorySearchResult[]> {
     await this.initialize();
 
     const queryEmbedding = await this.getEmbedding(query);
@@ -121,7 +117,12 @@ export class VectorMemoryStore {
     }
   }
 
-  async storeFinding(finding: Finding, approved: boolean, owner: string, repo: string): Promise<void> {
+  async storeFinding(
+    finding: Finding,
+    approved: boolean,
+    owner: string,
+    repo: string
+  ): Promise<void> {
     const content = `${finding.title}\n${finding.detail}\nEvidence: ${finding.evidence}`;
 
     // 使用repo-scoped ID防止不同仓库的findings相互覆盖

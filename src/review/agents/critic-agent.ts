@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
-import { Finding, ReviewContext } from '../types';
 import { logger } from '../../utils/logger';
+import { Finding, ReviewContext } from '../types';
 
 export interface CritiqueResult {
   qualityScore: number; // 0-1

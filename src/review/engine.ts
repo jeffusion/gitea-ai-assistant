@@ -23,7 +23,11 @@ class ReviewEngine {
     config.review.maxFilesPerRun,
     config.review.maxFileContentChars
   );
-  private readonly orchestrator = new ReviewOrchestrator(this.store, this.localRepoManager, this.diffExtractor);
+  private readonly orchestrator = new ReviewOrchestrator(
+    this.store,
+    this.localRepoManager,
+    this.diffExtractor
+  );
 
   private started = false;
   private activeRunsCount = 0;
@@ -61,7 +65,9 @@ class ReviewEngine {
     this.started = false;
   }
 
-  async enqueuePullRequest(payload: PullRequestReviewPayload): Promise<{ run: ReviewRun; reused: boolean }> {
+  async enqueuePullRequest(
+    payload: PullRequestReviewPayload
+  ): Promise<{ run: ReviewRun; reused: boolean }> {
     await this.store.init();
     return this.store.createOrReuseRun(payload);
   }
@@ -75,7 +81,9 @@ class ReviewEngine {
     return this.store.listRuns(limit);
   }
 
-  async getRunDetails(runId: string): Promise<Awaited<ReturnType<FileReviewStore['getRunDetails']>>> {
+  async getRunDetails(
+    runId: string
+  ): Promise<Awaited<ReturnType<FileReviewStore['getRunDetails']>>> {
     return this.store.getRunDetails(runId);
   }
 

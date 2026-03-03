@@ -1,9 +1,9 @@
+import OpenAI from 'openai';
+import config from '../../config';
+import { logger } from '../../utils/logger';
 import { VectorMemoryStore } from '../memory/vector-store';
 import { FileReviewStore } from '../store/file-review-store';
 import { Finding, FindingCategory } from '../types';
-import { logger } from '../../utils/logger';
-import OpenAI from 'openai';
-import config from '../../config';
 
 export class LearningSystem {
   constructor(
@@ -100,7 +100,9 @@ export class LearningSystem {
           { key: 'approved', match: { value: true } },
         ],
       });
-      approved.push(...globalApproved.filter((a) => !approved.find((e) => e.entry.id === a.entry.id)));
+      approved.push(
+        ...globalApproved.filter((a) => !approved.find((e) => e.entry.id === a.entry.id))
+      );
     }
 
     const examples: OpenAI.Chat.ChatCompletionMessageParam[] = [];
@@ -160,11 +162,7 @@ export class LearningSystem {
     return [];
   }
 
-  async learnFromApproval(
-    finding: Finding,
-    _owner: string,
-    _repo: string
-  ): Promise<void> {
+  async learnFromApproval(finding: Finding, _owner: string, _repo: string): Promise<void> {
     // 将已批准的finding存储为正样本
     await this.memoryStore.storeFinding(finding, true, _owner, _repo);
 
@@ -199,9 +197,11 @@ export class LearningSystem {
 
     if (maxSimilarity > 0.9) {
       return -0.3; // 高度相似的误报，大幅降低置信度
-    } else if (maxSimilarity > 0.8) {
+    }
+    if (maxSimilarity > 0.8) {
       return -0.15; // 中度相似，适度降低
-    } else if (maxSimilarity > 0.7) {
+    }
+    if (maxSimilarity > 0.7) {
       return -0.05; // 低度相似，略微降低
     }
 

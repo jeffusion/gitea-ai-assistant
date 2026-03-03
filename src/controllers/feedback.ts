@@ -1,12 +1,12 @@
-import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { z } from 'zod';
-import { FileReviewStore } from '../review/store/file-review-store';
-import { VectorMemoryStore } from '../review/memory/vector-store';
-import { LearningSystem } from '../review/learning/learning-system';
-import { giteaService } from '../services/gitea';
-import config from '../config';
+import { Hono } from 'hono';
 import OpenAI from 'openai';
+import { z } from 'zod';
+import config from '../config';
+import { LearningSystem } from '../review/learning/learning-system';
+import { VectorMemoryStore } from '../review/memory/vector-store';
+import { FileReviewStore } from '../review/store/file-review-store';
+import { giteaService } from '../services/gitea';
 
 const feedbackRouter = new Hono();
 
@@ -68,7 +68,10 @@ feedbackRouter.post(
     // 原子幂等性保护：先标记finding为published（原子check-and-set）
     // 只有第一个请求会得到true，后续并发/重试请求会得到false
     // 这解决了read-check-write竞态：两个并发请求不会都发布评论
-    const wasUnpublished = await reviewStore.markFindingPublished(finding.runId, finding.fingerprint);
+    const wasUnpublished = await reviewStore.markFindingPublished(
+      finding.runId,
+      finding.fingerprint
+    );
 
     if (!wasUnpublished) {
       // finding已被标记为published，但需验证是否真的发布成功
@@ -76,7 +79,7 @@ feedbackRouter.post(
       // 检查是否存在已发布的comment记录来确认真实状态
       // 关键：必须通过fingerprint匹配，而非仅path+line，以区分同一位置的不同findings
       const publishedComment = runDetails.comments.find(
-        c => c.status === 'published' && c.fingerprint === finding.fingerprint
+        (c) => c.status === 'published' && c.fingerprint === finding.fingerprint
       );
 
       if (publishedComment) {
@@ -88,15 +91,17 @@ feedbackRouter.post(
           learningApplied: false,
           published: true,
         });
-      } else {
-        // published标记存在但无published comment记录
-        // 可能原因：1) 并发请求正在发布中 2) 之前发布失败并回滚
-        // 不能声称成功，返回错误让用户稍后重试
-        return c.json({
+      }
+      // published标记存在但无published comment记录
+      // 可能原因：1) 并发请求正在发布中 2) 之前发布失败并回滚
+      // 不能声称成功，返回错误让用户稍后重试
+      return c.json(
+        {
           error: 'Finding approval in progress or previously failed. Please retry in a moment.',
           inProgress: true,
-        }, 409); // 409 Conflict
-      }
+        },
+        409
+      ); // 409 Conflict
     }
 
     // 以下代码只会被第一个请求执行（wasUnpublished=true）
@@ -111,7 +116,12 @@ feedbackRouter.post(
         if (approved) {
           await learningSystem.learnFromApproval(finding, owner, repo);
         } else {
-          await learningSystem.learnFromFalsePositive(finding, reason || '人工标记为误报', owner, repo);
+          await learningSystem.learnFromFalsePositive(
+            finding,
+            reason || '人工标记为误报',
+            owner,
+            repo
+          );
         }
 
         learningApplied = true;
@@ -146,19 +156,9 @@ _此问题已通过人工审批确认_`;
         // 2. 再写本地record，失败不回滚（因为Gitea已成功，重试不应重复发布）
         try {
           if (runDetails.run.eventType === 'pull_request' && runDetails.run.prNumber) {
-            await giteaService.addPullRequestComment(
-              owner,
-              repo,
-              runDetails.run.prNumber,
-              comment
-            );
+            await giteaService.addPullRequestComment(owner, repo, runDetails.run.prNumber, comment);
           } else if (runDetails.run.commitSha) {
-            await giteaService.addCommitComment(
-              owner,
-              repo,
-              runDetails.run.commitSha,
-              comment
-            );
+            await giteaService.addCommitComment(owner, repo, runDetails.run.commitSha, comment);
           }
         } catch (giteaError) {
           // Gitea API失败：回滚published状态，允许用户重试发布
@@ -181,7 +181,10 @@ _此问题已通过人工审批确认_`;
         } catch (storeError) {
           // 本地store失败：回滚published标记，允许用户重试
           // 如果用户立即重试，可能导致重复Gitea评论（可接受的权衡以避免永久卡死）
-          console.error('Failed to persist comment record after successful Gitea publish, rolling back:', storeError);
+          console.error(
+            'Failed to persist comment record after successful Gitea publish, rolling back:',
+            storeError
+          );
           await reviewStore.unmarkFindingPublished(finding.runId, finding.fingerprint);
           throw new Error(
             'Comment published to Gitea but failed to save locally. State rolled back, you may retry. Note: immediate retry may create duplicate comments.'

@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { SandboxExec } from '../context/sandbox-exec';
 
 describe('SandboxExec', () => {
@@ -157,6 +157,6 @@ describe('SandboxExec', () => {
     });
     expect(result.stdout).not.toContain('SUPER_SECRET_TOKEN');
     expect(result.stdout).not.toContain('should-not-leak');
-    delete process.env.SUPER_SECRET_TOKEN;
+    process.env.SUPER_SECRET_TOKEN = undefined;
   });
 });

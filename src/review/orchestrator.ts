@@ -3,20 +3,20 @@ import OpenAI from 'openai';
 import config from '../config';
 import { giteaService } from '../services/gitea';
 import { logger } from '../utils/logger';
+import { DebateOrchestrator } from './agents/debate-orchestrator';
 import { JudgeAgent } from './agents/judge-agent';
 import { ReflexionAgent } from './agents/reflexion-agent';
-import { DebateOrchestrator } from './agents/debate-orchestrator';
 import { DiffExtractor } from './context/diff-extractor';
 import { LocalRepoManager, LocalRepoPaths } from './context/local-repo-manager';
+import { LearningSystem } from './learning/learning-system';
+import { VectorMemoryStore } from './memory/vector-store';
 import { applyPublishPolicy } from './policy/publish-policy';
 import { FileReviewStore } from './store/file-review-store';
-import { Finding, ReviewRun } from './types';
-import { ToolRegistry } from './tools/registry';
 import { createCodeSearchTool } from './tools/code-search-tool';
-import { createFunctionReferenceSearchTool } from './tools/function-reference-search-tool';
 import { createFileReadTool } from './tools/file-read-tool';
-import { VectorMemoryStore } from './memory/vector-store';
-import { LearningSystem } from './learning/learning-system';
+import { createFunctionReferenceSearchTool } from './tools/function-reference-search-tool';
+import { ToolRegistry } from './tools/registry';
+import { Finding, ReviewRun } from './types';
 
 interface LineCommentInput {
   path: string;
@@ -24,7 +24,9 @@ interface LineCommentInput {
   comment: string;
 }
 
-function findingToLineComment(finding: Omit<Finding, 'id' | 'runId' | 'published'>): LineCommentInput {
+function findingToLineComment(
+  finding: Omit<Finding, 'id' | 'runId' | 'published'>
+): LineCommentInput {
   return {
     path: finding.path,
     line: finding.line,
@@ -172,7 +174,11 @@ export class ReviewOrchestrator {
         startedAt: new Date(contextStart).toISOString(),
       });
 
-      const context = await this.diffExtractor.buildContext(run, repoPaths.mirrorPath, repoPaths.workspacePath);
+      const context = await this.diffExtractor.buildContext(
+        run,
+        repoPaths.mirrorPath,
+        repoPaths.workspacePath
+      );
 
       await this.store.addStep({
         runId: run.id,
@@ -291,17 +297,17 @@ export class ReviewOrchestrator {
       // summary comment特征：status='published' 且 path字段为空
       // line comment特征：status='published' 且 path字段存在
       const runDetails = await this.store.getRunDetails(run.id);
-      const summaryPublished = runDetails?.comments.some(
-        (comment) => comment.status === 'published' && !comment.path
-      ) || false;
-      const lineCommentsPublished = runDetails?.comments.some(
-        (comment) => comment.status === 'published' && comment.path
-      ) || false;
+      const summaryPublished =
+        runDetails?.comments.some((comment) => comment.status === 'published' && !comment.path) ||
+        false;
+      const lineCommentsPublished =
+        runDetails?.comments.some((comment) => comment.status === 'published' && comment.path) ||
+        false;
 
       if (lineCommentsPublished) {
         logger.info('检测到重试且line comments已发布，跳过line comments和findings标记', {
           runId: run.id,
-          existingLineComments: runDetails?.comments.filter(c => c.path).length,
+          existingLineComments: runDetails?.comments.filter((c) => c.path).length,
         });
         // 重试场景：line comments已发布，跳过line comments发布步骤
         // 注意：不能return，需要继续执行summary和pending gate记录（即使summary已存在）
@@ -362,7 +368,8 @@ export class ReviewOrchestrator {
       // 关键：即使summary已存在，仍需添加gated findings到pending队列
       // 防止crash发生在publishSummary之后、addCommentRecord之前时丢失待审批findings
       // 使用幂等性检查防止retry时重复添加
-      const existingPendingComments = runDetails?.comments.filter(c => c.status === 'pending') || [];
+      const existingPendingComments =
+        runDetails?.comments.filter((c) => c.status === 'pending') || [];
 
       // 跟踪本次循环中已添加的location，防止同一run中多个findings在同一位置导致重复pending记录
       const addedLocations = new Set<string>();
@@ -373,7 +380,7 @@ export class ReviewOrchestrator {
         // 检查是否已存在相同的pending记录（通过runId + path + line去重）
         // 需要同时检查：1) 之前run的记录 2) 本次循环已添加的记录
         const alreadyPending =
-          existingPendingComments.some(c => c.path === finding.path && c.line === finding.line) ||
+          existingPendingComments.some((c) => c.path === finding.path && c.line === finding.line) ||
           addedLocations.has(locationKey);
 
         if (!alreadyPending) {
@@ -398,10 +405,17 @@ export class ReviewOrchestrator {
       // 将已发布的findings存储到向量记忆（自动标记为已批准）
       if (this.memoryStore && policyResult.publishable.length > 0) {
         for (const finding of policyResult.publishable) {
-          const persistedFinding = persistedFindings.find((f) => f.fingerprint === finding.fingerprint);
+          const persistedFinding = persistedFindings.find(
+            (f) => f.fingerprint === finding.fingerprint
+          );
           if (persistedFinding) {
             try {
-              await this.memoryStore.storeFinding(persistedFinding as Finding, true, run.owner, run.repo);
+              await this.memoryStore.storeFinding(
+                persistedFinding as Finding,
+                true,
+                run.owner,
+                run.repo
+              );
             } catch (error) {
               logger.warn('存储finding到向量记忆失败', {
                 findingId: persistedFinding.id,
@@ -456,10 +470,13 @@ export class ReviewOrchestrator {
           body,
         });
       } catch (storeError) {
-        logger.error('Failed to persist summary comment record (non-fatal, may cause duplicate on retry)', {
-          runId: run.id,
-          error: storeError instanceof Error ? storeError.message : String(storeError),
-        });
+        logger.error(
+          'Failed to persist summary comment record (non-fatal, may cause duplicate on retry)',
+          {
+            runId: run.id,
+            error: storeError instanceof Error ? storeError.message : String(storeError),
+          }
+        );
         // 不抛出，允许审查流程继续
       }
       return;
@@ -475,16 +492,22 @@ export class ReviewOrchestrator {
           body,
         });
       } catch (storeError) {
-        logger.error('Failed to persist summary comment record (non-fatal, may cause duplicate on retry)', {
-          runId: run.id,
-          error: storeError instanceof Error ? storeError.message : String(storeError),
-        });
+        logger.error(
+          'Failed to persist summary comment record (non-fatal, may cause duplicate on retry)',
+          {
+            runId: run.id,
+            error: storeError instanceof Error ? storeError.message : String(storeError),
+          }
+        );
         // 不抛出，允许审查流程继续
       }
     }
   }
 
-  private async publishLineComments(run: ReviewRun, comments: LineCommentInput[]): Promise<boolean> {
+  private async publishLineComments(
+    run: ReviewRun,
+    comments: LineCommentInput[]
+  ): Promise<boolean> {
     if (comments.length === 0) {
       return false;
     }
@@ -518,12 +541,15 @@ export class ReviewOrchestrator {
           body: comment.comment,
         });
       } catch (storeError) {
-        logger.error('Failed to persist line comment record (non-fatal, may cause duplicate on retry)', {
-          runId: run.id,
-          path: comment.path,
-          line: comment.line,
-          error: storeError instanceof Error ? storeError.message : String(storeError),
-        });
+        logger.error(
+          'Failed to persist line comment record (non-fatal, may cause duplicate on retry)',
+          {
+            runId: run.id,
+            path: comment.path,
+            line: comment.line,
+            error: storeError instanceof Error ? storeError.message : String(storeError),
+          }
+        );
         // 不抛出，继续处理下一条comment
       }
     }

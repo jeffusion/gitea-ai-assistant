@@ -1,6 +1,6 @@
-import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
-import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import {
   CommitReviewPayload,
   Finding,
@@ -76,9 +76,7 @@ export class FileReviewStore {
             this.data = createEmptyData();
             await this.persist();
           } else {
-            throw new Error(
-              `Store初始化失败 - 拒绝擦除数据: ${error.message || String(error)}`
-            );
+            throw new Error(`Store初始化失败 - 拒绝擦除数据: ${error.message || String(error)}`);
           }
         }
 
@@ -188,7 +186,10 @@ export class FileReviewStore {
     await this.markRunFinished(runId, 'ignored', reason);
   }
 
-  async markRunFailed(runId: string, error: string): Promise<{ requeued: boolean; run: ReviewRun | null }> {
+  async markRunFailed(
+    runId: string,
+    error: string
+  ): Promise<{ requeued: boolean; run: ReviewRun | null }> {
     await this.ensureInitialized();
 
     const run = this.data.runs.find((item) => item.id === runId);
@@ -287,7 +288,12 @@ export class FileReviewStore {
     return runs.slice(0, limit);
   }
 
-  async getRunDetails(runId: string): Promise<{ run: ReviewRun; steps: ReviewStep[]; findings: Finding[]; comments: ReviewCommentRecord[] } | null> {
+  async getRunDetails(runId: string): Promise<{
+    run: ReviewRun;
+    steps: ReviewStep[];
+    findings: Finding[];
+    comments: ReviewCommentRecord[];
+  } | null> {
     await this.ensureInitialized();
 
     const run = this.data.runs.find((item) => item.id === runId);
@@ -356,7 +362,11 @@ export class FileReviewStore {
     };
   }
 
-  private async markRunFinished(runId: string, status: ReviewRunStatus, error?: string): Promise<void> {
+  private async markRunFinished(
+    runId: string,
+    status: ReviewRunStatus,
+    error?: string
+  ): Promise<void> {
     await this.ensureInitialized();
 
     const run = this.data.runs.find((item) => item.id === runId);
@@ -382,21 +392,20 @@ export class FileReviewStore {
     // 追踪当前write操作是否成功，失败时立即抛出给调用者（防止静默数据丢失）
     let currentWriteError: Error | null = null;
 
-    this.writeChain = this.writeChain
-      .then(async () => {
-        try {
-          // 原子写入：先写临时文件，再 rename 覆盖目标文件
-          // POSIX rename 是原子操作，即使进程在 rename 中间崩溃，文件也不会损坏
-          const tempPath = `${this.statePath}.tmp`;
-          await writeFile(tempPath, JSON.stringify(this.data, null, 2), 'utf-8');
-          await rename(tempPath, this.statePath);
-          currentWriteError = null; // 写入成功
-        } catch (error) {
-          // 捕获错误但不重新throw，保持chain为resolved状态（允许后续persist()重试）
-          currentWriteError = error instanceof Error ? error : new Error(String(error));
-          console.error('Store persist failed:', currentWriteError);
-        }
-      });
+    this.writeChain = this.writeChain.then(async () => {
+      try {
+        // 原子写入：先写临时文件，再 rename 覆盖目标文件
+        // POSIX rename 是原子操作，即使进程在 rename 中间崩溃，文件也不会损坏
+        const tempPath = `${this.statePath}.tmp`;
+        await writeFile(tempPath, JSON.stringify(this.data, null, 2), 'utf-8');
+        await rename(tempPath, this.statePath);
+        currentWriteError = null; // 写入成功
+      } catch (error) {
+        // 捕获错误但不重新throw，保持chain为resolved状态（允许后续persist()重试）
+        currentWriteError = error instanceof Error ? error : new Error(String(error));
+        console.error('Store persist failed:', currentWriteError);
+      }
+    });
 
     await this.writeChain;
 

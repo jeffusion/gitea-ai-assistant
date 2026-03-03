@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { sign } from 'hono/jwt';
 import config from '../config';
+import { reviewEngine } from '../review/engine';
 import { giteaService } from '../services/gitea';
 import { logger } from '../utils/logger';
-import { reviewEngine } from '../review/engine';
 
 const publicRoutes = new Hono();
 const protectedRoutes = new Hono();
@@ -26,13 +26,12 @@ publicRoutes.post('/login', async (c) => {
   return c.json({ message: 'Invalid credentials' }, 401);
 });
 
-
 // --- Protected Routes ---
 
 // 获取仓库列表及 Webhook 状态
 protectedRoutes.get('/repositories', async (c) => {
   try {
-    const page = parseInt(c.req.query('page') || '1', 10);
+    const page = Number.parseInt(c.req.query('page') || '1', 10);
     const query = c.req.query('q');
     const limit = 30; // 每页数量固定，或也可从查询参数获取
 
@@ -43,7 +42,7 @@ protectedRoutes.get('/repositories', async (c) => {
       repos.map(async (repo) => {
         const [owner, repoName] = repo.full_name.split('/');
         const hooks = await giteaService.listWebhooks(owner, repoName);
-        const webhook = hooks.find(h => h.config.url === webhookUrl);
+        const webhook = hooks.find((h) => h.config.url === webhookUrl);
         return {
           name: repo.full_name,
           webhook_status: webhook ? 'active' : 'inactive',
@@ -67,7 +66,7 @@ protectedRoutes.get('/repositories', async (c) => {
 // 创建 Webhook
 protectedRoutes.post('/repositories/:owner/:repo/webhook', async (c) => {
   const { owner, repo } = c.req.param();
-  const webhookUrl = new URL(c.req.url).origin + '/webhook/gitea';
+  const webhookUrl = `${new URL(c.req.url).origin}/webhook/gitea`;
 
   try {
     await giteaService.createWebhook(owner, repo, webhookUrl);
@@ -83,7 +82,7 @@ protectedRoutes.delete('/repositories/:owner/:repo/webhook/:hookId', async (c) =
   const { owner, repo, hookId } = c.req.param();
 
   try {
-    await giteaService.deleteWebhook(owner, repo, parseInt(hookId, 10));
+    await giteaService.deleteWebhook(owner, repo, Number.parseInt(hookId, 10));
     return c.json({ success: true });
   } catch (error: any) {
     logger.error(`删除 ${owner}/${repo} 的 Webhook 失败:`, error);
@@ -94,7 +93,7 @@ protectedRoutes.delete('/repositories/:owner/:repo/webhook/:hookId', async (c) =
 // 查询审查任务
 protectedRoutes.get('/review/runs', async (c) => {
   try {
-    const limit = parseInt(c.req.query('limit') || '50', 10);
+    const limit = Number.parseInt(c.req.query('limit') || '50', 10);
     const runs = await reviewEngine.listRuns(limit);
     return c.json({ data: runs });
   } catch (error: any) {
