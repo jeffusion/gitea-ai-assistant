@@ -4,3 +4,17 @@ dist/
 config-overrides.json
 .sisyphus/
 e2e/.env.e2e
+
+# Runtime data
+data/
+
+# Frontend build artifacts
+public/
+
+# Test temporaries
+/tmp/
+*.db-shm
+*.db-wal
+
+# Lock files (frontend has its own)
+frontend/package-lock.json
