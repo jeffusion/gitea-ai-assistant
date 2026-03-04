@@ -231,9 +231,8 @@ configRouter.put('/', async (c) => {
         errors.push(`未知配置项: ${key}`);
         continue;
       }
-      // Reject readonly fields
+      // Silently skip readonly fields — frontend sends entire form state
       if (field.readonly) {
-        errors.push(`${field.label}（${key}）为只读配置，无法通过 GUI 修改`);
         continue;
       }
 
