@@ -80,18 +80,17 @@ export function createFunctionReferenceSearchTool(sandbox: SandboxExec): Tool {
         const pattern = task.patterns.join('|');
         const args = [
           '--json',
-          // 移除 --ignore-case，保持大小写敏感（大多数语言都是case-sensitive）
           '--max-count',
           String(max_results || 30),
-          '-e',
-          pattern,
-          context.workspacePath,
         ];
 
         if (file_types && file_types.length > 0) {
           args.push('--type-add', `custom:*.{${file_types.join(',')}}`);
           args.push('--type', 'custom');
         }
+
+        // -e pattern 和路径必须在所有选项之后
+        args.push('-e', pattern, context.workspacePath);
 
         try {
           const result = await sandbox.run('rg', args, {
