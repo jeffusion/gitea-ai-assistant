@@ -1,7 +1,8 @@
-import OpenAI from 'openai';
-import { logger } from '../../utils/logger';
-import { withGlobalPrompt } from '../../utils/global-prompt';
 import config from '../../config';
+import type { LLMGateway } from '../../llm/gateway';
+import type { LLMMessage } from '../../llm/types';
+import { withGlobalPrompt } from '../../utils/global-prompt';
+import { logger } from '../../utils/logger';
 import { Finding, FindingSeverity } from '../types';
 import { SpecialistAgent } from './specialist-agent';
 
@@ -14,12 +15,10 @@ interface AgentOpinion {
 }
 
 export class DebateOrchestrator {
-  private openai: OpenAI;
-  private model: string;
+  private gateway: LLMGateway;
 
-  constructor(openai: OpenAI, model: string) {
-    this.openai = openai;
-    this.model = model;
+  constructor(gateway: LLMGateway) {
+    this.gateway = gateway;
   }
 
   async conductDebate(
@@ -103,20 +102,24 @@ export class DebateOrchestrator {
 }`;
 
     try {
-      const response = await this.openai.chat.completions.create({
-        model: this.model,
+      const messages: LLMMessage[] = [
+        {
+          role: 'system',
+          content: withGlobalPrompt(
+            `你是${agentName}，从你的专业角度独立评估代码问题。`,
+            config.review.globalPrompt
+          ),
+        },
+        { role: 'user', content: prompt },
+      ];
+
+      const response = await this.gateway.chatForRole('specialist', {
+        messages,
         temperature: 0.2,
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'system',
-            content: withGlobalPrompt(`你是${agentName}，从你的专业角度独立评估代码问题。`, config.openai.globalPrompt),
-          },
-          { role: 'user', content: prompt },
-        ],
+        responseFormat: 'json',
       });
 
-      const content = response.choices[0]?.message.content;
+      const content = response.content;
       if (!content) {
         throw new Error('Agent opinion返回空');
       }
@@ -180,20 +183,24 @@ ${otherOpinions
 }`;
 
     try {
-      const response = await this.openai.chat.completions.create({
-        model: this.model,
+      const messages: LLMMessage[] = [
+        {
+          role: 'system',
+          content: withGlobalPrompt(
+            `你是${agentName}，根据同行意见重新评估，但也要坚持你的专业判断。`,
+            config.review.globalPrompt
+          ),
+        },
+        { role: 'user', content: prompt },
+      ];
+
+      const response = await this.gateway.chatForRole('specialist', {
+        messages,
         temperature: 0.3, // 允许一定灵活性
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'system',
-            content: withGlobalPrompt(`你是${agentName}，根据同行意见重新评估，但也要坚持你的专业判断。`, config.openai.globalPrompt),
-          },
-          { role: 'user', content: prompt },
-        ],
+        responseFormat: 'json',
       });
 
-      const content = response.choices[0]?.message.content;
+      const content = response.content;
       if (!content) {
         throw new Error('Revised opinion返回空');
       }

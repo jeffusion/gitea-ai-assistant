@@ -1,14 +1,9 @@
-import OpenAI from 'openai';
 import config from '../config';
-import { logger } from '../utils/logger';
+import { llmGateway } from '../llm/gateway';
+import { LLMMessage } from '../llm/types';
 import { withGlobalPrompt } from '../utils/global-prompt';
+import { logger } from '../utils/logger';
 import { PullRequestFile, giteaService } from './gitea';
-
-// 创建OpenAI客户端
-const openai = new OpenAI({
-  baseURL: config.openai.baseUrl,
-  apiKey: config.openai.apiKey,
-});
 
 // 代码审查结果接口
 export interface CodeReviewResult {
@@ -198,23 +193,26 @@ export const aiReviewService = {
 
       请根据以上信息，特别是考虑每个文件的完整内容和上下文，提供代码审查评价。如果没有发现明显问题，请简短说明代码质量良好即可。`;
 
-      const summaryPrompt = config.openai.customSummaryPrompt || defaultSummaryPrompt;
+      const summaryPrompt = config.review.customSummaryPrompt || defaultSummaryPrompt;
 
       // 获取总体评价
-      const summaryResponse = await openai.chat.completions.create({
-        model: config.openai.model,
-        messages: [
-          {
-            role: 'system',
-            content:
-              withGlobalPrompt('你是一个专业的代码审查助手，擅长识别代码中的严重问题和bug。你会查看代码的完整上下文，而不是为了评论而评论。如无明显问题，应给予简短肯定。', config.openai.globalPrompt),
-          },
-          { role: 'user', content: summaryPrompt },
-        ],
+      const messages: LLMMessage[] = [
+        {
+          role: 'system',
+          content: withGlobalPrompt(
+            '你是一个专业的代码审查助手，擅长识别代码中的严重问题和bug。你会查看代码的完整上下文，而不是为了评论而评论。如无明显问题，应给予简短肯定。',
+            config.review.globalPrompt
+          ),
+        },
+        { role: 'user', content: summaryPrompt },
+      ];
+
+      const summaryResponse = await llmGateway.chatForRole('legacy', {
+        messages,
         temperature: 0.1,
       });
 
-      const summary = summaryResponse.choices[0]?.message.content || '无法生成代码审查摘要';
+      const summary = summaryResponse.content || '无法生成代码审查摘要';
       return summary;
     } catch (error: any) {
       logger.error('生成总体评价失败:', error);
@@ -270,24 +268,27 @@ export const aiReviewService = {
         ]
         只返回JSON数组，不要有其他文本。`;
 
-        const filePrompt = config.openai.customLineCommentPrompt || defaultFilePrompt;
+        const filePrompt = config.review.customLineCommentPrompt || defaultFilePrompt;
 
         // 获取行级评论
-        const lineResponse = await openai.chat.completions.create({
-          model: config.openai.model,
-          messages: [
-            {
-              role: 'system',
-              content:
-                withGlobalPrompt('你是一个谨慎的代码审查助手，只对有明显bug或严重问题的代码行提供评论。大多数情况下，如果代码没有严重问题，你应该返回空数组。请以JSON格式返回结果。', config.openai.globalPrompt),
-            },
-            { role: 'user', content: filePrompt },
-          ],
+        const messages: LLMMessage[] = [
+          {
+            role: 'system',
+            content: withGlobalPrompt(
+              '你是一个谨慎的代码审查助手，只对有明显bug或严重问题的代码行提供评论。大多数情况下，如果代码没有严重问题，你应该返回空数组。请以JSON格式返回结果。',
+              config.review.globalPrompt
+            ),
+          },
+          { role: 'user', content: filePrompt },
+        ];
+
+        const lineResponse = await llmGateway.chatForRole('legacy', {
+          messages,
           temperature: 0.1,
-          response_format: { type: 'json_object' },
+          responseFormat: 'json',
         });
 
-        const content = lineResponse.choices[0]?.message.content;
+        const content = lineResponse.content;
         if (!content) continue;
 
         try {

@@ -1,6 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
-import OpenAI from 'openai';
 import { z } from 'zod';
 import config from '../config';
 import { LearningSystem } from '../review/learning/learning-system';
@@ -16,13 +15,13 @@ let learningSystem: LearningSystem | null = null;
 let reviewStore: FileReviewStore | null = null;
 
 // 初始化反馈系统（记忆系统可选）
-export function initializeFeedbackSystem(openaiClient: OpenAI, store: FileReviewStore): void {
+export function initializeFeedbackSystem(store: FileReviewStore): void {
   // 保存store实例以供handlers重用，避免多实例状态不同步
   reviewStore = store;
 
   // 记忆系统为可选功能
   if (config.review.qdrantUrl && config.review.enableMemory) {
-    memoryStore = new VectorMemoryStore(config.review.qdrantUrl, openaiClient);
+    memoryStore = new VectorMemoryStore(config.review.qdrantUrl);
     learningSystem = new LearningSystem(memoryStore, reviewStore);
 
     memoryStore.initialize().catch((err) => {
