@@ -48,7 +48,10 @@ const envSchema = z.object({
   CUSTOM_LINE_COMMENT_PROMPT: z.string().optional(),
 
   // Feishu
-  FEISHU_WEBHOOK_URL: z.string().url(),
+  FEISHU_WEBHOOK_URL: z.preprocess(
+    (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
+    z.string().url().optional()
+  ),
   FEISHU_WEBHOOK_SECRET: z.string().optional(),
 
   // App
@@ -117,7 +120,7 @@ export interface AppConfig {
     customLineCommentPrompt: string | undefined;
   };
   feishu: {
-    webhookUrl: string;
+    webhookUrl: string | undefined;
     webhookSecret: string | undefined;
   };
   app: {
@@ -169,8 +172,8 @@ const DEV_FALLBACK_CONFIG: AppConfig = {
     customLineCommentPrompt: undefined,
   },
   feishu: {
-    webhookUrl: '',
-    webhookSecret: '',
+    webhookUrl: undefined,
+    webhookSecret: undefined,
   },
   app: {
     port: 5174,

@@ -3,7 +3,7 @@ import config from '../config';
 import { logger } from '../utils/logger';
 
 export class FeishuService {
-  private webhookUrl: string;
+  private webhookUrl?: string;
   private webhookSecret?: string;
 
   constructor() {
@@ -11,13 +11,19 @@ export class FeishuService {
     this.webhookSecret = config.feishu.webhookSecret;
 
     if (!this.webhookUrl) {
-      logger.error('飞书webhook URL未配置');
-      throw new Error('飞书webhook URL未配置');
+      logger.info('飞书webhook URL未配置，飞书通知已禁用');
     }
 
-    if (!this.webhookSecret) {
+    if (this.webhookUrl && !this.webhookSecret) {
       logger.warn('飞书webhook密钥未配置，签名验证将被禁用');
     }
+  }
+
+  /**
+   * 判断飞书通知是否已启用
+   */
+  isEnabled(): boolean {
+    return !!this.webhookUrl;
   }
 
   /**
@@ -37,6 +43,11 @@ export class FeishuService {
    * @param usernames 需要@的用户名列表
    */
   async sendMessage(content: string, usernames: string[] = []): Promise<void> {
+    if (!this.webhookUrl) {
+      logger.debug('飞书通知已跳过: webhook URL未配置');
+      return;
+    }
+
     try {
       const timestamp = Math.floor(Date.now() / 1000).toString();
       const message: any = {

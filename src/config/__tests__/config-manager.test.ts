@@ -89,8 +89,7 @@ describe('ConfigManager', () => {
     // Per-test temp overrides file
     process.env.CONFIG_OVERRIDES_PATH = tmpPath;
 
-    // FEISHU_WEBHOOK_URL has no Zod default → must be a valid URL for schema to pass.
-    process.env.FEISHU_WEBHOOK_URL = 'https://hooks.example.com/test';
+    // FEISHU_WEBHOOK_URL is now optional → no need to set it for schema to pass.
   });
 
   afterEach(async () => {
@@ -192,20 +191,20 @@ describe('ConfigManager', () => {
   // ─── 5. Dev fallback ─────────────────────────────────────────────────
 
   describe('dev fallback', () => {
-    test('FEISHU_WEBHOOK_URL missing + NODE_ENV=development → feishu.webhookUrl ""', async () => {
-      process.env.FEISHU_WEBHOOK_URL = ''; // invalid → safeParse fails
+    test('FEISHU_WEBHOOK_URL missing + NODE_ENV=development → feishu.webhookUrl undefined', async () => {
+      process.env.FEISHU_WEBHOOK_URL = ''; // empty → preprocess converts to undefined
       process.env.NODE_ENV = 'development';
       const cm = await importFresh();
       const cfg: AppConfig = cm.getCurrent();
-      expect(cfg.feishu.webhookUrl).toBe('');
+      expect(cfg.feishu.webhookUrl).toBeUndefined();
     });
 
-    test('FEISHU_WEBHOOK_URL missing + NODE_ENV unset → feishu.webhookUrl ""', async () => {
+    test('FEISHU_WEBHOOK_URL missing + NODE_ENV unset → feishu.webhookUrl undefined', async () => {
       process.env.FEISHU_WEBHOOK_URL = '';
       process.env.NODE_ENV = ''; // falsy → same branch as undefined
       const cm = await importFresh();
       const cfg: AppConfig = cm.getCurrent();
-      expect(cfg.feishu.webhookUrl).toBe('');
+      expect(cfg.feishu.webhookUrl).toBeUndefined();
     });
   });
 });
