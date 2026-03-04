@@ -50,6 +50,8 @@ function getEffectiveValue(
       return current.openai.customSummaryPrompt;
     case 'CUSTOM_LINE_COMMENT_PROMPT':
       return current.openai.customLineCommentPrompt;
+    case 'GLOBAL_PROMPT':
+      return current.openai.globalPrompt;
     // Feishu
     case 'FEISHU_WEBHOOK_URL':
       return current.feishu.webhookUrl;

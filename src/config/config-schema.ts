@@ -159,6 +159,14 @@ export const CONFIG_FIELDS: ConfigFieldMeta[] = [
     type: 'text',
     sensitive: false,
   },
+  {
+    envKey: 'GLOBAL_PROMPT',
+    group: 'openai',
+    label: '全局提示词',
+    description: '附加到所有 LLM 调用的系统提示词中（例如："请始终使用中文回复"）',
+    type: 'text',
+    sensitive: false,
+  },
 
   // ── 飞书 ────────────────────────────────────────────────────────────────
   {

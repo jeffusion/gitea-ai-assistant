@@ -1,5 +1,7 @@
 import OpenAI from 'openai';
 import { logger } from '../../utils/logger';
+import { withGlobalPrompt } from '../../utils/global-prompt';
+import config from '../../config';
 import { Finding, ReviewContext } from '../types';
 
 export interface CritiqueResult {
@@ -76,7 +78,7 @@ ${context.diff.slice(0, 3000)}
         messages: [
           {
             role: 'system',
-            content: '你是严格的代码审查质量评估专家，以高标准评估findings的质量。',
+            content: withGlobalPrompt('你是严格的代码审查质量评估专家，以高标准评估findings的质量。', config.openai.globalPrompt),
           },
           { role: 'user', content: prompt },
         ],
@@ -165,7 +167,7 @@ ${context.diff.slice(0, 2000)}
         messages: [
           {
             role: 'system',
-            content: '你是代码审查质量评估专家。',
+            content: withGlobalPrompt('你是代码审查质量评估专家。', config.openai.globalPrompt),
           },
           { role: 'user', content: prompt },
         ],

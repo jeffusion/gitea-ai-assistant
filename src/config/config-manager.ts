@@ -46,6 +46,7 @@ const envSchema = z.object({
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),
   CUSTOM_SUMMARY_PROMPT: z.string().optional(),
   CUSTOM_LINE_COMMENT_PROMPT: z.string().optional(),
+  GLOBAL_PROMPT: z.string().optional(),
 
   // Feishu
   FEISHU_WEBHOOK_URL: z.preprocess(
@@ -118,6 +119,7 @@ export interface AppConfig {
     model: string;
     customSummaryPrompt: string | undefined;
     customLineCommentPrompt: string | undefined;
+    globalPrompt: string | undefined;
   };
   feishu: {
     webhookUrl: string | undefined;
@@ -271,6 +273,7 @@ class ConfigManager {
         model: env.OPENAI_MODEL,
         customSummaryPrompt: env.CUSTOM_SUMMARY_PROMPT,
         customLineCommentPrompt: env.CUSTOM_LINE_COMMENT_PROMPT,
+        globalPrompt: env.GLOBAL_PROMPT,
       },
       feishu: {
         webhookUrl: env.FEISHU_WEBHOOK_URL,

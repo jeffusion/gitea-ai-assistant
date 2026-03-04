@@ -1,5 +1,7 @@
 import OpenAI from 'openai';
 import { logger } from '../../utils/logger';
+import { withGlobalPrompt } from '../../utils/global-prompt';
+import config from '../../config';
 import { Finding, FindingSeverity } from '../types';
 import { SpecialistAgent } from './specialist-agent';
 
@@ -108,7 +110,7 @@ export class DebateOrchestrator {
         messages: [
           {
             role: 'system',
-            content: `你是${agentName}，从你的专业角度独立评估代码问题。`,
+            content: withGlobalPrompt(`你是${agentName}，从你的专业角度独立评估代码问题。`, config.openai.globalPrompt),
           },
           { role: 'user', content: prompt },
         ],
@@ -185,7 +187,7 @@ ${otherOpinions
         messages: [
           {
             role: 'system',
-            content: `你是${agentName}，根据同行意见重新评估，但也要坚持你的专业判断。`,
+            content: withGlobalPrompt(`你是${agentName}，根据同行意见重新评估，但也要坚持你的专业判断。`, config.openai.globalPrompt),
           },
           { role: 'user', content: prompt },
         ],
