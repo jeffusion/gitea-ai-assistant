@@ -28,6 +28,8 @@ COPY tsconfig.json .
 # ---- Stage 3: Production ----
 FROM oven/bun:1-slim
 
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates ripgrep && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY --from=backend-builder /app/node_modules ./node_modules
