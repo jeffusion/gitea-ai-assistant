@@ -10,7 +10,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { config as dotenvConfig } from 'dotenv';
 import { z } from 'zod';
@@ -204,7 +204,7 @@ class ConfigManager {
     }
   }
 
-  /** Persist current overrides to disk atomically (write temp → rename). */
+  /** Persist current overrides to disk. Tries atomic rename; falls back to direct write. */
   private async persistOverrides(): Promise<void> {
     const dir = dirname(this.overridesPath);
     await mkdir(dir, { recursive: true });
@@ -215,9 +215,18 @@ class ConfigManager {
       overrides: { ...this.overrides },
     };
 
+    const json = JSON.stringify(payload, null, 2);
+
+    // Atomic rename may fail on K8s volumes (EBUSY/EXDEV); fall back to direct write.
     const tmpPath = `${this.overridesPath}.${randomUUID()}.tmp`;
-    await writeFile(tmpPath, JSON.stringify(payload, null, 2), 'utf-8');
-    await rename(tmpPath, this.overridesPath);
+    try {
+      await writeFile(tmpPath, json, 'utf-8');
+      await rename(tmpPath, this.overridesPath);
+    } catch {
+      await writeFile(this.overridesPath, json, 'utf-8');
+      // Clean up orphaned tmp file (best effort)
+      try { await unlink(tmpPath); } catch { /* ignore */ }
+    }
   }
 
   // ── Core API ─────────────────────────────────────────────────────────────
