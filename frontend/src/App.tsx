@@ -4,6 +4,7 @@ import { LoginPage } from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import { RepositoryManager } from './components/RepositoryManager';
 import { ConfigManager } from './components/ConfigManager';
+import { LLMProviders } from './components/llm/LLMProviders';
 import { Toaster } from "@/components/ui/sonner"
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -46,6 +47,7 @@ function App() {
           <Route index element={<Navigate to="/repos" replace />} />
           <Route path="repos" element={<RepositoryManager />} />
           <Route path="config" element={<ConfigManager />} />
+          <Route path="llm" element={<LLMProviders />} />
           <Route path="*" element={<Navigate to="/repos" replace />} />
         </Route>
       </Routes>
