@@ -40,10 +40,6 @@ const envSchema = z.object({
   GITEA_ACCESS_TOKEN: z.string().default('test_token'),
   GITEA_ADMIN_TOKEN: z.string().optional(),
 
-  // OpenAI
-  OPENAI_BASE_URL: z.string().url().default('https://api.openai.com/v1'),
-  OPENAI_API_KEY: z.string().default('test_openai_key'),
-  OPENAI_MODEL: z.string().default('gpt-4o-mini'),
   CUSTOM_SUMMARY_PROMPT: z.string().optional(),
   CUSTOM_LINE_COMMENT_PROMPT: z.string().optional(),
   GLOBAL_PROMPT: z.string().optional(),
@@ -66,9 +62,6 @@ const envSchema = z.object({
   // Review engine
   REVIEW_ENGINE: z.enum(['legacy', 'agent']).default('legacy'),
   REVIEW_WORKDIR: z.string().default('/tmp/gitea-assistant'),
-  REVIEW_MODEL_PLANNER: z.string().default('gpt-4o-mini'),
-  REVIEW_MODEL_SPECIALIST: z.string().default('gpt-4o-mini'),
-  REVIEW_MODEL_JUDGE: z.string().default('gpt-4o-mini'),
   REVIEW_MAX_PARALLEL_RUNS: z.coerce.number().int().min(1).max(8).default(2),
   REVIEW_MAX_FILES_PER_RUN: z.coerce.number().int().min(1).max(1000).default(200),
   REVIEW_MAX_FILE_CONTENT_CHARS: z.coerce.number().int().min(1000).max(1_000_000).default(40_000),
@@ -113,14 +106,6 @@ export interface AppConfig {
     apiUrl: string;
     accessToken: string;
   };
-  openai: {
-    baseUrl: string;
-    apiKey: string;
-    model: string;
-    customSummaryPrompt: string | undefined;
-    customLineCommentPrompt: string | undefined;
-    globalPrompt: string | undefined;
-  };
   feishu: {
     webhookUrl: string | undefined;
     webhookSecret: string | undefined;
@@ -137,9 +122,9 @@ export interface AppConfig {
   review: {
     engine: string;
     workdir: string;
-    modelPlanner: string;
-    modelSpecialist: string;
-    modelJudge: string;
+    customSummaryPrompt: string | undefined;
+    customLineCommentPrompt: string | undefined;
+    globalPrompt: string | undefined;
     maxParallelRuns: number;
     maxFilesPerRun: number;
     maxFileContentChars: number;
@@ -267,14 +252,6 @@ class ConfigManager {
         apiUrl: env.GITEA_API_URL,
         accessToken: env.GITEA_ACCESS_TOKEN,
       },
-      openai: {
-        baseUrl: env.OPENAI_BASE_URL,
-        apiKey: env.OPENAI_API_KEY,
-        model: env.OPENAI_MODEL,
-        customSummaryPrompt: env.CUSTOM_SUMMARY_PROMPT,
-        customLineCommentPrompt: env.CUSTOM_LINE_COMMENT_PROMPT,
-        globalPrompt: env.GLOBAL_PROMPT,
-      },
       feishu: {
         webhookUrl: env.FEISHU_WEBHOOK_URL,
         webhookSecret: env.FEISHU_WEBHOOK_SECRET,
@@ -291,9 +268,9 @@ class ConfigManager {
       review: {
         engine: env.REVIEW_ENGINE,
         workdir: env.REVIEW_WORKDIR,
-        modelPlanner: env.REVIEW_MODEL_PLANNER,
-        modelSpecialist: env.REVIEW_MODEL_SPECIALIST,
-        modelJudge: env.REVIEW_MODEL_JUDGE,
+        customSummaryPrompt: env.CUSTOM_SUMMARY_PROMPT,
+        customLineCommentPrompt: env.CUSTOM_LINE_COMMENT_PROMPT,
+        globalPrompt: env.GLOBAL_PROMPT,
         maxParallelRuns: env.REVIEW_MAX_PARALLEL_RUNS,
         maxFilesPerRun: env.REVIEW_MAX_FILES_PER_RUN,
         maxFileContentChars: env.REVIEW_MAX_FILE_CONTENT_CHARS,
