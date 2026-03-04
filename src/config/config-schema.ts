@@ -7,7 +7,7 @@
 // Types
 // ---------------------------------------------------------------------------
 
-export type ConfigGroup = 'gitea' | 'openai' | 'feishu' | 'app' | 'admin' | 'review' | 'memory';
+export type ConfigGroup = 'gitea' | 'feishu' | 'app' | 'admin' | 'review' | 'memory';
 
 export type ConfigFieldType = 'string' | 'number' | 'boolean' | 'url' | 'text' | 'enum';
 
@@ -43,12 +43,6 @@ export const CONFIG_GROUPS: ConfigGroupMeta[] = [
     label: 'Gitea 连接',
     description: 'Gitea 实例地址与访问令牌',
     icon: 'link',
-  },
-  {
-    key: 'openai',
-    label: 'OpenAI / LLM',
-    description: 'AI 模型接口与自定义提示词',
-    icon: 'bot',
   },
   {
     key: 'feishu',
@@ -115,37 +109,9 @@ export const CONFIG_FIELDS: ConfigFieldMeta[] = [
     sensitive: true,
   },
 
-  // ── OpenAI ──────────────────────────────────────────────────────────────
-  {
-    envKey: 'OPENAI_BASE_URL',
-    group: 'openai',
-    label: 'API 地址',
-    description: 'OpenAI 兼容 API 的基础 URL',
-    type: 'url',
-    sensitive: false,
-    defaultValue: 'https://api.openai.com/v1',
-  },
-  {
-    envKey: 'OPENAI_API_KEY',
-    group: 'openai',
-    label: 'API 密钥',
-    description: 'OpenAI API 密钥',
-    type: 'string',
-    sensitive: true,
-    defaultValue: 'test_openai_key',
-  },
-  {
-    envKey: 'OPENAI_MODEL',
-    group: 'openai',
-    label: '模型',
-    description: '默认使用的 OpenAI 模型名称',
-    type: 'string',
-    sensitive: false,
-    defaultValue: 'gpt-4o-mini',
-  },
   {
     envKey: 'CUSTOM_SUMMARY_PROMPT',
-    group: 'openai',
+    group: 'review',
     label: '自定义总结提示词',
     description: '覆盖默认的代码审查总结提示词（留空使用内置提示词）',
     type: 'text',
@@ -153,7 +119,7 @@ export const CONFIG_FIELDS: ConfigFieldMeta[] = [
   },
   {
     envKey: 'CUSTOM_LINE_COMMENT_PROMPT',
-    group: 'openai',
+    group: 'review',
     label: '自定义行评论提示词',
     description: '覆盖默认的行级评论提示词（留空使用内置提示词）',
     type: 'text',
@@ -161,7 +127,7 @@ export const CONFIG_FIELDS: ConfigFieldMeta[] = [
   },
   {
     envKey: 'GLOBAL_PROMPT',
-    group: 'openai',
+    group: 'review',
     label: '全局提示词',
     description: '附加到所有 LLM 调用的系统提示词中（例如："请始终使用中文回复"）',
     type: 'text',
@@ -250,33 +216,6 @@ export const CONFIG_FIELDS: ConfigFieldMeta[] = [
     type: 'string',
     sensitive: false,
     defaultValue: '/tmp/gitea-assistant',
-  },
-  {
-    envKey: 'REVIEW_MODEL_PLANNER',
-    group: 'review',
-    label: '规划模型',
-    description: 'Agent 模式下规划阶段使用的模型',
-    type: 'string',
-    sensitive: false,
-    defaultValue: 'gpt-4o-mini',
-  },
-  {
-    envKey: 'REVIEW_MODEL_SPECIALIST',
-    group: 'review',
-    label: '专家模型',
-    description: 'Agent 模式下专家子代理使用的模型',
-    type: 'string',
-    sensitive: false,
-    defaultValue: 'gpt-4o-mini',
-  },
-  {
-    envKey: 'REVIEW_MODEL_JUDGE',
-    group: 'review',
-    label: '评审模型',
-    description: 'Agent 模式下 Judge 聚合阶段使用的模型',
-    type: 'string',
-    sensitive: false,
-    defaultValue: 'gpt-4o-mini',
   },
   {
     envKey: 'REVIEW_MAX_PARALLEL_RUNS',

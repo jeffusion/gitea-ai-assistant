@@ -23,9 +23,6 @@ const SCHEMA_KEYS = [
   'GITEA_API_URL',
   'GITEA_ACCESS_TOKEN',
   'GITEA_ADMIN_TOKEN',
-  'OPENAI_BASE_URL',
-  'OPENAI_API_KEY',
-  'OPENAI_MODEL',
   'CUSTOM_SUMMARY_PROMPT',
   'CUSTOM_LINE_COMMENT_PROMPT',
   'GLOBAL_PROMPT',
@@ -37,9 +34,6 @@ const SCHEMA_KEYS = [
   'JWT_SECRET',
   'REVIEW_ENGINE',
   'REVIEW_WORKDIR',
-  'REVIEW_MODEL_PLANNER',
-  'REVIEW_MODEL_SPECIALIST',
-  'REVIEW_MODEL_JUDGE',
   'REVIEW_MAX_PARALLEL_RUNS',
   'REVIEW_MAX_FILES_PER_RUN',
   'REVIEW_MAX_FILE_CONTENT_CHARS',
@@ -113,20 +107,20 @@ describe('ConfigManager', () => {
   describe('layering: defaults < env < override', () => {
     test('Zod default used when env and override are absent', async () => {
       const cm = await importFresh();
-      expect(cm.getCurrent().openai.model).toBe('gpt-4o-mini');
+      expect(cm.getCurrent().review.engine).toBe('legacy');
     });
 
     test('env value overrides Zod default', async () => {
-      process.env.OPENAI_MODEL = 'env-model';
+      process.env.REVIEW_ENGINE = 'agent';
       const cm = await importFresh();
-      expect(cm.getCurrent().openai.model).toBe('env-model');
+      expect(cm.getCurrent().review.engine).toBe('agent');
     });
 
     test('override wins over env', async () => {
-      process.env.OPENAI_MODEL = 'env-model';
+      process.env.REVIEW_ENGINE = 'agent';
       const cm = await importFresh();
-      await cm.setOverrides({ OPENAI_MODEL: 'override-model' });
-      expect(cm.getCurrent().openai.model).toBe('override-model');
+      await cm.setOverrides({ REVIEW_ENGINE: 'legacy' });
+      expect(cm.getCurrent().review.engine).toBe('legacy');
     });
   });
 
@@ -135,14 +129,14 @@ describe('ConfigManager', () => {
   describe('empty string resets override', () => {
     test('setting override to "" removes it, value falls back to Zod default', async () => {
       const cm = await importFresh();
-      await cm.setOverrides({ OPENAI_MODEL: 'temp-override' });
-      expect(cm.getCurrent().openai.model).toBe('temp-override');
+      await cm.setOverrides({ REVIEW_ENGINE: 'agent' });
+      expect(cm.getCurrent().review.engine).toBe('agent');
 
-      await cm.setOverrides({ OPENAI_MODEL: '' });
+      await cm.setOverrides({ REVIEW_ENGINE: '' });
 
-      // OPENAI_MODEL is '' in env (neutralised) → falls to Zod default
-      expect(cm.getCurrent().openai.model).toBe('gpt-4o-mini');
-      expect(cm.getOverrides()).not.toHaveProperty('OPENAI_MODEL');
+      // REVIEW_ENGINE is '' in env (neutralised) → falls to Zod default
+      expect(cm.getCurrent().review.engine).toBe('legacy');
+      expect(cm.getOverrides()).not.toHaveProperty('REVIEW_ENGINE');
     });
   });
 
@@ -151,18 +145,18 @@ describe('ConfigManager', () => {
   describe('persistence', () => {
     test('setOverrides writes JSON file; new instance loads it', async () => {
       const cm1 = await importFresh();
-      await cm1.setOverrides({ OPENAI_MODEL: 'persisted-model' });
+      await cm1.setOverrides({ REVIEW_ENGINE: 'agent' });
 
       // File structure check
       const raw = await readFile(tmpPath, 'utf-8');
       const data = JSON.parse(raw);
       expect(data.version).toBe(1);
       expect(typeof data.updatedAt).toBe('string');
-      expect(data.overrides.OPENAI_MODEL).toBe('persisted-model');
+      expect(data.overrides.REVIEW_ENGINE).toBe('agent');
 
       // Fresh instance picks it up
       const cm2 = await importFresh();
-      expect(cm2.getCurrent().openai.model).toBe('persisted-model');
+      expect(cm2.getCurrent().review.engine).toBe('agent');
     });
   });
 
@@ -170,22 +164,22 @@ describe('ConfigManager', () => {
 
   describe('getSource()', () => {
     test('returns "default" when neither env nor override is set', async () => {
-      // OPENAI_MODEL = '' (neutralised) → getSource sees '' → 'default'
+      // REVIEW_ENGINE = '' (neutralised) → getSource sees '' → 'default'
       const cm = await importFresh();
-      expect(cm.getSource('OPENAI_MODEL')).toBe('default');
+      expect(cm.getSource('REVIEW_ENGINE')).toBe('default');
     });
 
     test('returns "env" when process.env has a non-empty value', async () => {
-      process.env.OPENAI_MODEL = 'from-env';
+      process.env.REVIEW_ENGINE = 'agent';
       const cm = await importFresh();
-      expect(cm.getSource('OPENAI_MODEL')).toBe('env');
+      expect(cm.getSource('REVIEW_ENGINE')).toBe('env');
     });
 
     test('returns "override" when override is set', async () => {
-      process.env.OPENAI_MODEL = 'from-env';
+      process.env.REVIEW_ENGINE = 'agent';
       const cm = await importFresh();
-      await cm.setOverrides({ OPENAI_MODEL: 'from-override' });
-      expect(cm.getSource('OPENAI_MODEL')).toBe('override');
+      await cm.setOverrides({ REVIEW_ENGINE: 'legacy' });
+      expect(cm.getSource('REVIEW_ENGINE')).toBe('override');
     });
   });
 

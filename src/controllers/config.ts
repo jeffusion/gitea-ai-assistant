@@ -39,19 +39,13 @@ function getEffectiveValue(
       return current.gitea.accessToken;
     case 'GITEA_ADMIN_TOKEN':
       return current.admin.giteaAdminToken;
-    // OpenAI
-    case 'OPENAI_BASE_URL':
-      return current.openai.baseUrl;
-    case 'OPENAI_API_KEY':
-      return current.openai.apiKey;
-    case 'OPENAI_MODEL':
-      return current.openai.model;
+    // Review prompts (moved from OpenAI group)
     case 'CUSTOM_SUMMARY_PROMPT':
-      return current.openai.customSummaryPrompt;
+      return current.review.customSummaryPrompt;
     case 'CUSTOM_LINE_COMMENT_PROMPT':
-      return current.openai.customLineCommentPrompt;
+      return current.review.customLineCommentPrompt;
     case 'GLOBAL_PROMPT':
-      return current.openai.globalPrompt;
+      return current.review.globalPrompt;
     // Feishu
     case 'FEISHU_WEBHOOK_URL':
       return current.feishu.webhookUrl;
@@ -72,12 +66,6 @@ function getEffectiveValue(
       return current.review.engine;
     case 'REVIEW_WORKDIR':
       return current.review.workdir;
-    case 'REVIEW_MODEL_PLANNER':
-      return current.review.modelPlanner;
-    case 'REVIEW_MODEL_SPECIALIST':
-      return current.review.modelSpecialist;
-    case 'REVIEW_MODEL_JUDGE':
-      return current.review.modelJudge;
     case 'REVIEW_MAX_PARALLEL_RUNS':
       return current.review.maxParallelRuns;
     case 'REVIEW_MAX_FILES_PER_RUN':
