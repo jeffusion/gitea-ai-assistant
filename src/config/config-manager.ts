@@ -159,53 +159,6 @@ export interface AppConfig {
 // Dev fallback (matches src/config/index.ts behavior when validation fails)
 // ---------------------------------------------------------------------------
 
-const DEV_FALLBACK_CONFIG: AppConfig = {
-  gitea: {
-    apiUrl: 'http://localhost:5174/api/v1',
-    accessToken: 'test_token',
-  },
-  openai: {
-    baseUrl: 'https://api.openai.com/v1',
-    apiKey: 'test_openai_key',
-    model: 'gpt-4o-mini',
-    customSummaryPrompt: undefined,
-    customLineCommentPrompt: undefined,
-  },
-  feishu: {
-    webhookUrl: undefined,
-    webhookSecret: undefined,
-  },
-  app: {
-    port: 5174,
-    webhookSecret: 'test_webhook_secret',
-  },
-  admin: {
-    password: 'password',
-    jwtSecret: 'a-secure-secret-for-jwt',
-    giteaAdminToken: undefined,
-  },
-  review: {
-    engine: 'legacy',
-    workdir: '/tmp/gitea-assistant',
-    modelPlanner: 'gpt-4o-mini',
-    modelSpecialist: 'gpt-4o-mini',
-    modelJudge: 'gpt-4o-mini',
-    maxParallelRuns: 2,
-    maxFilesPerRun: 200,
-    maxFileContentChars: 40_000,
-    autoPublishMinConfidence: 0.8,
-    enableHumanGate: true,
-    allowedCommands: ['git', 'rg', 'cat', 'sed', 'wc'],
-    commandTimeoutMs: 10000,
-    qdrantUrl: undefined,
-    enableMemory: false,
-    fewShotExamplesCount: 10,
-    enableReflection: false,
-    maxReflectionRounds: 2,
-    enableDebate: false,
-    debateThreshold: 'high',
-  },
-};
 
 // ---------------------------------------------------------------------------
 // ConfigManager
@@ -290,15 +243,10 @@ class ConfigManager {
       }
     }
 
-    const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
-
     const parseResult = envSchema.safeParse(merged);
 
     if (!parseResult.success) {
-      if (!isDev) {
-        throw new Error('Configuration validation error');
-      }
-      return DEV_FALLBACK_CONFIG;
+      throw new Error('Configuration validation error');
     }
 
     const env = parseResult.data;

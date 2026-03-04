@@ -8,8 +8,6 @@ import { feishuService } from '../services/feishu';
 import { PullRequestDetails, PullRequestFile, giteaService } from '../services/gitea';
 import { logger } from '../utils/logger';
 
-// 判断是否为开发环境
-const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
 
 // Gitea webhook事件类型
 enum GiteaEventType {
@@ -23,11 +21,6 @@ enum GiteaEventType {
  * 验证Webhook请求签名
  */
 function verifyWebhookSignature(body: string, signature: string): boolean {
-  // 开发环境下跳过签名验证
-  if (isDev && !signature) {
-    logger.warn('开发环境: 跳过Webhook签名验证');
-    return true;
-  }
 
   if (!config.app.webhookSecret) {
     logger.warn('未配置Webhook密钥，跳过签名验证');
@@ -374,54 +367,11 @@ async function reviewPullRequest(owner: string, repo: string, prNumber: number):
   try {
     logger.info(`开始审查PR ${owner}/${repo}#${prNumber}`);
 
-    // 如果是开发环境，模拟PR差异和详情
-    let prDetails;
-    let diffContent;
-
-    if (isDev) {
-      // 开发环境中的测试数据
-      logger.info('开发环境: 使用测试数据');
-      prDetails = {
-        id: prNumber,
-        number: prNumber,
-        title: '测试PR',
-        head: {
-          sha: 'abcd1234abcd1234abcd1234abcd1234abcd1234',
-        },
-        base: {
-          repo: {
-            owner: {
-              login: owner,
-            },
-            name: repo,
-          },
-        },
-      };
-
-      // 测试用diff内容
-      diffContent = `diff --git a/test.js b/test.js
-index 1234567..abcdefg 100644
---- a/test.js
-+++ b/test.js
-@@ -1,5 +1,9 @@
- function add(a, b) {
--  return a + b;
-+  return a + b; // 简单的加法函数
- }
-
--console.log(add(1, 2));
-+// 不安全的数据处理
-+function processUserData(data) {
-+  eval(data); // 这里有安全问题
-+}
-+console.log(add(1, 2));`;
-    } else {
-      // 生产环境中从Gitea获取真实数据
-      [prDetails, diffContent] = await Promise.all([
-        giteaService.getPullRequestDetails(owner, repo, prNumber),
-        giteaService.getPullRequestDiff(owner, repo, prNumber),
-      ]);
-    }
+    // 从Gitea获取PR详情和差异
+    const [prDetails, diffContent] = await Promise.all([
+      giteaService.getPullRequestDetails(owner, repo, prNumber),
+      giteaService.getPullRequestDiff(owner, repo, prNumber),
+    ]);
 
     // 提取commit SHA
     const commitId = prDetails.head.sha;
@@ -441,41 +391,22 @@ index 1234567..abcdefg 100644
     });
 
     // 添加总结评论
-    if (isDev) {
-      logger.info('开发环境: 模拟添加PR评论', {
-        comment: reviewResult.summary,
-      });
-    } else {
-      logger.info('生产环境: 添加PR评论', {
-        owner,
-        repo,
-        prNumber,
-        comment: reviewResult.summary,
-      });
-      await giteaService.addPullRequestComment(
-        owner,
-        repo,
-        prNumber,
-        `## AI代码审查结果\n\n${reviewResult.summary}`
-      );
-    }
+    await giteaService.addPullRequestComment(
+      owner,
+      repo,
+      prNumber,
+      `## AI代码审查结果\n\n${reviewResult.summary}`
+    );
 
     // 添加行级评论
     if (reviewResult.lineComments.length > 0) {
-      if (isDev) {
-        logger.info('开发环境: 模拟添加行评论', {
-          commentCount: reviewResult.lineComments.length,
-          comments: reviewResult.lineComments,
-        });
-      } else {
-        await giteaService.addLineComments(
-          owner,
-          repo,
-          prNumber,
-          commitId,
-          reviewResult.lineComments
-        );
-      }
+      await giteaService.addLineComments(
+        owner,
+        repo,
+        prNumber,
+        commitId,
+        reviewResult.lineComments
+      );
     }
 
     logger.info(`完成PR ${owner}/${repo}#${prNumber} 的代码审查`);
@@ -511,18 +442,6 @@ async function reviewCommit(
       removed: commitInfo.removed.length,
     });
 
-    // 如果是开发环境，打印更多信息但不执行实际审查
-    if (isDev) {
-      logger.info('开发环境: 正在模拟审查提交', {
-        owner,
-        repo,
-        commitSha,
-        added: commitInfo.added,
-        modified: commitInfo.modified,
-        removed: commitInfo.removed,
-      });
-      return;
-    }
 
     // 创建自定义文件列表，因为Gitea API不直接提供
     const webhookFiles: PullRequestFile[] = [
