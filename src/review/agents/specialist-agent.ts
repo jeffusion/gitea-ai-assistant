@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import OpenAI from 'openai';
 import { logger } from '../../utils/logger';
+import { withGlobalPrompt } from '../../utils/global-prompt';
+import config from '../../config';
 import type { LearningSystem } from '../learning/learning-system';
 import { findingResponseSchema } from '../schema/finding-schema';
 import { ToolRegistry } from '../tools/registry';
@@ -113,8 +115,9 @@ export class SpecialistAgent {
 
   private async reviewLegacy(run: ReviewRun, context: ReviewContext): Promise<AgentResult> {
     const prompt = `你是${this.agentName}，只关注${this.focusPrompt}。
-输出必须是JSON对象格式: {"findings": []}。
-仅报告有明确证据的问题；无问题时返回空数组。
+输出必须是JSON对象格式:
+{"findings": [{"severity": "high"|"medium"|"low", "confidence": 0-1, "path": "文件路径", "line": 正整数, "title": "标题", "detail": "详情", "evidence": "证据", "suggestion": "建议"}]}
+每个 finding 的所有字段都是必填的。仅报告有明确证据的问题；无问题时返回空数组。
 
 审查上下文如下:
 ${toCompactContext(context)}`;
@@ -128,7 +131,7 @@ ${toCompactContext(context)}`;
           {
             role: 'system',
             content:
-              '你是严格的代码审查专家。返回结构化JSON，不输出额外文字。confidence取值范围0到1。line必须是正整数且引用新增行。',
+              withGlobalPrompt('你是严格的代码审查专家。返回结构化JSON，不输出额外文字。confidence取值范围0到1。line必须是正整数且引用新增行。', config.openai.globalPrompt),
           },
           { role: 'user', content: prompt },
         ],
@@ -166,7 +169,7 @@ ${toCompactContext(context)}`;
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
       {
         role: 'system',
-        content: `你是${this.agentName}，专注于${this.focusPrompt}。
+        content: withGlobalPrompt(`你是${this.agentName}，专注于${this.focusPrompt}。
 
 你可以使用以下工具进行深入调查：
 ${this.toolRegistry!.getAll()
@@ -179,9 +182,23 @@ ${this.toolRegistry!.getAll()
 3. 基于证据报告问题
 
 当你需要使用工具时，直接调用工具即可。
-当你完成所有调查并准备输出最终结果时，以纯JSON格式返回：
-{"findings": [...], "need_more_investigation": false}
-confidence取值范围0到1。line必须是正整数且引用新增行。`,
+当你完成所有调查并准备输出最终结果时，以纯JSON格式返回（不要包含任何额外文字）：
+{
+  "findings": [
+    {
+      "severity": "high" | "medium" | "low",
+      "confidence": 0.0 到 1.0 之间的数字,
+      "path": "文件路径",
+      "line": 正整数，引用新增行的行号,
+      "title": "问题简短标题",
+      "detail": "问题详细描述",
+      "evidence": "相关代码片段或证据",
+      "suggestion": "修复建议"
+    }
+  ],
+  "need_more_investigation": false
+}
+每个 finding 对象的所有字段都是必填的。无问题时返回空数组 {"findings": [], "need_more_investigation": false}。`, config.openai.globalPrompt),
       },
     ];
 
@@ -291,11 +308,18 @@ confidence取值范围0到1。line必须是正整数且引用新增行。`,
                 '请使用工具进行更深入的调查。如果你已经获得了足够的信息，请将 need_more_investigation 设为 false 并输出最终结果。',
             });
           } catch (parseError) {
-            logger.error(`${this.agentName} 解析响应失败`, {
+            // 模型返回了非 JSON 文本（如中文自然语言），不应直接放弃
+            // 将其作为对话上下文保留，提示模型返回 JSON 格式
+            logger.warn(`${this.agentName} 响应非 JSON 格式，尝试引导模型返回 JSON`, {
               runId: run.id,
               error: parseError instanceof Error ? parseError.message : String(parseError),
             });
-            break;
+            messages.push(choice.message as OpenAI.Chat.ChatCompletionMessageParam);
+            messages.push({
+              role: 'user',
+              content:
+                '你的上一次响应不是有效的 JSON。请以纯 JSON 格式返回结果：{"findings": [...], "need_more_investigation": false}。不要包含任何额外文字。',
+            });
           }
         } else {
           // 没有内容，结束循环
