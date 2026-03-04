@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { LogOut, Bot, FolderGit2, Sliders, Menu, X, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LogOut, Bot, FolderGit2, Sliders, Menu, X, PanelLeftClose, PanelLeftOpen, Cpu } from 'lucide-react';
 
 const navItems = [
   { path: '/repos', label: '仓库管理', icon: FolderGit2 },
   { path: '/config', label: '配置管理', icon: Sliders },
+  { path: '/llm', label: 'LLM 配置', icon: Cpu },
 ] as const;
 
 export default function DashboardPage() {
@@ -25,6 +26,7 @@ export default function DashboardPage() {
 
   const currentTitle = navItems.find(item => location.pathname.startsWith(item.path))?.label || 'Dashboard';
   const isConfigPage = location.pathname.startsWith('/config');
+  const isLLMPage = location.pathname.startsWith('/llm');
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
@@ -159,7 +161,7 @@ export default function DashboardPage() {
         <main className="flex-1 overflow-y-auto relative">
           <div className="absolute inset-0 bg-background/95 backdrop-blur-[1px] -z-10"></div>
           <div className="absolute inset-0 bg-grid-pattern opacity-[0.03] -z-10"></div>
-          <div className={`mx-auto max-w-7xl animate-in fade-in slide-in-from-bottom-4 duration-500 ${isConfigPage ? '' : 'p-4 md:p-6 lg:p-8'}`}>
+          <div className={`mx-auto max-w-7xl animate-in fade-in slide-in-from-bottom-4 duration-500 ${(isConfigPage || isLLMPage) ? '' : 'p-4 md:p-6 lg:p-8'}`}>
             <Outlet />
           </div>
         </main>
