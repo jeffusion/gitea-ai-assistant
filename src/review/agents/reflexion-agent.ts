@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import OpenAI from 'openai';
 import { logger } from '../../utils/logger';
+import { withGlobalPrompt } from '../../utils/global-prompt';
+import config from '../../config';
 import { LearningSystem } from '../learning/learning-system';
 import { findingResponseSchema } from '../schema/finding-schema';
 import { ToolRegistry } from '../tools/registry';
@@ -147,7 +149,7 @@ ${context.diff.slice(0, 3000)}
         messages: [
           {
             role: 'system',
-            content: `你是${this.agentName}，根据批评反馈改进审查结果。`,
+            content: withGlobalPrompt(`你是${this.agentName}，根据批评反馈改进审查结果。`, config.openai.globalPrompt),
           },
           { role: 'user', content: prompt },
         ],

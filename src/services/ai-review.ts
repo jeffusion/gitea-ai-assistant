@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import config from '../config';
 import { logger } from '../utils/logger';
+import { withGlobalPrompt } from '../utils/global-prompt';
 import { PullRequestFile, giteaService } from './gitea';
 
 // 创建OpenAI客户端
@@ -206,7 +207,7 @@ export const aiReviewService = {
           {
             role: 'system',
             content:
-              '你是一个专业的代码审查助手，擅长识别代码中的严重问题和bug。你会查看代码的完整上下文，而不是为了评论而评论。如无明显问题，应给予简短肯定。',
+              withGlobalPrompt('你是一个专业的代码审查助手，擅长识别代码中的严重问题和bug。你会查看代码的完整上下文，而不是为了评论而评论。如无明显问题，应给予简短肯定。', config.openai.globalPrompt),
           },
           { role: 'user', content: summaryPrompt },
         ],
@@ -278,7 +279,7 @@ export const aiReviewService = {
             {
               role: 'system',
               content:
-                '你是一个谨慎的代码审查助手，只对有明显bug或严重问题的代码行提供评论。大多数情况下，如果代码没有严重问题，你应该返回空数组。请以JSON格式返回结果。',
+                withGlobalPrompt('你是一个谨慎的代码审查助手，只对有明显bug或严重问题的代码行提供评论。大多数情况下，如果代码没有严重问题，你应该返回空数组。请以JSON格式返回结果。', config.openai.globalPrompt),
             },
             { role: 'user', content: filePrompt },
           ],
