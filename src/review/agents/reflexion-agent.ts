@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import OpenAI from 'openai';
-import { logger } from '../../utils/logger';
-import { withGlobalPrompt } from '../../utils/global-prompt';
 import config from '../../config';
+import type { LLMGateway } from '../../llm/gateway';
+import type { LLMMessage } from '../../llm/types';
+import { withGlobalPrompt } from '../../utils/global-prompt';
+import { logger } from '../../utils/logger';
 import { LearningSystem } from '../learning/learning-system';
 import { findingResponseSchema } from '../schema/finding-schema';
 import { ToolRegistry } from '../tools/registry';
@@ -21,16 +22,15 @@ export class ReflexionAgent extends SpecialistAgent {
   private criticAgent: CriticAgent;
 
   constructor(
-    openai: OpenAI,
-    model: string,
+    gateway: LLMGateway,
     category: FindingCategory,
     agentName: string,
     focusPrompt: string,
     toolRegistry?: ToolRegistry,
     learningSystem?: LearningSystem
   ) {
-    super(openai, model, category, agentName, focusPrompt, toolRegistry, learningSystem);
-    this.criticAgent = new CriticAgent(openai, model);
+    super(gateway, category, agentName, focusPrompt, toolRegistry, learningSystem);
+    this.criticAgent = new CriticAgent(gateway);
   }
 
   async reviewWithReflection(
@@ -142,20 +142,24 @@ ${context.diff.slice(0, 3000)}
 }`;
 
     try {
-      const response = await this.openai.chat.completions.create({
-        model: this.model,
+      const messages: LLMMessage[] = [
+        {
+          role: 'system',
+          content: withGlobalPrompt(
+            `你是${this.agentName}，根据批评反馈改进审查结果。`,
+            config.review.globalPrompt
+          ),
+        },
+        { role: 'user', content: prompt },
+      ];
+
+      const response = await this.gateway.chatForRole('specialist', {
+        messages,
         temperature: 0.1,
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'system',
-            content: withGlobalPrompt(`你是${this.agentName}，根据批评反馈改进审查结果。`, config.openai.globalPrompt),
-          },
-          { role: 'user', content: prompt },
-        ],
+        responseFormat: 'json',
       });
 
-      const content = response.choices[0]?.message.content;
+      const content = response.content;
       if (!content) {
         logger.warn(`${this.agentName} Refine返回空结果，使用原findings`);
         return draft;

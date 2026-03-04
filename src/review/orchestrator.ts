@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import OpenAI from 'openai';
 import config from '../config';
+import { LLMGateway, llmGateway } from '../llm/gateway';
 import { giteaService } from '../services/gitea';
 import { logger } from '../utils/logger';
 import { DebateOrchestrator } from './agents/debate-orchestrator';
@@ -42,7 +42,7 @@ function summarizeGatedCount(gatedCount: number): string {
 }
 
 export class ReviewOrchestrator {
-  private readonly openai: OpenAI;
+  private readonly gateway: LLMGateway;
   private readonly toolRegistry: ToolRegistry;
   private readonly correctnessAgent: ReflexionAgent;
   private readonly securityAgent: ReflexionAgent;
@@ -58,10 +58,7 @@ export class ReviewOrchestrator {
     private readonly localRepoManager: LocalRepoManager,
     private readonly diffExtractor: DiffExtractor
   ) {
-    this.openai = new OpenAI({
-      baseURL: config.openai.baseUrl,
-      apiKey: config.openai.apiKey,
-    });
+    this.gateway = llmGateway;
 
     // 初始化工具注册表
     this.toolRegistry = new ToolRegistry();
@@ -75,7 +72,7 @@ export class ReviewOrchestrator {
 
     // 初始化记忆和学习系统（可选）
     if (config.review.qdrantUrl && config.review.enableMemory) {
-      this.memoryStore = new VectorMemoryStore(config.review.qdrantUrl, this.openai);
+      this.memoryStore = new VectorMemoryStore(config.review.qdrantUrl);
       this.learningSystem = new LearningSystem(this.memoryStore, this.store);
 
       this.memoryStore.initialize().catch((err) => {
@@ -87,8 +84,7 @@ export class ReviewOrchestrator {
 
     // 创建Reflexion-wrapped agents并传递工具注册表和学习系统
     this.correctnessAgent = new ReflexionAgent(
-      this.openai,
-      config.review.modelSpecialist,
+      this.gateway,
       'correctness',
       'Correctness Agent',
       '业务逻辑正确性、边界条件、空值处理和明显bug',
@@ -97,8 +93,7 @@ export class ReviewOrchestrator {
     );
 
     this.securityAgent = new ReflexionAgent(
-      this.openai,
-      config.review.modelSpecialist,
+      this.gateway,
       'security',
       'Security Agent',
       '注入漏洞、权限绕过、敏感信息泄露、反序列化和输入校验缺失',
@@ -107,8 +102,7 @@ export class ReviewOrchestrator {
     );
 
     this.reliabilityAgent = new ReflexionAgent(
-      this.openai,
-      config.review.modelSpecialist,
+      this.gateway,
       'reliability',
       'Reliability Agent',
       '错误处理、重试策略、幂等性、并发一致性和资源释放',
@@ -117,8 +111,7 @@ export class ReviewOrchestrator {
     );
 
     this.maintainabilityAgent = new ReflexionAgent(
-      this.openai,
-      config.review.modelSpecialist,
+      this.gateway,
       'maintainability',
       'Maintainability Agent',
       '可维护性、复杂度、接口破坏风险和可测试性不足',
@@ -127,7 +120,7 @@ export class ReviewOrchestrator {
     );
 
     this.judgeAgent = new JudgeAgent();
-    this.debateOrchestrator = new DebateOrchestrator(this.openai, config.review.modelSpecialist);
+    this.debateOrchestrator = new DebateOrchestrator(this.gateway);
   }
 
   async execute(run: ReviewRun): Promise<void> {

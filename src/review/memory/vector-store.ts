@@ -1,18 +1,16 @@
 import { QdrantClient } from '@qdrant/js-client-rest';
-import OpenAI from 'openai';
+import { llmGateway } from '../../llm/gateway';
 import { logger } from '../../utils/logger';
 import { Finding } from '../types';
 import { MemoryEntry, MemorySearchResult } from './types';
 
 export class VectorMemoryStore {
   private client: QdrantClient;
-  private openai: OpenAI;
   private collectionName = 'code_review_memory';
   private initialized = false;
 
-  constructor(qdrantUrl: string, openaiClient: OpenAI) {
+  constructor(qdrantUrl: string) {
     this.client = new QdrantClient({ url: qdrantUrl });
-    this.openai = openaiClient;
   }
 
   async initialize(): Promise<void> {
@@ -47,7 +45,7 @@ export class VectorMemoryStore {
   async storeMemory(entry: MemoryEntry): Promise<void> {
     await this.initialize();
 
-    const embedding = await this.getEmbedding(entry.content);
+    const [embedding] = await this.getEmbedding([entry.content]);
 
     await this.client.upsert(this.collectionName, {
       points: [
@@ -73,7 +71,7 @@ export class VectorMemoryStore {
   async searchSimilar(query: string, limit = 5, filter?: any): Promise<MemorySearchResult[]> {
     await this.initialize();
 
-    const queryEmbedding = await this.getEmbedding(query);
+    const [queryEmbedding] = await this.getEmbedding([query]);
 
     const results = await this.client.search(this.collectionName, {
       vector: queryEmbedding,
@@ -101,14 +99,9 @@ export class VectorMemoryStore {
     }));
   }
 
-  private async getEmbedding(text: string): Promise<number[]> {
+  private async getEmbedding(texts: string[]): Promise<number[][]> {
     try {
-      const response = await this.openai.embeddings.create({
-        model: 'text-embedding-3-small',
-        input: text.slice(0, 8000), // 限制长度防止超出token限制
-      });
-
-      return response.data[0].embedding;
+      return llmGateway.embedForRole(texts.map((text) => text.slice(0, 8000))); // 限制长度防止超出token限制
     } catch (error) {
       logger.error('生成embedding失败', {
         error: error instanceof Error ? error.message : String(error),

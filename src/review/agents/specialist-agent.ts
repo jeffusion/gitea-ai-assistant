@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import OpenAI from 'openai';
-import { logger } from '../../utils/logger';
-import { withGlobalPrompt } from '../../utils/global-prompt';
 import config from '../../config';
+import type { LLMGateway } from '../../llm/gateway';
+import type { LLMMessage, LLMToolCall } from '../../llm/types';
+import { withGlobalPrompt } from '../../utils/global-prompt';
+import { logger } from '../../utils/logger';
 import type { LearningSystem } from '../learning/learning-system';
 import { findingResponseSchema } from '../schema/finding-schema';
 import { ToolRegistry } from '../tools/registry';
@@ -90,8 +91,7 @@ function toCompactContext(context: ReviewContext): string {
 
 export class SpecialistAgent {
   constructor(
-    protected readonly openai: OpenAI,
-    protected readonly model: string,
+    protected readonly gateway: LLMGateway,
     protected readonly category: FindingCategory,
     protected readonly agentName: string,
     protected readonly focusPrompt: string,
@@ -123,21 +123,24 @@ export class SpecialistAgent {
 ${toCompactContext(context)}`;
 
     try {
-      const response = await this.openai.chat.completions.create({
-        model: this.model,
+      const messages: LLMMessage[] = [
+        {
+          role: 'system',
+          content: withGlobalPrompt(
+            '你是严格的代码审查专家。返回结构化JSON，不输出额外文字。confidence取值范围0到1。line必须是正整数且引用新增行。',
+            config.review.globalPrompt
+          ),
+        },
+        { role: 'user', content: prompt },
+      ];
+
+      const response = await this.gateway.chatForRole('specialist', {
+        messages,
         temperature: 0,
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'system',
-            content:
-              withGlobalPrompt('你是严格的代码审查专家。返回结构化JSON，不输出额外文字。confidence取值范围0到1。line必须是正整数且引用新增行。', config.openai.globalPrompt),
-          },
-          { role: 'user', content: prompt },
-        ],
+        responseFormat: 'json',
       });
 
-      const content = response.choices[0]?.message.content;
+      const content = response.content;
       if (!content) {
         return { agentName: this.agentName, findings: [] };
       }
@@ -166,10 +169,11 @@ ${toCompactContext(context)}`;
   private async reviewWithReAct(run: ReviewRun, context: ReviewContext): Promise<AgentResult> {
     const maxIterations = 5;
     const findingsMap = new Map<string, Omit<Finding, 'id' | 'runId' | 'published'>>();
-    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+    const messages: LLMMessage[] = [
       {
         role: 'system',
-        content: withGlobalPrompt(`你是${this.agentName}，专注于${this.focusPrompt}。
+        content: withGlobalPrompt(
+          `你是${this.agentName}，专注于${this.focusPrompt}。
 
 你可以使用以下工具进行深入调查：
 ${this.toolRegistry!.getAll()
@@ -198,7 +202,9 @@ ${this.toolRegistry!.getAll()
   ],
   "need_more_investigation": false
 }
-每个 finding 对象的所有字段都是必填的。无问题时返回空数组 {"findings": [], "need_more_investigation": false}。`, config.openai.globalPrompt),
+每个 finding 对象的所有字段都是必填的。无问题时返回空数组 {"findings": [], "need_more_investigation": false}。`,
+          config.review.globalPrompt
+        ),
       },
     ];
 
@@ -211,7 +217,22 @@ ${this.toolRegistry!.getAll()
           run.repo
         );
         if (fewShotExamples.length > 0) {
-          messages.push(...fewShotExamples);
+          const llmFewShotExamples = fewShotExamples
+            .map((msg) => {
+              if (
+                (msg.role === 'system' || msg.role === 'user' || msg.role === 'assistant') &&
+                typeof msg.content === 'string'
+              ) {
+                return { role: msg.role, content: msg.content } as const;
+              }
+              return null;
+            })
+            .filter(
+              (msg): msg is { role: 'system' | 'user' | 'assistant'; content: string } =>
+                msg !== null
+            );
+
+          messages.push(...llmFewShotExamples);
           logger.debug(`${this.agentName} 添加了 ${fewShotExamples.length} 条Few-shot示例`, {
             runId: run.id,
           });
@@ -239,24 +260,24 @@ ${this.toolRegistry!.getAll()
         // 仅在最后一轮迭代强制 JSON 输出（无工具调用时解析结果）
         // 避免 response_format: json_object 与 tools 参数冲突导致工具不被调用
         const isLastIteration = iteration === maxIterations - 1;
-        const response = await this.openai.chat.completions.create({
-          model: this.model,
-          temperature: 0,
-          ...(isLastIteration ? { response_format: { type: 'json_object' as const } } : {}),
+        const response = await this.gateway.chatForRole('specialist', {
           messages,
-          tools: this.toolRegistry!.toOpenAIFunctions(),
-          tool_choice: isLastIteration ? 'none' : 'auto',
+          temperature: 0,
+          tools: this.toolRegistry!.toToolDefinitions(),
+          providerOptions: { tool_choice: isLastIteration ? 'none' : 'auto' },
+          responseFormat: isLastIteration ? 'json' : undefined,
         });
 
-        const choice = response.choices[0];
-        if (!choice) break;
-
         // 处理工具调用
-        if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
-          messages.push(choice.message as OpenAI.Chat.ChatCompletionMessageParam);
+        if (response.toolCalls.length > 0) {
+          messages.push({
+            role: 'assistant',
+            content: response.content || '',
+            toolCalls: response.toolCalls,
+          });
 
           // 执行所有工具调用
-          const toolResults = await this.executeTools(choice.message.tool_calls, {
+          const toolResults = await this.executeTools(response.toolCalls, {
             workspacePath: context.workspacePath,
             mirrorPath: context.mirrorPath,
             runId: run.id,
@@ -266,7 +287,7 @@ ${this.toolRegistry!.getAll()
           for (const toolResult of toolResults) {
             messages.push({
               role: 'tool',
-              tool_call_id: toolResult.toolCallId,
+              toolCallId: toolResult.toolCallId,
               content: JSON.stringify(toolResult.result || { error: toolResult.error }),
             });
           }
@@ -275,9 +296,9 @@ ${this.toolRegistry!.getAll()
         }
 
         // 解析findings（模型选择返回内容而非调用工具）
-        if (choice.message.content) {
+        if (response.content) {
           try {
-            const parsed = JSON.parse(choice.message.content);
+            const parsed = JSON.parse(response.content);
 
             if (parsed.findings && parsed.findings.length > 0) {
               // 使用schema验证findings，防止畸形数据流入发布系统
@@ -301,7 +322,10 @@ ${this.toolRegistry!.getAll()
             }
 
             // 模型要求继续调查但没有调用工具：注入 user 消息打破潜在的自我重复
-            messages.push(choice.message as OpenAI.Chat.ChatCompletionMessageParam);
+            messages.push({
+              role: 'assistant',
+              content: response.content,
+            });
             messages.push({
               role: 'user',
               content:
@@ -314,7 +338,10 @@ ${this.toolRegistry!.getAll()
               runId: run.id,
               error: parseError instanceof Error ? parseError.message : String(parseError),
             });
-            messages.push(choice.message as OpenAI.Chat.ChatCompletionMessageParam);
+            messages.push({
+              role: 'assistant',
+              content: response.content,
+            });
             messages.push({
               role: 'user',
               content:
@@ -338,28 +365,28 @@ ${this.toolRegistry!.getAll()
   }
 
   private async executeTools(
-    toolCalls: OpenAI.Chat.ChatCompletionMessageToolCall[],
+    toolCalls: LLMToolCall[],
     context: ToolExecutionContext
   ): Promise<ToolResult[]> {
     const results: ToolResult[] = [];
 
     for (const toolCall of toolCalls) {
-      const tool = this.toolRegistry!.get(toolCall.function.name);
+      const tool = this.toolRegistry!.get(toolCall.name);
 
       if (!tool) {
         results.push({
           toolCallId: toolCall.id,
           success: false,
-          error: `工具 ${toolCall.function.name} 未找到`,
+          error: `工具 ${toolCall.name} 未找到`,
         });
         continue;
       }
 
       try {
-        const params = JSON.parse(toolCall.function.arguments);
+        const params = JSON.parse(toolCall.arguments);
         const result = await tool.execute(params, context);
 
-        logger.info(`工具调用成功: ${toolCall.function.name}`, {
+        logger.info(`工具调用成功: ${toolCall.name}`, {
           runId: context.runId,
           params,
         });
@@ -370,7 +397,7 @@ ${this.toolRegistry!.getAll()
           result,
         });
       } catch (error) {
-        logger.error(`工具调用失败: ${toolCall.function.name}`, {
+        logger.error(`工具调用失败: ${toolCall.name}`, {
           runId: context.runId,
           error: error instanceof Error ? error.message : String(error),
         });

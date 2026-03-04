@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import zodToJsonSchema from 'zod-to-json-schema';
 import type { JsonSchema7Type } from 'zod-to-json-schema';
+import type { LLMToolDefinition } from '../../llm/types';
 import { Tool } from './types';
 
 export class ToolRegistry {
@@ -27,6 +28,14 @@ export class ToolRegistry {
         description: tool.description,
         parameters: this.zodToJsonSchema(tool.parameters),
       },
+    }));
+  }
+
+  toToolDefinitions(): LLMToolDefinition[] {
+    return this.getAll().map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: this.zodToJsonSchema(tool.parameters) as Record<string, unknown>,
     }));
   }
 

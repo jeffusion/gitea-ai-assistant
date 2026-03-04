@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import type { LLMMessage } from '../../llm/types';
 import config from '../../config';
 import { logger } from '../../utils/logger';
 import { VectorMemoryStore } from '../memory/vector-store';
@@ -59,7 +59,7 @@ export class LearningSystem {
     category: FindingCategory,
     owner?: string,
     repo?: string
-  ): Promise<OpenAI.Chat.ChatCompletionMessageParam[]> {
+  ): Promise<LLMMessage[]> {
     const targetCount = config.review.fewShotExamplesCount;
 
     // 提前检查：如果few-shot被禁用（targetCount=0），直接返回，避免无意义的向量查询
@@ -105,7 +105,7 @@ export class LearningSystem {
       );
     }
 
-    const examples: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+    const examples: LLMMessage[] = [];
 
     const negativeCount = Math.floor(targetCount * 0.4);
 

@@ -1,7 +1,8 @@
-import OpenAI from 'openai';
-import { logger } from '../../utils/logger';
-import { withGlobalPrompt } from '../../utils/global-prompt';
 import config from '../../config';
+import type { LLMGateway } from '../../llm/gateway';
+import type { LLMMessage } from '../../llm/types';
+import { withGlobalPrompt } from '../../utils/global-prompt';
+import { logger } from '../../utils/logger';
 import { Finding, ReviewContext } from '../types';
 
 export interface CritiqueResult {
@@ -19,10 +20,7 @@ export interface CritiqueIssue {
 }
 
 export class CriticAgent {
-  constructor(
-    private openai: OpenAI,
-    private model: string
-  ) {}
+  constructor(private gateway: LLMGateway) {}
 
   async critique(
     findings: Omit<Finding, 'id' | 'runId' | 'published'>[],
@@ -71,20 +69,24 @@ ${context.diff.slice(0, 3000)}
 }`;
 
     try {
-      const response = await this.openai.chat.completions.create({
-        model: this.model,
+      const messages: LLMMessage[] = [
+        {
+          role: 'system',
+          content: withGlobalPrompt(
+            '你是严格的代码审查质量评估专家，以高标准评估findings的质量。',
+            config.review.globalPrompt
+          ),
+        },
+        { role: 'user', content: prompt },
+      ];
+
+      const response = await this.gateway.chatForRole('specialist', {
+        messages,
         temperature: 0.1, // 略高于0以允许批判性思考
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'system',
-            content: withGlobalPrompt('你是严格的代码审查质量评估专家，以高标准评估findings的质量。', config.openai.globalPrompt),
-          },
-          { role: 'user', content: prompt },
-        ],
+        responseFormat: 'json',
       });
 
-      const content = response.choices[0]?.message.content;
+      const content = response.content;
       if (!content) {
         throw new Error('Critic Agent返回空结果');
       }
@@ -160,20 +162,21 @@ ${context.diff.slice(0, 2000)}
 }`;
 
     try {
-      const response = await this.openai.chat.completions.create({
-        model: this.model,
+      const messages: LLMMessage[] = [
+        {
+          role: 'system',
+          content: withGlobalPrompt('你是代码审查质量评估专家。', config.review.globalPrompt),
+        },
+        { role: 'user', content: prompt },
+      ];
+
+      const response = await this.gateway.chatForRole('specialist', {
+        messages,
         temperature: 0,
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'system',
-            content: withGlobalPrompt('你是代码审查质量评估专家。', config.openai.globalPrompt),
-          },
-          { role: 'user', content: prompt },
-        ],
+        responseFormat: 'json',
       });
 
-      const content = response.choices[0]?.message.content;
+      const content = response.content;
       if (!content) {
         throw new Error('评估失败');
       }
