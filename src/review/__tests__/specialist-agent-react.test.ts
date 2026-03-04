@@ -1,5 +1,12 @@
 import { describe, expect, mock, test } from 'bun:test';
 import { z } from 'zod';
+import type {
+  LLMChatRequest,
+  LLMChatResponse,
+  LLMMessage,
+  LLMToolDefinition,
+  ModelRole,
+} from '../../llm/types';
 import { SpecialistAgent } from '../agents/specialist-agent';
 import { ToolRegistry } from '../tools/registry';
 import type { Tool } from '../tools/types';
@@ -51,77 +58,72 @@ function makeDummyTool(name = 'search_code'): Tool {
   };
 }
 
-type ChatCreateParams = {
-  model: string;
-  temperature: number;
-  response_format?: { type: string };
-  messages: any[];
-  tools?: any[];
-  tool_choice?: string;
+type ChatRequest = {
+  messages: LLMMessage[];
+  temperature?: number;
+  responseFormat?: 'text' | 'json';
+  tools?: LLMToolDefinition[];
+  providerOptions?: Record<string, unknown>;
 };
 
-function createMockOpenAI(responses: Array<() => any>) {
+type ChatCall = { role: ModelRole } & ChatRequest;
+
+function createMockGateway(responses: Array<() => LLMChatResponse>) {
   let callIndex = 0;
-  const calls: ChatCreateParams[] = [];
+  const calls: ChatCall[] = [];
 
   return {
-    client: {
-      chat: {
-        completions: {
-          create: async (params: ChatCreateParams) => {
-            calls.push(params);
-            const responseFn = responses[callIndex] ?? responses[responses.length - 1];
-            callIndex++;
-            return responseFn();
-          },
-        },
+    gateway: {
+      chatForRole: async (role: ModelRole, request: Omit<LLMChatRequest, 'model'>) => {
+        calls.push({ role, ...request });
+        const responseFn = responses[callIndex] ?? responses[responses.length - 1];
+        callIndex++;
+        return responseFn();
       },
     },
     getCalls: () => calls,
   };
 }
 
-function toolCallResponse(toolCalls: Array<{ id: string; name: string; args: any }>) {
+function toolCallResponse(
+  toolCalls: Array<{ id: string; name: string; args: any }>
+): LLMChatResponse {
   return {
-    choices: [
-      {
-        message: {
-          role: 'assistant',
-          content: null,
-          tool_calls: toolCalls.map((tc) => ({
-            id: tc.id,
-            type: 'function',
-            function: { name: tc.name, arguments: JSON.stringify(tc.args) },
-          })),
-        },
-      },
-    ],
+    content: null,
+    toolCalls: toolCalls.map((tc) => ({
+      id: tc.id,
+      name: tc.name,
+      arguments: JSON.stringify(tc.args),
+    })),
+    finishReason: 'tool_calls',
+    usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
   };
 }
 
-function jsonResponse(data: any) {
+function jsonResponse(data: any): LLMChatResponse {
   return {
-    choices: [
-      {
-        message: {
-          role: 'assistant',
-          content: JSON.stringify(data),
-        },
-      },
-    ],
+    content: JSON.stringify(data),
+    toolCalls: [],
+    finishReason: 'stop',
+    usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
   };
 }
 
-function emptyResponse() {
-  return { choices: [{ message: { role: 'assistant', content: null } }] };
+function emptyResponse(): LLMChatResponse {
+  return {
+    content: null,
+    toolCalls: [],
+    finishReason: 'stop',
+    usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+  };
 }
 
 describe('SpecialistAgent ReAct loop', () => {
   const category: FindingCategory = 'correctness';
 
   test('empty diff returns empty findings without calling OpenAI', async () => {
-    const { client } = createMockOpenAI([]);
-    const agent = new SpecialistAgent(client as any, 'gpt-4', category, 'TestAgent', 'bugs');
+    const { gateway } = createMockGateway([]);
+    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs');
     const result = await agent.review(makeRun(), makeContext({ diff: '   ' }));
     expect(result.findings).toHaveLength(0);
     expect(result.agentName).toBe('TestAgent');
@@ -139,9 +141,9 @@ describe('SpecialistAgent ReAct loop', () => {
       suggestion: 'Use undefined',
     };
 
-    const { client, getCalls } = createMockOpenAI([() => jsonResponse({ findings: [finding] })]);
+    const { gateway, getCalls } = createMockGateway([() => jsonResponse({ findings: [finding] })]);
 
-    const agent = new SpecialistAgent(client as any, 'gpt-4', category, 'TestAgent', 'bugs');
+    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs');
     const result = await agent.review(makeRun(), makeContext());
 
     expect(result.findings).toHaveLength(1);
@@ -151,7 +153,7 @@ describe('SpecialistAgent ReAct loop', () => {
 
     const calls = getCalls();
     expect(calls).toHaveLength(1);
-    expect(calls[0].response_format).toEqual({ type: 'json_object' });
+    expect(calls[0].responseFormat).toBe('json');
   });
 
   test('ReAct: tool call → tool result → final JSON findings', async () => {
@@ -170,19 +172,12 @@ describe('SpecialistAgent ReAct loop', () => {
       suggestion: 'Check usage',
     };
 
-    const { client, getCalls } = createMockOpenAI([
+    const { gateway, getCalls } = createMockGateway([
       () => toolCallResponse([{ id: 'call_1', name: 'search_code', args: { query: 'null' } }]),
       () => jsonResponse({ findings: [finding], need_more_investigation: false }),
     ]);
 
-    const agent = new SpecialistAgent(
-      client as any,
-      'gpt-4',
-      category,
-      'TestAgent',
-      'bugs',
-      registry
-    );
+    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs', registry);
     const result = await agent.review(makeRun(), makeContext());
 
     expect(executeFn).toHaveBeenCalledTimes(1);
@@ -197,7 +192,7 @@ describe('SpecialistAgent ReAct loop', () => {
     const registry = new ToolRegistry();
     registry.register(makeDummyTool());
 
-    const { client, getCalls } = createMockOpenAI([
+    const { gateway, getCalls } = createMockGateway([
       () => toolCallResponse([{ id: 'call_1', name: 'search_code', args: { query: 'x' } }]),
       () => toolCallResponse([{ id: 'call_2', name: 'search_code', args: { query: 'y' } }]),
       () => toolCallResponse([{ id: 'call_3', name: 'search_code', args: { query: 'z' } }]),
@@ -205,52 +200,39 @@ describe('SpecialistAgent ReAct loop', () => {
       () => jsonResponse({ findings: [], need_more_investigation: false }),
     ]);
 
-    const agent = new SpecialistAgent(
-      client as any,
-      'gpt-4',
-      category,
-      'TestAgent',
-      'bugs',
-      registry
-    );
+    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs', registry);
     await agent.review(makeRun(), makeContext());
 
     const calls = getCalls();
     expect(calls).toHaveLength(5);
 
     for (let i = 0; i < 4; i++) {
-      expect(calls[i].tool_choice).toBe('auto');
-      expect(calls[i].response_format).toBeUndefined();
+      expect(calls[i].providerOptions).toEqual({ tool_choice: 'auto' });
+      expect(calls[i].responseFormat).toBeUndefined();
     }
-    expect(calls[4].tool_choice).toBe('none');
-    expect(calls[4].response_format).toEqual({ type: 'json_object' });
+    expect(calls[4].providerOptions).toEqual({ tool_choice: 'none' });
+    expect(calls[4].responseFormat).toBe('json');
   });
 
   test('ReAct: dead-loop prevention — need_more_investigation=true but no tool call injects user prompt', async () => {
     const registry = new ToolRegistry();
     registry.register(makeDummyTool());
 
-    const _callCount = 0;
-    const { client, getCalls } = createMockOpenAI([
+    const { gateway, getCalls } = createMockGateway([
       () => jsonResponse({ findings: [], need_more_investigation: true }),
       () => jsonResponse({ findings: [], need_more_investigation: false }),
     ]);
 
-    const agent = new SpecialistAgent(
-      client as any,
-      'gpt-4',
-      category,
-      'TestAgent',
-      'bugs',
-      registry
-    );
-    const _result = await agent.review(makeRun(), makeContext());
+    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs', registry);
+    await agent.review(makeRun(), makeContext());
 
     const calls = getCalls();
     expect(calls.length).toBeGreaterThanOrEqual(2);
 
     const secondCallMessages = calls[1].messages;
     const lastUserMsg = secondCallMessages.filter((m: any) => m.role === 'user').pop();
+    expect(lastUserMsg).toBeDefined();
+    if (!lastUserMsg) throw new Error('Expected user message in second call');
     expect(lastUserMsg.content).toContain('使用工具');
   });
 
@@ -278,19 +260,12 @@ describe('SpecialistAgent ReAct loop', () => {
       suggestion: 'Fix v2',
     };
 
-    const { client } = createMockOpenAI([
+    const { gateway } = createMockGateway([
       () => jsonResponse({ findings: [findingV1], need_more_investigation: true }),
       () => jsonResponse({ findings: [findingV2], need_more_investigation: false }),
     ]);
 
-    const agent = new SpecialistAgent(
-      client as any,
-      'gpt-4',
-      category,
-      'TestAgent',
-      'bugs',
-      registry
-    );
+    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs', registry);
     const result = await agent.review(makeRun(), makeContext());
 
     expect(result.findings).toHaveLength(1);
@@ -326,19 +301,12 @@ describe('SpecialistAgent ReAct loop', () => {
       fingerprint: 'fp-bbb',
     };
 
-    const { client } = createMockOpenAI([
+    const { gateway } = createMockGateway([
       () => jsonResponse({ findings: [finding1], need_more_investigation: true }),
       () => jsonResponse({ findings: [finding2], need_more_investigation: false }),
     ]);
 
-    const agent = new SpecialistAgent(
-      client as any,
-      'gpt-4',
-      category,
-      'TestAgent',
-      'bugs',
-      registry
-    );
+    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs', registry);
     const result = await agent.review(makeRun(), makeContext());
 
     expect(result.findings).toHaveLength(2);
@@ -351,20 +319,13 @@ describe('SpecialistAgent ReAct loop', () => {
     const registry = new ToolRegistry();
     registry.register(makeDummyTool());
 
-    const { client } = createMockOpenAI([
+    const { gateway } = createMockGateway([
       () => {
         throw new Error('API rate limited');
       },
     ]);
 
-    const agent = new SpecialistAgent(
-      client as any,
-      'gpt-4',
-      category,
-      'TestAgent',
-      'bugs',
-      registry
-    );
+    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs', registry);
     const result = await agent.review(makeRun(), makeContext());
 
     expect(result.findings).toHaveLength(0);
@@ -375,27 +336,21 @@ describe('SpecialistAgent ReAct loop', () => {
     const registry = new ToolRegistry();
     registry.register(makeDummyTool('search_code'));
 
-    const { client, getCalls } = createMockOpenAI([
+    const { gateway, getCalls } = createMockGateway([
       () => toolCallResponse([{ id: 'call_1', name: 'nonexistent_tool', args: {} }]),
       () => jsonResponse({ findings: [], need_more_investigation: false }),
     ]);
 
-    const agent = new SpecialistAgent(
-      client as any,
-      'gpt-4',
-      category,
-      'TestAgent',
-      'bugs',
-      registry
-    );
-    const _result = await agent.review(makeRun(), makeContext());
+    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs', registry);
+    await agent.review(makeRun(), makeContext());
 
     const calls = getCalls();
     expect(calls).toHaveLength(2);
     const toolResultMsg = calls[1].messages.find(
-      (m: any) => m.role === 'tool' && m.tool_call_id === 'call_1'
+      (m: any) => m.role === 'tool' && m.toolCallId === 'call_1'
     );
     expect(toolResultMsg).toBeTruthy();
+    if (!toolResultMsg) throw new Error('Expected tool result message');
     const parsed = JSON.parse(toolResultMsg.content);
     expect(parsed.error).toContain('未找到');
   });
@@ -409,25 +364,20 @@ describe('SpecialistAgent ReAct loop', () => {
       },
     });
 
-    const { client, getCalls } = createMockOpenAI([
+    const { gateway, getCalls } = createMockGateway([
       () => toolCallResponse([{ id: 'call_1', name: 'search_code', args: { query: 'x' } }]),
       () => jsonResponse({ findings: [], need_more_investigation: false }),
     ]);
 
-    const agent = new SpecialistAgent(
-      client as any,
-      'gpt-4',
-      category,
-      'TestAgent',
-      'bugs',
-      registry
-    );
+    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs', registry);
     await agent.review(makeRun(), makeContext());
 
     const calls = getCalls();
     const toolResultMsg = calls[1].messages.find(
-      (m: any) => m.role === 'tool' && m.tool_call_id === 'call_1'
+      (m: any) => m.role === 'tool' && m.toolCallId === 'call_1'
     );
+    expect(toolResultMsg).toBeTruthy();
+    if (!toolResultMsg) throw new Error('Expected tool result message');
     const parsed = JSON.parse(toolResultMsg.content);
     expect(parsed.error).toContain('Sandbox timeout');
   });
@@ -436,16 +386,9 @@ describe('SpecialistAgent ReAct loop', () => {
     const registry = new ToolRegistry();
     registry.register(makeDummyTool());
 
-    const { client } = createMockOpenAI([() => emptyResponse()]);
+    const { gateway } = createMockGateway([() => emptyResponse()]);
 
-    const agent = new SpecialistAgent(
-      client as any,
-      'gpt-4',
-      category,
-      'TestAgent',
-      'bugs',
-      registry
-    );
+    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs', registry);
     const result = await agent.review(makeRun(), makeContext());
 
     expect(result.findings).toHaveLength(0);
@@ -455,18 +398,16 @@ describe('SpecialistAgent ReAct loop', () => {
     const registry = new ToolRegistry();
     registry.register(makeDummyTool());
 
-    const { client } = createMockOpenAI([
-      () => ({ choices: [{ message: { role: 'assistant', content: 'not valid json {{{' } }] }),
+    const { gateway } = createMockGateway([
+      () => ({
+        content: 'not valid json {{{',
+        toolCalls: [],
+        finishReason: 'stop',
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+      }),
     ]);
 
-    const agent = new SpecialistAgent(
-      client as any,
-      'gpt-4',
-      category,
-      'TestAgent',
-      'bugs',
-      registry
-    );
+    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs', registry);
     const result = await agent.review(makeRun(), makeContext());
 
     expect(result.findings).toHaveLength(0);
@@ -487,18 +428,11 @@ describe('SpecialistAgent ReAct loop', () => {
       suggestion: 'Add check',
     };
 
-    const { client } = createMockOpenAI([
+    const { gateway } = createMockGateway([
       () => jsonResponse({ findings: [finding], need_more_investigation: false }),
     ]);
 
-    const agent = new SpecialistAgent(
-      client as any,
-      'gpt-4',
-      category,
-      'TestAgent',
-      'bugs',
-      registry
-    );
+    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs', registry);
     const result = await agent.review(makeRun(), makeContext());
 
     expect(result.findings).toHaveLength(1);
