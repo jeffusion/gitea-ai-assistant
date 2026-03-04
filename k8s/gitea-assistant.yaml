@@ -1,0 +1,142 @@
+---
+# Secret for sensitive environment variables
+# Replace base64-encoded values before applying:
+#   echo -n "your_value" | base64
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gitea-assistant-secret
+  namespace: gitea-assistant
+  labels:
+    app.kubernetes.io/name: gitea-assistant
+    app.kubernetes.io/part-of: gitea-assistant
+type: Opaque
+data:
+  # REQUIRED: replace with your own base64-encoded values
+  GITEA_ACCESS_TOKEN: eW91cl9naXRlYV90b2tlbg==
+  OPENAI_API_KEY: eW91cl9vcGVuYWlfa2V5
+  WEBHOOK_SECRET: eW91cl93ZWJob29rX3NlY3JldA==
+  ADMIN_PASSWORD: cGFzc3dvcmQ=
+  # Optional
+  # FEISHU_WEBHOOK_URL: ""
+  # FEISHU_WEBHOOK_SECRET: ""
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitea-assistant-config
+  namespace: gitea-assistant
+  labels:
+    app.kubernetes.io/name: gitea-assistant
+    app.kubernetes.io/part-of: gitea-assistant
+data:
+  GITEA_API_URL: "http://localhost:3000/api/v1"
+  OPENAI_BASE_URL: "https://api.openai.com/v1"
+  OPENAI_MODEL: "gpt-4o-mini"
+  PORT: "3000"
+  QDRANT_URL: "http://qdrant.gitea-assistant.svc.cluster.local:6333"
+  REVIEW_ENGINE: "legacy"
+  REVIEW_WORKDIR: "/tmp/gitea-assistant"
+  REVIEW_MODEL_PLANNER: "gpt-4o-mini"
+  REVIEW_MODEL_SPECIALIST: "gpt-4o-mini"
+  REVIEW_MODEL_JUDGE: "gpt-4o-mini"
+  REVIEW_MAX_PARALLEL_RUNS: "2"
+  REVIEW_MAX_FILES_PER_RUN: "200"
+  REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE: "0.8"
+  REVIEW_ENABLE_HUMAN_GATE: "true"
+  ENABLE_MEMORY: "false"
+  ENABLE_REFLECTION: "false"
+  ENABLE_DEBATE: "false"
+  config-overrides.json: |
+    {
+      "version": 1,
+      "updatedAt": "2026-03-01T10:50:57.952Z",
+      "overrides": {}
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitea-assistant
+  namespace: gitea-assistant
+  labels:
+    app.kubernetes.io/name: gitea-assistant
+    app.kubernetes.io/part-of: gitea-assistant
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gitea-assistant
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gitea-assistant
+        app.kubernetes.io/part-of: gitea-assistant
+    spec:
+      containers:
+        - name: gitea-assistant
+          image: ghcr.io/jeffusion/gitea-ai-assistant:latest
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: gitea-assistant-config
+            - secretRef:
+                name: gitea-assistant-secret
+          resources:
+            limits:
+              memory: "512Mi"
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+          volumeMounts:
+            - name: config-overrides
+              mountPath: /app/config-overrides.json
+              subPath: config-overrides.json
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: config-overrides
+          configMap:
+            name: gitea-assistant-config
+            items:
+              - key: config-overrides.json
+                path: config-overrides.json
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitea-assistant
+  namespace: gitea-assistant
+  labels:
+    app.kubernetes.io/name: gitea-assistant
+    app.kubernetes.io/part-of: gitea-assistant
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: gitea-assistant
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+      protocol: TCP
