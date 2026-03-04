@@ -48,12 +48,7 @@ data:
   ENABLE_MEMORY: "false"
   ENABLE_REFLECTION: "false"
   ENABLE_DEBATE: "false"
-  config-overrides.json: |
-    {
-      "version": 1,
-      "updatedAt": "2026-03-01T10:50:57.952Z",
-      "overrides": {}
-    }
+  CONFIG_OVERRIDES_PATH: "/app/data/config-overrides.json"
 
 ---
 apiVersion: apps/v1
@@ -94,10 +89,8 @@ spec:
               memory: "256Mi"
               cpu: "100m"
           volumeMounts:
-            - name: config-overrides
-              mountPath: /app/config-overrides.json
-              subPath: config-overrides.json
-              readOnly: true
+            - name: data
+              mountPath: /app/data
           livenessProbe:
             httpGet:
               path: /
@@ -115,12 +108,8 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 3
       volumes:
-        - name: config-overrides
-          configMap:
-            name: gitea-assistant-config
-            items:
-              - key: config-overrides.json
-                path: config-overrides.json
+        - name: data
+          emptyDir: {}
 
 ---
 apiVersion: v1
