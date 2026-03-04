@@ -175,6 +175,55 @@ docker run -d -p 3000:3000 --env-file .env gitea-assistant
 docker-compose up -d
 ```
 
+### Kubernetes
+
+Kubernetes manifests are located in the `k8s/` directory.
+
+**1. Configure Secrets**
+
+Encode your credentials as base64 and update `k8s/gitea-assistant.yaml`:
+
+```bash
+echo -n "your_gitea_token" | base64
+echo -n "your_openai_key" | base64
+echo -n "your_webhook_secret" | base64
+echo -n "your_admin_password" | base64
+```
+
+**2. Configure Application**
+
+Edit the ConfigMap in `k8s/gitea-assistant.yaml`:
+
+- Set `GITEA_API_URL` to your Gitea instance API endpoint
+- Adjust model and review engine settings as needed
+
+**3. Deploy**
+
+```bash
+# Using Kustomize (recommended)
+kubectl apply -k k8s/
+
+# Or apply individually
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/qdrant.yaml
+kubectl apply -f k8s/gitea-assistant.yaml
+```
+
+**4. Verify**
+
+```bash
+kubectl -n gitea-assistant get pods
+kubectl -n gitea-assistant get svc
+```
+
+**5. Expose the Service (optional)**
+
+By default, services use `ClusterIP`. To expose externally, use an Ingress or change the Service type:
+
+```bash
+kubectl -n gitea-assistant patch svc gitea-assistant -p '{"spec":{"type":"NodePort"}}'
+```
+
 ## License
 
 MIT License

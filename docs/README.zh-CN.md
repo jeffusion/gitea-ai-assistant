@@ -175,6 +175,55 @@ docker run -d -p 3000:3000 --env-file .env gitea-assistant
 docker-compose up -d
 ```
 
+### Kubernetes
+
+Kubernetes 部署清单位于 `k8s/` 目录。
+
+**1. 配置密钥**
+
+将凭证编码为 base64 并更新 `k8s/gitea-assistant.yaml` 中的 Secret：
+
+```bash
+echo -n "your_gitea_token" | base64
+echo -n "your_openai_key" | base64
+echo -n "your_webhook_secret" | base64
+echo -n "your_admin_password" | base64
+```
+
+**2. 配置应用**
+
+编辑 `k8s/gitea-assistant.yaml` 中的 ConfigMap：
+
+- 将 `GITEA_API_URL` 设置为你的 Gitea 实例 API 地址
+- 根据需要调整模型和审查引擎配置
+
+**3. 部署**
+
+```bash
+# 使用 Kustomize（推荐）
+kubectl apply -k k8s/
+
+# 或逐个应用
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/qdrant.yaml
+kubectl apply -f k8s/gitea-assistant.yaml
+```
+
+**4. 验证**
+
+```bash
+kubectl -n gitea-assistant get pods
+kubectl -n gitea-assistant get svc
+```
+
+**5. 暴露服务（可选）**
+
+默认使用 `ClusterIP` 类型。如需外部访问，可使用 Ingress 或修改 Service 类型：
+
+```bash
+kubectl -n gitea-assistant patch svc gitea-assistant -p '{"spec":{"type":"NodePort"}}'
+```
+
 ## 许可证
 
 MIT 许可证
