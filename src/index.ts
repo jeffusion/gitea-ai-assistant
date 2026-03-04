@@ -1,12 +1,14 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
 import { jwt } from 'hono/jwt';
-import OpenAI from 'openai';
 import config from './config';
 import { adminController } from './controllers/admin';
 import { configRouter } from './controllers/config';
 import { feedbackRouter, initializeFeedbackSystem } from './controllers/feedback';
+import { llmConfigRouter } from './controllers/llm-config';
 import { handleGiteaWebhook } from './controllers/review';
+import { initMasterKey } from './crypto/secrets';
+import { initDatabase } from './db/database';
 import { reviewEngine } from './review/engine';
 
 // 创建Hono应用实例
@@ -47,6 +49,7 @@ adminProtected.use('/*', jwt({ secret: config.admin.jwtSecret, alg: 'HS256' }));
 adminProtected.route('/', adminController.protectedRoutes);
 adminProtected.route('/feedback', feedbackRouter);
 adminProtected.route('/config', configRouter);
+adminProtected.route('/llm', llmConfigRouter);
 app.route('/admin/api', adminProtected);
 
 // --- 前端静态文件服务 ---
@@ -61,17 +64,16 @@ app.get('*', serveStatic({ path: './public/index.html' }));
 const port = config.app.port;
 console.log(`⚡️ 服务启动在 http://localhost:${port}`);
 
+initMasterKey();
+initDatabase();
+
 reviewEngine.start().catch((error) => {
   console.error('❌ 启动Agent Review Engine失败', error);
 });
 
 // 初始化反馈系统（总是初始化，记忆系统可选）
-const openaiClient = new OpenAI({
-  baseURL: config.openai.baseUrl,
-  apiKey: config.openai.apiKey,
-});
 const reviewStore = reviewEngine.getStore();
-initializeFeedbackSystem(openaiClient, reviewStore);
+initializeFeedbackSystem(reviewStore);
 
 if (config.review.enableMemory) {
   console.log('✅ 反馈系统已初始化（含向量记忆）');
