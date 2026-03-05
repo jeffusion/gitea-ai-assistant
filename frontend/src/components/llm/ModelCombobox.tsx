@@ -1,11 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { useQuery } from '@tanstack/react-query';
-import { fetchModels, fetchModelSuggestions } from '@/services/llmProviderService';
+import { fetchModelSuggestions } from '@/services/llmProviderService';
 import type { ProviderType } from '@/services/llmProviderService';
 
 interface ModelComboboxProps {
-  providerId?: string | null;
   providerType?: ProviderType;
   value: string;
   onChange: (model: string) => void;
@@ -15,7 +14,6 @@ interface ModelComboboxProps {
 }
 
 export function ModelCombobox({
-  providerId,
   providerType,
   value,
   onChange,
@@ -32,15 +30,6 @@ export function ModelCombobox({
     setInputValue(value);
   }, [value]);
 
-  const { data: fetchedModels = [], isLoading } = useQuery({
-    queryKey: ['llm-models', providerId, providerType],
-    queryFn: () => {
-      if (providerId) return fetchModels(providerId);
-      return Promise.resolve([]);
-    },
-    enabled: !!providerId,
-    staleTime: 5 * 60 * 1000,
-  });
 
   // Fetch dynamic model suggestions from backend (powered by models.dev)
   const { data: suggestions = {} } = useQuery({
@@ -49,11 +38,10 @@ export function ModelCombobox({
     staleTime: 30 * 60 * 1000, // 30 min cache
   });
 
-  // Build tagged model list: API > suggestions > custom input
-  const useApiFetched = fetchedModels.length > 0;
+  // Build model list: suggestions > custom input
   const suggestionModels = providerType ? suggestions[providerType] || [] : [];
 
-  type TaggedModel = { name: string; tag: 'API' | '推荐' | '自定义' };
+  type TaggedModel = { name: string; tag: '推荐' | '自定义' };
 
   const trimmedInput = inputValue.trim().toLowerCase();
 
@@ -61,23 +49,10 @@ export function ModelCombobox({
     const result: TaggedModel[] = [];
     const seen = new Set<string>();
 
-    // API models first
-    if (useApiFetched) {
-      for (const m of fetchedModels) {
-        if (m.toLowerCase().includes(trimmedInput)) {
-          result.push({ name: m, tag: 'API' });
-          seen.add(m.toLowerCase());
-        }
-      }
-    }
-
-    // Suggestion models (only show when no API results, or as supplement)
-    if (!useApiFetched) {
-      for (const m of suggestionModels) {
-        if (!seen.has(m.toLowerCase()) && m.toLowerCase().includes(trimmedInput)) {
-          result.push({ name: m, tag: '推荐' });
-          seen.add(m.toLowerCase());
-        }
+    for (const m of suggestionModels) {
+      if (!seen.has(m.toLowerCase()) && m.toLowerCase().includes(trimmedInput)) {
+        result.push({ name: m, tag: '推荐' });
+        seen.add(m.toLowerCase());
       }
     }
 
@@ -92,7 +67,6 @@ export function ModelCombobox({
   const taggedModels = buildTaggedList();
 
   const TAG_STYLES: Record<string, string> = {
-    'API': 'bg-emerald-500/15 text-emerald-400',
     '推荐': 'bg-blue-500/15 text-blue-400',
     '自定义': 'bg-amber-500/15 text-amber-400',
   };
@@ -132,11 +106,6 @@ export function ModelCombobox({
           autoComplete="off"
           className="bg-zinc-900 border-white/10 text-white w-full pr-10"
         />
-        {isLoading && (
-          <div className="absolute right-3 top-1/2 -translate-y-1/2">
-            <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-          </div>
-        )}
       </div>
 
       {isOpen && !disabled && taggedModels.length > 0 && (

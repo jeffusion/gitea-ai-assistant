@@ -20,7 +20,12 @@ vi.mock('@/services/llmProviderService', async () => {
     fetchProviders: vi.fn(),
     fetchRoles: vi.fn(),
     setRole: vi.fn(),
-    fetchModels: vi.fn().mockResolvedValue([]),
+    fetchModelSuggestions: vi.fn().mockResolvedValue({
+      openai_compatible: ['gpt-4o', 'gpt-4o-mini'],
+      openai_responses: ['gpt-4o', 'gpt-4o-mini'],
+      anthropic: ['claude-sonnet-4-20250514'],
+      gemini: ['gemini-2.5-pro'],
+    }),
   };
 });
 

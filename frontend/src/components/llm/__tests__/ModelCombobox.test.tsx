@@ -4,13 +4,11 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ModelCombobox } from '../ModelCombobox';
-import { fetchModels } from '@/services/llmProviderService';
 
 vi.mock('@/services/llmProviderService', async () => {
   const actual = await vi.importActual<typeof import('@/services/llmProviderService')>('@/services/llmProviderService');
   return {
     ...actual,
-    fetchModels: vi.fn(),
     fetchModelSuggestions: vi.fn().mockResolvedValue({
       openai_compatible: ['gpt-4o', 'gpt-4o-mini', 'deepseek-chat'],
       openai_responses: ['gpt-4o', 'gpt-4o-mini', 'o3-mini'],
@@ -30,32 +28,12 @@ function renderWithQuery(ui: ReactNode) {
 }
 
 describe('ModelCombobox', () => {
-  it('shows API tag and selects API model', async () => {
-    vi.mocked(fetchModels).mockResolvedValueOnce(['api-model-1']);
+  it('shows 推荐 models matching providerType and supports custom input', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
 
     renderWithQuery(
-      <ModelCombobox providerId="p1" providerType="openai_compatible" value="" onChange={onChange} />,
-    );
-
-    const input = screen.getByPlaceholderText('选择或输入模型...');
-    await user.click(input);
-
-    expect(await screen.findByText('api-model-1')).toBeInTheDocument();
-    expect(screen.getByText('API')).toBeInTheDocument();
-
-    await user.click(screen.getByText('api-model-1'));
-    expect(onChange).toHaveBeenCalledWith('api-model-1');
-  });
-
-  it('shows 推荐 and 自定义 tags and supports custom input', async () => {
-    vi.mocked(fetchModels).mockResolvedValueOnce([]);
-    const user = userEvent.setup();
-    const onChange = vi.fn();
-
-    renderWithQuery(
-      <ModelCombobox providerId="p2" providerType="openai_compatible" value="" onChange={onChange} />,
+      <ModelCombobox providerType="openai_compatible" value="" onChange={onChange} />,
     );
 
     const input = screen.getByPlaceholderText('选择或输入模型...');
@@ -73,5 +51,19 @@ describe('ModelCombobox', () => {
     await waitFor(() => {
       expect(onChange).toHaveBeenCalledWith('my-custom-model');
     });
+  });
+
+  it('shows different models when providerType changes', async () => {
+    const onChange = vi.fn();
+
+    renderWithQuery(
+      <ModelCombobox providerType="anthropic" value="" onChange={onChange} />,
+    );
+
+    const input = screen.getByPlaceholderText('选择或输入模型...');
+    await userEvent.click(input);
+
+    expect(await screen.findByText('claude-sonnet-4-20250514')).toBeInTheDocument();
+    expect(screen.queryByText('gpt-4o')).not.toBeInTheDocument();
   });
 });

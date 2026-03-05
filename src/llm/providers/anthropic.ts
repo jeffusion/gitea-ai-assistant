@@ -220,15 +220,6 @@ class AnthropicProvider implements LLMProvider {
     }
   }
 
-  async listModels(): Promise<string[]> {
-    const response = await this.client.models.list();
-    const models: string[] = [];
-    for await (const page of response.iterPages()) {
-      models.push(...page.data.map((model) => model.id));
-    }
-    return models;
-  }
-
   private wrapError(error: unknown): Error {
     if (error instanceof Anthropic.APIError) {
       if (error.status === 401) return new LLMAuthError(TYPE, error.message);

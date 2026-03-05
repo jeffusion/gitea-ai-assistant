@@ -134,7 +134,6 @@ function ProviderDialogInner({ onOpenChange, provider }: Omit<ProviderDialogProp
           <div className="space-y-2">
             <Label htmlFor="defaultModel">默认模型 <span className="text-red-500">*</span></Label>
             <ModelCombobox
-              providerId={provider?.hasKey ? provider.id : null}
               providerType={type}
               value={defaultModel}
               onChange={setDefaultModel}
