@@ -8,31 +8,55 @@ import { FileReviewStore } from './store/file-review-store';
 import { CommitReviewPayload, PullRequestReviewPayload, ReviewRun } from './types';
 
 class ReviewEngine {
-  private readonly store = new FileReviewStore(config.review.workdir);
-  private readonly sandboxExec = new SandboxExec(config.review.allowedCommands);
-  private readonly localRepoManager = new LocalRepoManager(
-    config.review.workdir,
-    this.sandboxExec,
-    config.review.commandTimeoutMs,
-    config.gitea.accessToken
-  );
-  private readonly diffExtractor = new DiffExtractor(
-    this.sandboxExec,
-    this.localRepoManager,
-    config.review.commandTimeoutMs,
-    config.review.maxFilesPerRun,
-    config.review.maxFileContentChars
-  );
-  private readonly orchestrator = new ReviewOrchestrator(
-    this.store,
-    this.localRepoManager,
-    this.diffExtractor
-  );
-
+  // Sub-objects are created lazily per config snapshot.
+  // store holds state (runs, steps) so we keep ONE instance but update workdir.
+  private _store: FileReviewStore | null = null;
   private started = false;
   private activeRunsCount = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private tickInProgress = false;
+
+  /** Lazily-created store — stable singleton (holds review state). */
+  private get store(): FileReviewStore {
+    if (!this._store) {
+      this._store = new FileReviewStore(config.review.workdir);
+    }
+    return this._store;
+  }
+
+  /** Fresh SandboxExec that always reflects current allowed-commands config. */
+  private createSandboxExec(): SandboxExec {
+    return new SandboxExec(config.review.allowedCommands);
+  }
+
+  /** Fresh LocalRepoManager that reads current config values. */
+  private createLocalRepoManager(sandboxExec: SandboxExec): LocalRepoManager {
+    return new LocalRepoManager(
+      config.review.workdir,
+      sandboxExec,
+      config.review.commandTimeoutMs,
+      config.gitea.accessToken
+    );
+  }
+
+  /** Fresh DiffExtractor that reads current config values. */
+  private createDiffExtractor(sandboxExec: SandboxExec, localRepoManager: LocalRepoManager): DiffExtractor {
+    return new DiffExtractor(
+      sandboxExec,
+      localRepoManager,
+      config.review.commandTimeoutMs,
+      config.review.maxFilesPerRun,
+      config.review.maxFileContentChars
+    );
+  }
+
+  /** Create a fresh orchestrator with current config for each run. */
+  private createOrchestrator(): ReviewOrchestrator {
+    const sandboxExec = this.createSandboxExec();
+    const localRepoManager = this.createLocalRepoManager(sandboxExec);
+    const diffExtractor = this.createDiffExtractor(sandboxExec, localRepoManager);
+    return new ReviewOrchestrator(this.store, localRepoManager, diffExtractor);
+  }
 
   async start(): Promise<void> {
     if (this.started || config.review.engine !== 'agent') {
@@ -92,27 +116,23 @@ class ReviewEngine {
   }
 
   private async tick(): Promise<void> {
-    // 防止重入：如果上一次tick还在执行，跳过本次调度
     if (this.tickInProgress) {
       return;
     }
 
     this.tickInProgress = true;
     try {
-      // 检查是否达到并行限制
       const maxParallel = config.review.maxParallelRuns;
       if (this.activeRunsCount >= maxParallel) {
         return;
       }
 
-      // 尝试获取并启动新任务，直到达到并行上限
       while (this.activeRunsCount < maxParallel) {
         const run = await this.store.acquireNextQueuedRun();
         if (!run) {
-          break; // 队列为空
+          break;
         }
 
-        // 启动异步任务，不等待完成
         this.activeRunsCount++;
         this.processRun(run).finally(() => {
           this.activeRunsCount--;
@@ -132,10 +152,12 @@ class ReviewEngine {
       activeRuns: this.activeRunsCount,
     });
 
-    try {
-      await this.orchestrator.execute(run);
+    // Create a fresh orchestrator per run so it picks up latest config values
+    const orchestrator = this.createOrchestrator();
 
-      // 检查run状态，防止将ignored状态覆盖为succeeded
+    try {
+      await orchestrator.execute(run);
+
       const runDetails = await this.store.getRunDetails(run.id);
       if (runDetails && runDetails.run.status !== 'ignored') {
         await this.store.markRunSucceeded(run.id);

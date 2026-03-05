@@ -49,7 +49,10 @@ app.route('/admin/api', adminController.publicRoutes);
 
 // 受保护的路由
 const adminProtected = new Hono();
-adminProtected.use('/*', jwt({ secret: config.admin.jwtSecret, alg: 'HS256' }));
+adminProtected.use('/*', (c, next) => {
+  const jwtMiddleware = jwt({ secret: config.admin.jwtSecret, alg: 'HS256' });
+  return jwtMiddleware(c, next);
+});
 adminProtected.route('/', adminController.protectedRoutes);
 adminProtected.route('/feedback', feedbackRouter);
 adminProtected.route('/config', configRouter);

@@ -3,27 +3,11 @@ import config from '../config';
 import { logger } from '../utils/logger';
 
 export class FeishuService {
-  private webhookUrl?: string;
-  private webhookSecret?: string;
-
-  constructor() {
-    this.webhookUrl = config.feishu.webhookUrl;
-    this.webhookSecret = config.feishu.webhookSecret;
-
-    if (!this.webhookUrl) {
-      logger.info('飞书webhook URL未配置，飞书通知已禁用');
-    }
-
-    if (this.webhookUrl && !this.webhookSecret) {
-      logger.warn('飞书webhook密钥未配置，签名验证将被禁用');
-    }
-  }
-
   /**
    * 判断飞书通知是否已启用
    */
   isEnabled(): boolean {
-    return !!this.webhookUrl;
+    return !!config.feishu.webhookUrl;
   }
 
   /**
@@ -43,7 +27,10 @@ export class FeishuService {
    * @param usernames 需要@的用户名列表
    */
   async sendMessage(content: string, usernames: string[] = []): Promise<void> {
-    if (!this.webhookUrl) {
+    const webhookUrl = config.feishu.webhookUrl;
+    const webhookSecret = config.feishu.webhookSecret;
+
+    if (!webhookUrl) {
       logger.debug('飞书通知已跳过: webhook URL未配置');
       return;
     }
@@ -66,12 +53,12 @@ export class FeishuService {
       }
 
       // 如果配置了密钥，添加签名
-      if (this.webhookSecret) {
+      if (webhookSecret) {
         message.timestamp = timestamp;
-        message.sign = this.generateSign(timestamp, this.webhookSecret);
+        message.sign = this.generateSign(timestamp, webhookSecret);
       }
 
-      const response = await fetch(this.webhookUrl, {
+      const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
