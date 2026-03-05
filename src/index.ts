@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
 import { jwt } from 'hono/jwt';
-import config from './config';
+import config, { configManager } from './config';
 import { adminController } from './controllers/admin';
 import { configRouter } from './controllers/config';
 import { feedbackRouter, initializeFeedbackSystem } from './controllers/feedback';
@@ -10,6 +10,10 @@ import { handleGiteaWebhook } from './controllers/review';
 import { initMasterKey } from './crypto/secrets';
 import { initDatabase } from './db/database';
 import { reviewEngine } from './review/engine';
+
+initMasterKey();
+initDatabase();
+configManager.seedDefaults();
 
 // 创建Hono应用实例
 const app = new Hono();
@@ -31,7 +35,7 @@ app.get('/', (c) => {
       },
       signature: webhookSecretConfigured
         ? '签名验证已启用 (使用X-Gitea-Signature头)'
-        : '警告: 签名验证未配置，建议设置WEBHOOK_SECRET环境变量',
+        : '警告: 签名验证未配置，建议在管理后台设置 Webhook 密钥',
     },
   });
 });
@@ -63,9 +67,6 @@ app.get('*', serveStatic({ path: './public/index.html' }));
 // 启动服务器
 const port = config.app.port;
 console.log(`⚡️ 服务启动在 http://localhost:${port}`);
-
-initMasterKey();
-initDatabase();
 
 reviewEngine.start().catch((error) => {
   console.error('❌ 启动Agent Review Engine失败', error);
