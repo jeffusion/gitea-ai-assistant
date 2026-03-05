@@ -38,8 +38,12 @@ From [package.json](mdc:package.json):
 
 ## Environment Configuration
 
-The application uses a hybrid configuration approach:
+The application uses a **DB-first** configuration approach (Portainer model):
 
-- **Environment variables** ([src/config/index.ts](mdc:src/config/index.ts)): Gitea settings, server config, webhook security, review engine params
-- **Web UI + SQLite DB** ([src/db/](mdc:src/db)): LLM provider settings (API keys, models, endpoints) — managed via Admin Dashboard
-- **bun:sqlite**: Embedded database for LLM configuration persistence
+- **Environment variables** (minimal, infrastructure-level only):
+  - `PORT`: Server port
+  - `DATABASE_PATH`: SQLite file path (optional, default: `./data/assistant.db`)
+  - `MASTER_KEY_PATH`: Encryption key path (optional, default: `./data/master.key`)
+- **Web UI + SQLite DB** ([src/db/](mdc:src/db)): All runtime config — Gitea, Feishu, webhook secret, admin password, review engine, memory settings — managed via Admin Dashboard
+- **First-boot seed**: `configManager.seedDefaults()` auto-generates secrets and seeds defaults on first run
+- **bun:sqlite**: Embedded database for all configuration persistence (encrypted for sensitive values)

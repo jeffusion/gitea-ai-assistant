@@ -46,15 +46,15 @@ services:
       - NODE_ENV=production
       - GITEA_API_URL=http://gitea:3000/api/v1
       - GITEA_ACCESS_TOKEN=${E2E_GITEA_TOKEN:-placeholder}
-      - FEISHU_WEBHOOK_URL=http://localhost:9999/noop
       - PORT=3000
-      - WEBHOOK_SECRET=e2e-test-secret
-      - REVIEW_ENGINE=agent
-      - REVIEW_WORKDIR=/tmp/e2e-review
-      - REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE=0.5
-      - REVIEW_ENABLE_HUMAN_GATE=false
-      - REVIEW_ALLOWED_COMMANDS=git,rg,cat,sed,wc
-      - REVIEW_COMMAND_TIMEOUT_MS=30000
+    ports:
+      - "3334:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     ports:
       - "3334:3000"
     healthcheck:
