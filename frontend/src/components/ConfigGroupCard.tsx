@@ -33,12 +33,12 @@ export function ConfigGroupCard({
   onReset,
   isResetting,
 }: ConfigGroupCardProps) {
-  const hasOverride = group.fields.some((f) => f.source === 'override');
+  const hasOverride = group.fields.some((f) => f.source === 'db');
 
   const handleReset = () => {
-    // Only reset fields that actually have overrides
+    // Only reset fields that have been stored in DB
     const keysToReset = group.fields
-      .filter((f) => f.source === 'override')
+      .filter((f) => f.source === 'db')
       .map((f) => f.envKey);
 
     if (keysToReset.length > 0) {

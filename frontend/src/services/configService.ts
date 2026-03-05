@@ -1,6 +1,6 @@
 import api from '@/lib/api';
 
-export type ConfigSource = 'default' | 'env' | 'override';
+export type ConfigSource = 'default' | 'db';
 export type ConfigFieldType = 'string' | 'number' | 'boolean' | 'url' | 'text' | 'enum';
 
 export interface ConfigFieldDto {
@@ -9,8 +9,6 @@ export interface ConfigFieldDto {
   description: string;
   type: ConfigFieldType;
   sensitive: boolean;
-  readonly?: boolean;
-  readonlyWarning?: string;
   enumValues?: string[];
   min?: number;
   max?: number;

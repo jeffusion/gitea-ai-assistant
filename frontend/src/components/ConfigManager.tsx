@@ -97,7 +97,7 @@ export function ConfigManager() {
     if (!data) return;
     const allOverrideKeys = data.groups
       .flatMap((g) => g.fields)
-      .filter((f) => f.source === 'override')
+      .filter((f) => f.source === 'db')
       .map((f) => f.envKey);
     if (allOverrideKeys.length === 0) return;
     if (confirm('确定要重置所有配置到默认值吗？这将立即生效。')) {
@@ -106,7 +106,7 @@ export function ConfigManager() {
   };
 
   const hasOverrides = data?.groups.some((g) =>
-    g.fields.some((f) => f.source === 'override')
+    g.fields.some((f) => f.source === 'db')
   ) ?? false;
 
   if (isLoading) {
