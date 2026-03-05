@@ -8,24 +8,28 @@ export interface LineComment {
   comment: string;
 }
 
-// 创建API客户端
+// API客户端 — 使用 interceptor 确保每次请求都读取最新的 config
 const giteaClient = axios.create({
-  baseURL: config.gitea.apiUrl,
-  headers: {
-    Authorization: `token ${config.gitea.accessToken}`,
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
+});
+giteaClient.interceptors.request.use((req) => {
+  req.baseURL = config.gitea.apiUrl;
+  req.headers.Authorization = `token ${config.gitea.accessToken}`;
+  return req;
 });
 
-// 创建用于管理操作的API客户端
+// 管理操作的API客户端 — 同样动态读取 config
 const giteaAdminClient = axios.create({
-  baseURL: config.gitea.apiUrl,
   headers: {
-    Authorization: `token ${config.admin.giteaAdminToken || config.gitea.accessToken}`,
     'Content-Type': 'application/json',
-    'User-Agent': 'curl/7.81.0', // 伪装成 curl
+    'User-Agent': 'curl/7.81.0',
   },
-  proxy: false, // 禁用所有代理
+  proxy: false,
+});
+giteaAdminClient.interceptors.request.use((req) => {
+  req.baseURL = config.gitea.apiUrl;
+  req.headers.Authorization = `token ${config.admin.giteaAdminToken || config.gitea.accessToken}`;
+  return req;
 });
 
 // Gitea服务接口定义
