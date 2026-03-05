@@ -6,6 +6,7 @@ import { logger } from '../utils/logger';
 import { DebateOrchestrator } from './agents/debate-orchestrator';
 import { JudgeAgent } from './agents/judge-agent';
 import { ReflexionAgent } from './agents/reflexion-agent';
+import { TriageAgent, type TriageResult } from './agents/triage-agent';
 import { DiffExtractor } from './context/diff-extractor';
 import { LocalRepoManager, LocalRepoPaths } from './context/local-repo-manager';
 import { LearningSystem } from './learning/learning-system';
@@ -44,12 +45,14 @@ function summarizeGatedCount(gatedCount: number): string {
 export class ReviewOrchestrator {
   private readonly gateway: LLMGateway;
   private readonly toolRegistry: ToolRegistry;
+  private readonly agentMap: Record<string, ReflexionAgent>;
   private readonly correctnessAgent: ReflexionAgent;
   private readonly securityAgent: ReflexionAgent;
   private readonly reliabilityAgent: ReflexionAgent;
   private readonly maintainabilityAgent: ReflexionAgent;
   private readonly judgeAgent: JudgeAgent;
   private readonly debateOrchestrator: DebateOrchestrator;
+  private readonly triageAgent: TriageAgent;
   private readonly memoryStore?: VectorMemoryStore;
   private readonly learningSystem?: LearningSystem;
 
@@ -121,6 +124,15 @@ export class ReviewOrchestrator {
 
     this.judgeAgent = new JudgeAgent();
     this.debateOrchestrator = new DebateOrchestrator(this.gateway);
+    this.triageAgent = new TriageAgent(this.gateway);
+
+    // Build agent map for dynamic dispatch
+    this.agentMap = {
+      correctness: this.correctnessAgent,
+      security: this.securityAgent,
+      reliability: this.reliabilityAgent,
+      maintainability: this.maintainabilityAgent,
+    };
   }
 
   async execute(run: ReviewRun): Promise<void> {
@@ -188,6 +200,32 @@ export class ReviewOrchestrator {
         return;
       }
 
+      // ── Triage: 决定哪些 specialist 需要参与 ─────────────────────────
+      let triage: TriageResult | null = null;
+      const enableTriage = config.review.enableTriage ?? true;
+
+      if (enableTriage) {
+        const triageStart = Date.now();
+        await this.store.addStep({
+          runId: run.id,
+          stepName: 'triage',
+          status: 'started',
+          startedAt: new Date(triageStart).toISOString(),
+        });
+
+        triage = await this.triageAgent.analyze(context);
+
+        await this.store.addStep({
+          runId: run.id,
+          stepName: 'triage',
+          status: 'succeeded',
+          startedAt: new Date(triageStart).toISOString(),
+          finishedAt: new Date().toISOString(),
+          latencyMs: Date.now() - triageStart,
+        });
+      }
+
+      // ── 按 triage 结果选择性派发 specialists ─────────────────────────
       const agentStart = Date.now();
       await this.store.addStep({
         runId: run.id,
@@ -196,24 +234,32 @@ export class ReviewOrchestrator {
         startedAt: new Date(agentStart).toISOString(),
       });
 
-      // 使用Reflection模式运行specialists
       const enableReflection = config.review.enableReflection ?? false;
       const maxReflectionRounds = config.review.maxReflectionRounds ?? 2;
 
-      const agentResults = await Promise.all([
-        enableReflection
-          ? this.correctnessAgent.reviewWithReflection(run, context, maxReflectionRounds)
-          : this.correctnessAgent.review(run, context),
-        enableReflection
-          ? this.securityAgent.reviewWithReflection(run, context, maxReflectionRounds)
-          : this.securityAgent.review(run, context),
-        enableReflection
-          ? this.reliabilityAgent.reviewWithReflection(run, context, maxReflectionRounds)
-          : this.reliabilityAgent.review(run, context),
-        enableReflection
-          ? this.maintainabilityAgent.reviewWithReflection(run, context, maxReflectionRounds)
-          : this.maintainabilityAgent.review(run, context),
-      ]);
+      // Select agents based on triage result
+      const agentsToRun = triage
+        ? triage.relevantDomains.map((domain) => this.agentMap[domain]).filter(Boolean)
+        : [this.correctnessAgent, this.securityAgent, this.reliabilityAgent, this.maintainabilityAgent];
+
+      // For trivial changes, skip reflection even if globally enabled
+      const useReflection = triage?.complexity === 'trivial' ? false : enableReflection;
+
+      logger.info('Specialist 派发决策', {
+        runId: run.id,
+        triageComplexity: triage?.complexity ?? 'disabled',
+        agentCount: agentsToRun.length,
+        domains: triage?.relevantDomains ?? ['correctness', 'security', 'reliability', 'maintainability'],
+        reflection: useReflection,
+      });
+
+      const agentResults = await Promise.all(
+        agentsToRun.map((agent) =>
+          useReflection
+            ? agent.reviewWithReflection(run, context, maxReflectionRounds)
+            : agent.review(run, context)
+        )
+      );
 
       await this.store.addStep({
         runId: run.id,
@@ -226,11 +272,11 @@ export class ReviewOrchestrator {
 
       let allFindings = agentResults.flatMap((result) => result.findings);
 
-      // 对高严重性findings启动Debate
+      // 对高严重性findings启动Debate（trivial 变更跳过 debate）
       const enableDebate = config.review.enableDebate ?? false;
       const debateThreshold = config.review.debateThreshold ?? 'high';
 
-      if (enableDebate && allFindings.length > 0) {
+      if (enableDebate && allFindings.length > 0 && triage?.complexity !== 'trivial') {
         const debateStart = Date.now();
         await this.store.addStep({
           runId: run.id,
