@@ -21,10 +21,9 @@ import { secretRepo } from '../repositories/secret-repo';
 
 describe('secret-repo', () => {
   let dbPath: string;
-  let keyPath: string;
   let providerId: string;
   const savedDbPath = process.env.DATABASE_PATH;
-  const savedKeyPath = process.env.MASTER_KEY_PATH;
+  const savedEncryptionKey = process.env.ENCRYPTION_KEY;
 
   const providerInput: CreateProviderInput = {
     name: 'Test Provider',
@@ -37,9 +36,8 @@ describe('secret-repo', () => {
     const tmpDir = join(tmpdir(), `db-test-${randomUUID()}`);
     mkdirSync(tmpDir, { recursive: true });
     dbPath = join(tmpDir, 'test.db');
-    keyPath = join(tmpDir, 'master.key');
     process.env.DATABASE_PATH = dbPath;
-    process.env.MASTER_KEY_PATH = keyPath;
+    process.env.ENCRYPTION_KEY = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('hex');
 
     initMasterKey();
     initDatabase();
@@ -55,10 +53,10 @@ describe('secret-repo', () => {
     } else {
       process.env.DATABASE_PATH = savedDbPath;
     }
-    if (savedKeyPath === undefined) {
-      delete process.env.MASTER_KEY_PATH;
+    if (savedEncryptionKey === undefined) {
+      delete process.env.ENCRYPTION_KEY;
     } else {
-      process.env.MASTER_KEY_PATH = savedKeyPath;
+      process.env.ENCRYPTION_KEY = savedEncryptionKey;
     }
     try {
       if (existsSync(dbPath)) unlinkSync(dbPath);
@@ -72,11 +70,6 @@ describe('secret-repo', () => {
     }
     try {
       if (existsSync(`${dbPath}-shm`)) unlinkSync(`${dbPath}-shm`);
-    } catch {
-      /* ok */
-    }
-    try {
-      if (existsSync(keyPath)) unlinkSync(keyPath);
     } catch {
       /* ok */
     }

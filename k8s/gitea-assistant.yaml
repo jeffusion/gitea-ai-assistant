@@ -1,4 +1,19 @@
 ---
+# Secret: sensitive configuration (create before deploying)
+# Generate a 64-char hex key: openssl rand -hex 32
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gitea-assistant-secret
+  namespace: gitea-assistant
+  labels:
+    app.kubernetes.io/name: gitea-assistant
+    app.kubernetes.io/part-of: gitea-assistant
+type: Opaque
+stringData:
+  ENCRYPTION_KEY: "" # REQUIRED: run `openssl rand -hex 32` and paste here
+
+---
 # ConfigMap: only infrastructure-level env vars that must be known before DB init
 apiVersion: v1
 kind: ConfigMap
@@ -43,6 +58,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: gitea-assistant-config
+            - secretRef:
+                name: gitea-assistant-secret
           resources:
             limits:
               memory: "512Mi"
@@ -70,8 +87,10 @@ spec:
             failureThreshold: 3
       volumes:
         - name: data
-          persistentVolumeClaim:
-            claimName: gitea-assistant-data
+          hostPath:
+            # Customize this path to match your node's storage layout
+            path: /opt/gitea-assistant/data
+            type: DirectoryOrCreate
 
 ---
 apiVersion: v1

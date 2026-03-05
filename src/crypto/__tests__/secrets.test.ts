@@ -10,10 +10,6 @@ declare module 'bun:test' {
 // @ts-expect-error bun:test is provided by Bun at runtime
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
-import { mkdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 /**
  * Import a fresh secrets module to bypass module cache (same pattern as config-manager.test.ts).
@@ -23,76 +19,58 @@ async function importFresh() {
   return await import(`../../crypto/secrets.ts?t=${Date.now()}-${randomUUID()}`);
 }
 
+/** Generate a valid 64-char hex key for tests */
+function generateHexKey(): string {
+  return Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('hex');
+}
+
 describe('secrets — AES-256-GCM encryption', () => {
-  let tmpDir: string;
-  let keyPath: string;
-  const savedMasterKeyPath = process.env.MASTER_KEY_PATH;
+  let savedEncryptionKey: string | undefined;
 
   beforeEach(() => {
-    tmpDir = join(tmpdir(), `secrets-test-${randomUUID()}`);
-    mkdirSync(tmpDir, { recursive: true });
-    keyPath = join(tmpDir, 'master.key');
-    process.env.MASTER_KEY_PATH = keyPath;
+    savedEncryptionKey = process.env.ENCRYPTION_KEY;
+    delete process.env.ENCRYPTION_KEY;
   });
 
   afterEach(() => {
-    if (savedMasterKeyPath === undefined) {
-      delete process.env.MASTER_KEY_PATH;
+    if (savedEncryptionKey === undefined) {
+      delete process.env.ENCRYPTION_KEY;
     } else {
-      process.env.MASTER_KEY_PATH = savedMasterKeyPath;
-    }
-    // Cleanup temp files
-    try {
-      if (existsSync(keyPath)) unlinkSync(keyPath);
-    } catch {
-      /* ok */
+      process.env.ENCRYPTION_KEY = savedEncryptionKey;
     }
   });
 
   // ─── Master Key Init ─────────────────────────────────────────────────
 
   describe('initMasterKey()', () => {
-    test('generates a new 32-byte key file when none exists', async () => {
-      const secrets = await importFresh();
-      expect(existsSync(keyPath)).toBe(false);
+    test('loads key from ENCRYPTION_KEY env var (hex)', async () => {
+      process.env.ENCRYPTION_KEY = generateHexKey();
 
+      const secrets = await importFresh();
       secrets.initMasterKey();
 
-      expect(existsSync(keyPath)).toBe(true);
-      const raw = readFileSync(keyPath);
-      expect(raw.length).toBe(32);
       expect(secrets.isMasterKeyReady()).toBe(true);
     });
 
-    test('loads an existing key file without overwriting', async () => {
-      // Pre-create a 32-byte key
-      const existingKey = Buffer.from(crypto.getRandomValues(new Uint8Array(32)));
-      writeFileSync(keyPath, existingKey, { mode: 0o600 });
+    test('throws if ENCRYPTION_KEY is not set', async () => {
+      delete process.env.ENCRYPTION_KEY;
 
       const secrets = await importFresh();
-      secrets.initMasterKey();
-
-      const loaded = readFileSync(keyPath);
-      expect(Buffer.compare(loaded, existingKey)).toBe(0);
-      expect(secrets.isMasterKeyReady()).toBe(true);
+      expect(() => secrets.initMasterKey()).toThrow('ENCRYPTION_KEY env var is required');
     });
 
-    test('throws if key file is wrong length', async () => {
-      writeFileSync(keyPath, Buffer.alloc(16)); // Wrong length
+    test('throws if ENCRYPTION_KEY is wrong length', async () => {
+      process.env.ENCRYPTION_KEY = 'abcd'; // Only 2 bytes
 
       const secrets = await importFresh();
-      expect(() => secrets.initMasterKey()).toThrow('16 bytes, expected 32');
+      expect(() => secrets.initMasterKey()).toThrow('2 bytes');
     });
 
-    test('creates parent directories if needed', async () => {
-      const nestedPath = join(tmpDir, 'nested', 'deep', 'master.key');
-      process.env.MASTER_KEY_PATH = nestedPath;
+    test('throws if ENCRYPTION_KEY is empty string', async () => {
+      process.env.ENCRYPTION_KEY = '';
 
       const secrets = await importFresh();
-      secrets.initMasterKey();
-
-      expect(existsSync(nestedPath)).toBe(true);
-      expect(readFileSync(nestedPath).length).toBe(32);
+      expect(() => secrets.initMasterKey()).toThrow('ENCRYPTION_KEY env var is required');
     });
   });
 
@@ -105,6 +83,7 @@ describe('secrets — AES-256-GCM encryption', () => {
     });
 
     test('returns true after initMasterKey', async () => {
+      process.env.ENCRYPTION_KEY = generateHexKey();
       const secrets = await importFresh();
       secrets.initMasterKey();
       expect(secrets.isMasterKeyReady()).toBe(true);
@@ -120,6 +99,7 @@ describe('secrets — AES-256-GCM encryption', () => {
     });
 
     test('roundtrip: encrypt then decrypt recovers plaintext', async () => {
+      process.env.ENCRYPTION_KEY = generateHexKey();
       const secrets = await importFresh();
       secrets.initMasterKey();
 
@@ -131,6 +111,7 @@ describe('secrets — AES-256-GCM encryption', () => {
     });
 
     test('encrypts empty string', async () => {
+      process.env.ENCRYPTION_KEY = generateHexKey();
       const secrets = await importFresh();
       secrets.initMasterKey();
 
@@ -139,6 +120,7 @@ describe('secrets — AES-256-GCM encryption', () => {
     });
 
     test('encrypts unicode content', async () => {
+      process.env.ENCRYPTION_KEY = generateHexKey();
       const secrets = await importFresh();
       secrets.initMasterKey();
 
@@ -148,6 +130,7 @@ describe('secrets — AES-256-GCM encryption', () => {
     });
 
     test('encrypts long content', async () => {
+      process.env.ENCRYPTION_KEY = generateHexKey();
       const secrets = await importFresh();
       secrets.initMasterKey();
 
@@ -157,6 +140,7 @@ describe('secrets — AES-256-GCM encryption', () => {
     });
 
     test('each encryption produces unique IV (different ciphertext)', async () => {
+      process.env.ENCRYPTION_KEY = generateHexKey();
       const secrets = await importFresh();
       secrets.initMasterKey();
 
@@ -172,6 +156,7 @@ describe('secrets — AES-256-GCM encryption', () => {
     });
 
     test('encrypted payload has expected structure', async () => {
+      process.env.ENCRYPTION_KEY = generateHexKey();
       const secrets = await importFresh();
       secrets.initMasterKey();
 
@@ -188,6 +173,7 @@ describe('secrets — AES-256-GCM encryption', () => {
     });
 
     test('tampered ciphertext fails decryption', async () => {
+      process.env.ENCRYPTION_KEY = generateHexKey();
       const secrets = await importFresh();
       secrets.initMasterKey();
 
@@ -199,6 +185,7 @@ describe('secrets — AES-256-GCM encryption', () => {
     });
 
     test('tampered auth tag fails decryption', async () => {
+      process.env.ENCRYPTION_KEY = generateHexKey();
       const secrets = await importFresh();
       secrets.initMasterKey();
 
@@ -209,14 +196,15 @@ describe('secrets — AES-256-GCM encryption', () => {
     });
 
     test('wrong master key fails decryption', async () => {
+      process.env.ENCRYPTION_KEY = generateHexKey();
       const secrets1 = await importFresh();
       secrets1.initMasterKey();
       const encrypted = secrets1.encrypt('secret');
 
-      // Create a different key
-      unlinkSync(keyPath);
+      // Use a different key
+      process.env.ENCRYPTION_KEY = generateHexKey();
       const secrets2 = await importFresh();
-      secrets2.initMasterKey(); // Generates a new key
+      secrets2.initMasterKey();
 
       expect(() => secrets2.decrypt(encrypted)).toThrow();
     });

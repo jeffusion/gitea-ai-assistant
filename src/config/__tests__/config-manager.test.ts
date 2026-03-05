@@ -34,10 +34,12 @@ function makeTmpDb(): string {
 describe('ConfigManager (DB backend)', () => {
   let dbPath: string;
   const savedDbPath = process.env.DATABASE_PATH;
+  const savedEncryptionKey = process.env.ENCRYPTION_KEY;
 
   beforeEach(() => {
     dbPath = makeTmpDb();
     process.env.DATABASE_PATH = dbPath;
+    process.env.ENCRYPTION_KEY = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('hex');
     initMasterKey();
     initDatabase();
   });
@@ -48,6 +50,11 @@ describe('ConfigManager (DB backend)', () => {
       delete process.env.DATABASE_PATH;
     } else {
       process.env.DATABASE_PATH = savedDbPath;
+    }
+    if (savedEncryptionKey === undefined) {
+      delete process.env.ENCRYPTION_KEY;
+    } else {
+      process.env.ENCRYPTION_KEY = savedEncryptionKey;
     }
     try { if (existsSync(dbPath)) unlinkSync(dbPath); } catch { /* ok */ }
     try { if (existsSync(`${dbPath}-wal`)) unlinkSync(`${dbPath}-wal`); } catch { /* ok */ }

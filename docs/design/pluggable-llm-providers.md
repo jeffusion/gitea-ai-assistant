@@ -30,7 +30,7 @@
 | **UI-Only 配置** | 所有业务配置仅通过 Web 管理后台设置，不再有环境变量覆盖层（仅保留极少数启动参数如 `PORT`、`WEBHOOK_SECRET`、`DATABASE_PATH`） |
 | **4 Provider 并存** | `openai_compatible`（现有兼容格式）、`openai_responses`（Responses API）、`anthropic`（Messages API）、`gemini`（generateContent API） |
 | **SQLite 持久化** | 使用 `bun:sqlite` 零依赖，单文件 `data/assistant.db` |
-| **密钥应用层加密** | API Key 使用 AES-256-GCM 加密后存 DB；主密钥来自本地文件 `data/master.key`（首次启动自动生成，权限 600） |
+| **密钥应用层加密** | API Key 使用 AES-256-GCM 加密后存 DB；主密钥通过环境变量 `ENCRYPTION_KEY` 传入（hex 编码，64 字符 = 32 字节），未设置则拒绝启动 |
 | **不做向前兼容** | 旧 JSON 配置文件方案直接废弃，新版本仅支持数据库配置 |
 
 ### 开源参考
@@ -170,7 +170,7 @@ CREATE INDEX idx_providers_enabled ON llm_providers(is_enabled);
 | `llm_providers.type` | 决定使用哪个 adapter 实现 |
 | `llm_providers.base_url` | `openai_compatible` 类型必填（用户自建代理地址）；其他类型可选覆盖官方默认 endpoint |
 | `llm_providers.extra_config` | JSON 字段，存放 provider 特有参数。例如 Gemini 的 `projectId`、OpenAI 的 `organization`、Anthropic 的 `anthropic-version` header 等 |
-| `llm_secrets.key_version` | 用于密钥轮换：当 `master.key` 更新后，启动时批量重加密所有 `key_version < current` 的记录 |
+| `llm_secrets.key_version` | 用于密钥轮换：当 `ENCRYPTION_KEY` 更新后，启动时批量重加密所有 `key_version < current` 的记录 |
 | `model_role_assignments.role` | 业务角色枚举，对应代码中不同调用场景 |
 | `system_settings.is_sensitive` | 为 1 时 value 字段存密文（复用 `crypto/secrets.ts`），GET API 返回 masked |
 
@@ -612,11 +612,10 @@ export function toGeminiTools(tools: LLMToolDefinition[]): object[];
 
 ```
 启动流程:
-  1. 检查 data/master.key 是否存在
-     ├── 不存在 → crypto.randomBytes(32) 生成
-     │            写入文件，chmod 600（仅 owner 读写）
-     │            日志输出: "Generated new master key at data/master.key"
-     └── 存在   → 读取 32 bytes
+  1. 读取环境变量 ENCRYPTION_KEY（hex 编码，64 字符）
+     ├── 未设置或为空 → 抛出错误，拒绝启动
+     ├── 长度不正确   → 抛出错误，提示需要 64 个十六进制字符
+     └── 正确         → 解码为 32 字节 Buffer
   2. 主密钥常驻内存（进程生命周期）
   3. 绝对不写入日志、不暴露给 API
 ```
@@ -647,11 +646,11 @@ export function toGeminiTools(tools: LLMToolDefinition[]): object[];
 ### 6.4 密钥轮换
 
 ```
-场景: 管理员替换 data/master.key
-  1. 启动时读取新 master key
+场景: 管理员更换 ENCRYPTION_KEY
+  1. 启动时读取新的 ENCRYPTION_KEY 环境变量
   2. 查询所有 llm_secrets WHERE key_version < current_version
   3. 逐条: 用旧 key 解密 → 用新 key 重加密 → 更新 key_version
-  4. 如果旧 key 不可用（文件丢失）→ 启动报错，要求重新设置所有 API Key
+  4. 如果旧 key 不可用（环境变量缺失）→ 启动报错，要求重新设置所有 API Key
 ```
 
 ---
@@ -798,7 +797,7 @@ Day 6.5:  旧代码清理完毕，文档更新，Ready for review
 | **Anthropic 无原生 JSON mode** | `response_format: json_object` 不可用，JSON 解析可能失败 | Adapter 内 prompt 注入 JSON 指令 + `JSON.parse()` 容错（正则提取 \`\`\`json\`\`\` 块 → 重试 parse） |
 | **Gemini function calling 格式差异大** | `functionDeclarations` 包装层级不同；`functionResponse` 嵌套在 `parts` 中 | `tool-converter.ts` 单独处理；finish reason 映射表全覆盖测试 |
 | **Embedding 维度变化导致 Qdrant 不兼容** | `src/review/memory/vector-store.ts` 硬编码 1536 维 | `model_role_assignments.role='embedding'` 变更时，UI 提示用户需重建 collection；或自动检测维度创建新 collection |
-| **master.key 丢失** | 所有加密的 API Key 不可恢复 | 启动时检测密钥版本不匹配 → 报错并要求重新设置所有 API Key（trade-off：安全性 > 便利性） |
+| **ENCRYPTION_KEY 丢失** | 所有加密的 API Key 不可恢复 | 启动时检测密钥版本不匹配 → 报错并要求重新设置所有 API Key（trade-off：安全性 > 便利性） |
 | **SQLite 并发写** | 多请求同时写入可能 SQLITE_BUSY | `bun:sqlite` 开启 WAL mode；写操作走单连接序列化；读可并行 |
 | **Provider SDK 版本冲突** | `openai`、`@anthropic-ai/sdk`、`@google/generative-ai` 三个 SDK 共存 | 各 adapter 独立 import，无交叉依赖；`package.json` 锁定主版本 |
 | **配置热更新** | UI 修改 provider 配置后，正在进行的审查仍用旧配置 | Gateway 缓存按 provider_id 粒度 invalidate；正在执行的请求不受影响（用的是已创建的实例），下次请求用新实例 |

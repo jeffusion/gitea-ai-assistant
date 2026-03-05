@@ -58,12 +58,14 @@ bun install
 Create a `.env` file with only infrastructure-level settings:
 
 ```bash
-# Server port (the only required setting)
+# Server port
 PORT=3000
 
-# Optional: custom data paths (defaults shown)
+# REQUIRED: encryption key for API key storage (generate with: openssl rand -hex 32)
+ENCRYPTION_KEY=
+
+# Optional: custom database path (default shown)
 # DATABASE_PATH=./data/assistant.db
-# MASTER_KEY_PATH=./data/master.key
 ```
 
 > **All other configuration** (Gitea connection, webhook secret, admin password, review engine, Feishu, memory settings, etc.) is managed through the **Admin Dashboard Web UI** at `http://your-server:3000`. On first boot, all settings are seeded with secure defaults automatically.
@@ -102,7 +104,7 @@ Only infrastructure-level settings that must be known before the database is ini
 |----------|-------------|---------|
 | `PORT` | Server port | `5174` |
 | `DATABASE_PATH` | SQLite database file path | `./data/assistant.db` |
-| `MASTER_KEY_PATH` | Encryption master key file path | `./data/master.key` |
+| `ENCRYPTION_KEY` | **Required.** AES-256-GCM encryption key for API key storage (64 hex chars). Generate with `openssl rand -hex 32` | — |
 
 ### Web UI Configuration (Admin Dashboard)
 

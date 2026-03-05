@@ -58,12 +58,14 @@ bun install
 创建 `.env` 文件，仅填写基础设施级别的配置：
 
 ```bash
-# 服务端口（唯一必需的配置项）
+# 服务端口
 PORT=3000
 
-# 可选：自定义数据路径（以下为默认值）
+# 必填：API Key 加密存储密钥（运行 openssl rand -hex 32 生成）
+ENCRYPTION_KEY=
+
+# 可选：自定义数据库路径（以下为默认值）
 # DATABASE_PATH=./data/assistant.db
-# MASTER_KEY_PATH=./data/master.key
 ```
 
 > **所有其他配置**（Gitea 连接、Webhook 密钥、管理员密码、审查引擎、飞书、记忆系统等）均通过 **Web 管理后台** 在 `http://your-server:3000` 进行配置。首次启动时，所有设置会自动以安全的默认值进行初始化。
@@ -102,7 +104,7 @@ bun run start  # 生产模式
 |------|------|--------|
 | `PORT` | 服务端口 | `5174` |
 | `DATABASE_PATH` | SQLite 数据库文件路径 | `./data/assistant.db` |
-| `MASTER_KEY_PATH` | 加密主密钥文件路径 | `./data/master.key` |
+| `ENCRYPTION_KEY` | **必填。** AES-256-GCM 加密密钥，用于加密存储 API Key（64 位十六进制字符串）。运行 `openssl rand -hex 32` 生成 | — |
 
 ### Web 界面配置（管理后台）
 
