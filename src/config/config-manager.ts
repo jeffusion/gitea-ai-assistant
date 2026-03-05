@@ -37,6 +37,10 @@ export interface AppConfig {
     enableHumanGate: boolean;
     allowedCommands: string[];
     commandTimeoutMs: number;
+    llmMaxConcurrentCalls: number;
+    llmRetryMaxAttempts: number;
+    llmRetryBaseDelayMs: number;
+    enableTriage: boolean;
     qdrantUrl: string | undefined;
     enableMemory: boolean;
     fewShotExamplesCount: number;
@@ -153,6 +157,10 @@ class ConfigManager {
           'wc',
         ]),
         commandTimeoutMs: toNumber('REVIEW_COMMAND_TIMEOUT_MS', 10000),
+        llmMaxConcurrentCalls: toNumber('LLM_MAX_CONCURRENT_CALLS', 4),
+        llmRetryMaxAttempts: toNumber('LLM_RETRY_MAX_ATTEMPTS', 3),
+        llmRetryBaseDelayMs: toNumber('LLM_RETRY_BASE_DELAY_MS', 1000),
+        enableTriage: toBoolean('ENABLE_TRIAGE', true),
         qdrantUrl: values.QDRANT_URL,
         enableMemory: toBoolean('ENABLE_MEMORY', false),
         fewShotExamplesCount: toNumber('FEW_SHOT_EXAMPLES_COUNT', 10),

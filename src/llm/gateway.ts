@@ -6,6 +6,7 @@
  *   2. Load (or cache) LLMProvider instances with decrypted API keys
  *   3. Route chat() calls to the correct adapter
  *   4. Invalidate cache when provider config changes via UI
+ *   5. Concurrency control + retry-with-backoff for resilience
  */
 
 import { type ModelRole, modelRoleRepo } from '../db/repositories/model-role-repo';
@@ -17,6 +18,7 @@ import type { LLMProvider } from './providers/base';
 import { createGeminiProvider } from './providers/gemini';
 import { createOpenAICompatibleProvider } from './providers/openai-compatible';
 import { createOpenAIResponsesProvider } from './providers/openai-responses';
+import { LLMSemaphore, type RetryOptions, withResilience } from './resilience';
 import type { LLMChatRequest, LLMChatResponse, ProviderType } from './types';
 
 type ProviderFactoryFn = (config: {
@@ -35,6 +37,24 @@ const PROVIDER_FACTORIES: Record<ProviderType, ProviderFactoryFn> = {
 
 export class LLMGateway {
   private cache = new Map<string, LLMProvider>();
+  private semaphore: LLMSemaphore;
+  private retryOptions: Partial<RetryOptions>;
+
+  constructor(
+    maxConcurrent = 4,
+    retryOptions?: Partial<RetryOptions>
+  ) {
+    this.semaphore = new LLMSemaphore(maxConcurrent);
+    this.retryOptions = retryOptions ?? {};
+  }
+
+  /**
+   * Reconfigure resilience settings (called when admin changes config via UI).
+   */
+  updateResilienceConfig(maxConcurrent: number, retryOptions?: Partial<RetryOptions>): void {
+    this.semaphore = new LLMSemaphore(maxConcurrent);
+    this.retryOptions = retryOptions ?? this.retryOptions;
+  }
 
   /**
    * Call LLM by business role. The role determines which provider + model to use.
@@ -47,16 +67,30 @@ export class LLMGateway {
     const assignment = modelRoleRepo.getByRole(role);
     if (!assignment) throw new LLMNoProviderError(role);
 
-    const provider = this.getOrCreateProvider(assignment.provider_id);
-    return provider.chat({ ...request, model: assignment.model });
+    return withResilience(
+      this.semaphore,
+      () => {
+        const provider = this.getOrCreateProvider(assignment.provider_id);
+        return provider.chat({ ...request, model: assignment.model });
+      },
+      this.retryOptions,
+      role
+    );
   }
 
   /**
    * Direct call to a specific provider (used for connection testing).
    */
   async chatDirect(providerId: string, request: LLMChatRequest): Promise<LLMChatResponse> {
-    const provider = this.getOrCreateProvider(providerId);
-    return provider.chat(request);
+    return withResilience(
+      this.semaphore,
+      () => {
+        const provider = this.getOrCreateProvider(providerId);
+        return provider.chat(request);
+      },
+      this.retryOptions,
+      `direct:${providerId}`
+    );
   }
 
   /**
@@ -66,11 +100,18 @@ export class LLMGateway {
     const assignment = modelRoleRepo.getByRole('embedding');
     if (!assignment) throw new LLMNoProviderError('embedding');
 
-    const provider = this.getOrCreateProvider(assignment.provider_id);
-    if (!provider.embed) {
-      throw new LLMError(`Provider '${provider.type}' does not support embeddings`, provider.type);
-    }
-    return provider.embed(texts);
+    return withResilience(
+      this.semaphore,
+      () => {
+        const provider = this.getOrCreateProvider(assignment.provider_id);
+        if (!provider.embed) {
+          throw new LLMError(`Provider '${provider.type}' does not support embeddings`, provider.type);
+        }
+        return provider.embed(texts);
+      },
+      this.retryOptions,
+      'embedding'
+    );
   }
 
   /**
