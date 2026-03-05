@@ -55,29 +55,6 @@ llmConfigRouter.get('/providers/:id', (c) => {
   });
 });
 
-llmConfigRouter.get('/providers/:id/models', async (c) => {
-  const id = c.req.param('id');
-  const provider = providerRepo.getById(id);
-  if (!provider) return c.json({ message: 'Provider not found' }, 404);
-
-  if (!secretRepo.has(id)) {
-    return c.json({ message: 'No API key configured' }, 400);
-  }
-
-  try {
-    llmGateway.invalidateProvider(id);
-    const providerInstance = llmGateway.getProviderInstance(id);
-    if (!providerInstance.listModels) {
-      return c.json({ message: 'This provider does not support listing models' }, 501);
-    }
-
-    const models = await providerInstance.listModels();
-    return c.json({ models });
-  } catch (error: any) {
-    return c.json({ message: error.message || 'Failed to fetch models' }, 500);
-  }
-});
-
 llmConfigRouter.post('/providers', async (c) => {
   const body = await c.req.json<{
     name: string;

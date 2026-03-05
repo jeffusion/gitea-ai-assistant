@@ -182,7 +182,6 @@ export function RoleAssignment() {
                     <div className="flex-1 w-full space-y-1">
                       <Label className="text-xs text-zinc-400">使用的模型</Label>
                       <ModelCombobox
-                        providerId={state.providerId}
                         providerType={providers.find(p => p.id === state.providerId)?.type}
                         value={state.model}
                         onChange={(model) => handleModelChange(role, model)}

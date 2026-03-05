@@ -203,17 +203,6 @@ class GeminiProvider implements LLMProvider {
     }
   }
 
-  async listModels(): Promise<string[]> {
-    const pager = await this.genAI.models.list();
-    const models: string[] = [];
-    for await (const model of pager) {
-      if (model.name) {
-        models.push(model.name.replace('models/', ''));
-      }
-    }
-    return models;
-  }
-
   private wrapError(error: unknown): Error {
     if (error instanceof Error) {
       const msg = error.message;

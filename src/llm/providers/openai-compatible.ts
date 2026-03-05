@@ -143,11 +143,6 @@ class OpenAICompatibleProvider implements LLMProvider {
     }
   }
 
-  async listModels(): Promise<string[]> {
-    const response = await this.client.models.list();
-    return response.data.map((model) => model.id);
-  }
-
   private wrapError(error: unknown): Error {
     if (error instanceof OpenAI.APIError) {
       if (error.status === 401) return new LLMAuthError(TYPE, error.message);

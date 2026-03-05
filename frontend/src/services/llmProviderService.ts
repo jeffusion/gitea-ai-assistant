@@ -89,8 +89,3 @@ export const testProvider = async (id: string): Promise<TestResult> => {
   const response = await api.post<TestResult>(`/llm/providers/${id}/test`);
   return response.data;
 };
-
-export const fetchModels = async (id: string): Promise<string[]> => {
-  const response = await api.get<{ models: string[] }>(`/llm/providers/${id}/models`);
-  return response.data.models;
-};
