@@ -13,193 +13,187 @@ declare module 'bun:test' {
 // @ts-expect-error bun:test is provided by Bun at runtime
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { readFile, unlink } from 'node:fs/promises';
+import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { AppConfig } from '../config-manager';
+import { configManager } from '../config-manager';
+import { initMasterKey } from '../../crypto/secrets';
+import { closeDatabase, initDatabase } from '../../db/database';
+import { settingsRepo } from '../../db/repositories/settings-repo';
 
-// ── All env keys in the Zod schema ──────────────────────────────────────────
-const SCHEMA_KEYS = [
-  'GITEA_API_URL',
-  'GITEA_ACCESS_TOKEN',
-  'GITEA_ADMIN_TOKEN',
-  'CUSTOM_SUMMARY_PROMPT',
-  'CUSTOM_LINE_COMMENT_PROMPT',
-  'GLOBAL_PROMPT',
-  'FEISHU_WEBHOOK_URL',
-  'FEISHU_WEBHOOK_SECRET',
-  'PORT',
-  'WEBHOOK_SECRET',
-  'ADMIN_PASSWORD',
-  'JWT_SECRET',
-  'REVIEW_ENGINE',
-  'REVIEW_WORKDIR',
-  'REVIEW_MAX_PARALLEL_RUNS',
-  'REVIEW_MAX_FILES_PER_RUN',
-  'REVIEW_MAX_FILE_CONTENT_CHARS',
-  'REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE',
-  'REVIEW_ENABLE_HUMAN_GATE',
-  'REVIEW_ALLOWED_COMMANDS',
-  'REVIEW_COMMAND_TIMEOUT_MS',
-  'QDRANT_URL',
-  'ENABLE_MEMORY',
-  'FEW_SHOT_EXAMPLES_COUNT',
-  'ENABLE_REFLECTION',
-  'MAX_REFLECTION_ROUNDS',
-  'ENABLE_DEBATE',
-  'DEBATE_THRESHOLD',
-] as const;
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-const CONTROL_KEYS = ['CONFIG_OVERRIDES_PATH', 'NODE_ENV'] as const;
-const ALL_KEYS: readonly string[] = [...SCHEMA_KEYS, ...CONTROL_KEYS];
-
-/**
- * Dynamically import a fresh config-manager module.
- * Appending a unique query string to the specifier forces Bun to bypass the
- * module cache, giving us a brand-new ConfigManager singleton each time.
- */
-async function importFresh() {
-  const mod = await import(`../config-manager.ts?t=${Date.now()}-${randomUUID()}`);
-  return mod.configManager;
+function makeTmpDb(): string {
+  const dir = join(tmpdir(), `cfg-test-${randomUUID()}`);
+  mkdirSync(dir, { recursive: true });
+  return join(dir, 'test.db');
 }
 
-describe('ConfigManager', () => {
-  let tmpPath: string;
-  const savedEnv: Record<string, string | undefined> = {};
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+describe('ConfigManager (DB backend)', () => {
+  let dbPath: string;
+  const savedDbPath = process.env.DATABASE_PATH;
 
   beforeEach(() => {
-    tmpPath = join(tmpdir(), `cfg-test-${randomUUID()}.json`);
+    dbPath = makeTmpDb();
+    process.env.DATABASE_PATH = dbPath;
+    initMasterKey();
+    initDatabase();
+  });
 
-    // Snapshot every env key we might touch
-    for (const key of ALL_KEYS) {
-      savedEnv[key] = process.env[key];
+  afterEach(() => {
+    closeDatabase();
+    if (savedDbPath === undefined) {
+      delete process.env.DATABASE_PATH;
+    } else {
+      process.env.DATABASE_PATH = savedDbPath;
     }
-
-    // Neutralise all schema keys ('' is treated as "absent" by getCurrent).
-    // This also prevents dotenv from injecting values from a local .env file.
-    for (const key of SCHEMA_KEYS) {
-      process.env[key] = '';
-    }
-
-    // Per-test temp overrides file
-    process.env.CONFIG_OVERRIDES_PATH = tmpPath;
-
-    // FEISHU_WEBHOOK_URL is now optional → no need to set it for schema to pass.
+    try { if (existsSync(dbPath)) unlinkSync(dbPath); } catch { /* ok */ }
+    try { if (existsSync(`${dbPath}-wal`)) unlinkSync(`${dbPath}-wal`); } catch { /* ok */ }
+    try { if (existsSync(`${dbPath}-shm`)) unlinkSync(`${dbPath}-shm`); } catch { /* ok */ }
   });
 
-  afterEach(async () => {
-    for (const key of ALL_KEYS) {
-      if (savedEnv[key] === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = savedEnv[key]!;
-      }
-    }
-    try {
-      await unlink(tmpPath);
-    } catch {
-      /* ok if missing */
-    }
-  });
+  // ─── 1. getCurrent() defaults ─────────────────────────────────────────────
 
-  // ─── 1. Layering: defaults < env < override ─────────────────────────
-
-  describe('layering: defaults < env < override', () => {
-    test('Zod default used when env and override are absent', async () => {
-      const cm = await importFresh();
-      expect(cm.getCurrent().review.engine).toBe('legacy');
+  describe('getCurrent() defaults', () => {
+    test('returns default engine when DB is empty', () => {
+      expect(configManager.getCurrent().review.engine).toBe('legacy');
     });
 
-    test('env value overrides Zod default', async () => {
-      process.env.REVIEW_ENGINE = 'agent';
-      const cm = await importFresh();
-      expect(cm.getCurrent().review.engine).toBe('agent');
+    test('reads port from process.env.PORT, defaults to 5174', () => {
+      const orig = process.env.PORT;
+      delete process.env.PORT;
+      expect(configManager.getCurrent().app.port).toBe(5174);
+      if (orig !== undefined) process.env.PORT = orig;
     });
 
-    test('override wins over env', async () => {
-      process.env.REVIEW_ENGINE = 'agent';
-      const cm = await importFresh();
-      await cm.setOverrides({ REVIEW_ENGINE: 'legacy' });
-      expect(cm.getCurrent().review.engine).toBe('legacy');
-    });
-  });
-
-  // ─── 2. Empty string resets override ─────────────────────────────────
-
-  describe('empty string resets override', () => {
-    test('setting override to "" removes it, value falls back to Zod default', async () => {
-      const cm = await importFresh();
-      await cm.setOverrides({ REVIEW_ENGINE: 'agent' });
-      expect(cm.getCurrent().review.engine).toBe('agent');
-
-      await cm.setOverrides({ REVIEW_ENGINE: '' });
-
-      // REVIEW_ENGINE is '' in env (neutralised) → falls to Zod default
-      expect(cm.getCurrent().review.engine).toBe('legacy');
-      expect(cm.getOverrides()).not.toHaveProperty('REVIEW_ENGINE');
-    });
-  });
-
-  // ─── 3. Persistence ─────────────────────────────────────────────────
-
-  describe('persistence', () => {
-    test('setOverrides writes JSON file; new instance loads it', async () => {
-      const cm1 = await importFresh();
-      await cm1.setOverrides({ REVIEW_ENGINE: 'agent' });
-
-      // File structure check
-      const raw = await readFile(tmpPath, 'utf-8');
-      const data = JSON.parse(raw);
-      expect(data.version).toBe(1);
-      expect(typeof data.updatedAt).toBe('string');
-      expect(data.overrides.REVIEW_ENGINE).toBe('agent');
-
-      // Fresh instance picks it up
-      const cm2 = await importFresh();
-      expect(cm2.getCurrent().review.engine).toBe('agent');
-    });
-  });
-
-  // ─── 4. getSource() ─────────────────────────────────────────────────
-
-  describe('getSource()', () => {
-    test('returns "default" when neither env nor override is set', async () => {
-      // REVIEW_ENGINE = '' (neutralised) → getSource sees '' → 'default'
-      const cm = await importFresh();
-      expect(cm.getSource('REVIEW_ENGINE')).toBe('default');
+    test('returns default admin password', () => {
+      expect(configManager.getCurrent().admin.password).toBe('password');
     });
 
-    test('returns "env" when process.env has a non-empty value', async () => {
-      process.env.REVIEW_ENGINE = 'agent';
-      const cm = await importFresh();
-      expect(cm.getSource('REVIEW_ENGINE')).toBe('env');
-    });
-
-    test('returns "override" when override is set', async () => {
-      process.env.REVIEW_ENGINE = 'agent';
-      const cm = await importFresh();
-      await cm.setOverrides({ REVIEW_ENGINE: 'legacy' });
-      expect(cm.getSource('REVIEW_ENGINE')).toBe('override');
-    });
-  });
-
-  // ─── 5. Dev fallback ─────────────────────────────────────────────────
-
-  describe('dev fallback', () => {
-    test('FEISHU_WEBHOOK_URL missing + NODE_ENV=development → feishu.webhookUrl undefined', async () => {
-      process.env.FEISHU_WEBHOOK_URL = ''; // empty → preprocess converts to undefined
-      process.env.NODE_ENV = 'development';
-      const cm = await importFresh();
-      const cfg: AppConfig = cm.getCurrent();
+    test('optional fields with no default return undefined', () => {
+      const cfg = configManager.getCurrent();
       expect(cfg.feishu.webhookUrl).toBeUndefined();
+      expect(cfg.feishu.webhookSecret).toBeUndefined();
+      expect(cfg.admin.giteaAdminToken).toBeUndefined();
+      expect(cfg.review.qdrantUrl).toBeUndefined();
+      expect(cfg.review.customSummaryPrompt).toBeUndefined();
+    });
+  });
+
+  // ─── 2. setOverrides() / getSource() ─────────────────────────────────────
+
+  describe('setOverrides() and getSource()', () => {
+    test('setOverrides writes to DB, getCurrent reflects the change', async () => {
+      await configManager.setOverrides({ REVIEW_ENGINE: 'agent' });
+      expect(configManager.getCurrent().review.engine).toBe('agent');
     });
 
-    test('FEISHU_WEBHOOK_URL missing + NODE_ENV unset → feishu.webhookUrl undefined', async () => {
-      process.env.FEISHU_WEBHOOK_URL = '';
-      process.env.NODE_ENV = ''; // falsy → same branch as undefined
-      const cm = await importFresh();
-      const cfg: AppConfig = cm.getCurrent();
-      expect(cfg.feishu.webhookUrl).toBeUndefined();
+    test('setOverrides with empty string deletes the key (resets to default)', async () => {
+      await configManager.setOverrides({ REVIEW_ENGINE: 'agent' });
+      await configManager.setOverrides({ REVIEW_ENGINE: '' });
+      expect(configManager.getCurrent().review.engine).toBe('legacy');
+    });
+
+    test('getSource returns "db" when value is stored', async () => {
+      await configManager.setOverrides({ REVIEW_ENGINE: 'agent' });
+      expect(configManager.getSource('REVIEW_ENGINE')).toBe('db');
+    });
+
+    test('getSource returns "default" when key is absent from DB', () => {
+      expect(configManager.getSource('REVIEW_ENGINE')).toBe('default');
+    });
+
+    test('sensitive fields are stored encrypted and retrieved correctly', async () => {
+      await configManager.setOverrides({ GITEA_ACCESS_TOKEN: 'secret-token-123' });
+      expect(configManager.getCurrent().gitea.accessToken).toBe('secret-token-123');
+    });
+
+    test('unknown keys are silently ignored', async () => {
+      await configManager.setOverrides({ UNKNOWN_KEY_XYZ: 'value' });
+      expect(configManager.getCurrent().review.engine).toBe('legacy');
+    });
+  });
+
+  // ─── 3. resetKeys() ──────────────────────────────────────────────────────
+
+  describe('resetKeys()', () => {
+    test('resetKeys deletes key from DB, value reverts to default', async () => {
+      await configManager.setOverrides({ REVIEW_ENGINE: 'agent' });
+      await configManager.resetKeys(['REVIEW_ENGINE']);
+      expect(configManager.getCurrent().review.engine).toBe('legacy');
+      expect(configManager.getSource('REVIEW_ENGINE')).toBe('default');
+    });
+
+    test('resetKeys on non-existent key does not throw', async () => {
+      await configManager.resetKeys(['REVIEW_ENGINE']);
+      expect(configManager.getCurrent().review.engine).toBe('legacy');
+    });
+  });
+
+  // ─── 4. seedDefaults() ───────────────────────────────────────────────────
+
+  describe('seedDefaults()', () => {
+    test('seeds all fields with defaults on empty DB', () => {
+      expect(settingsRepo.listAll().length).toBe(0);
+      configManager.seedDefaults();
+      expect(settingsRepo.listAll().length).toBeGreaterThan(0);
+    });
+
+    test('JWT_SECRET and WEBHOOK_SECRET are auto-generated (64 hex chars)', () => {
+      configManager.seedDefaults();
+      const jwtSecret = settingsRepo.get('JWT_SECRET');
+      const webhookSecret = settingsRepo.get('WEBHOOK_SECRET');
+      expect(jwtSecret).not.toBeNull();
+      expect(webhookSecret).not.toBeNull();
+      expect(/^[0-9a-f]{64}$/.test(jwtSecret!)).toBe(true);
+      expect(/^[0-9a-f]{64}$/.test(webhookSecret!)).toBe(true);
+    });
+
+    test('seedDefaults is idempotent — no-op when DB already has entries', async () => {
+      await configManager.setOverrides({ REVIEW_ENGINE: 'agent' });
+      configManager.seedDefaults();
+      expect(configManager.getCurrent().review.engine).toBe('agent');
+    });
+
+    test('ADMIN_PASSWORD defaults to "password"', () => {
+      configManager.seedDefaults();
+      expect(configManager.getCurrent().admin.password).toBe('password');
+    });
+
+    test('seeded JWT_SECRET is a 64-char hex string', () => {
+      configManager.seedDefaults();
+      expect(configManager.getCurrent().admin.jwtSecret).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    test('seeded WEBHOOK_SECRET is a 64-char hex string', () => {
+      configManager.seedDefaults();
+      expect(configManager.getCurrent().app.webhookSecret).toMatch(/^[0-9a-f]{64}$/);
+    });
+  });
+
+  // ─── 5. Type conversions ─────────────────────────────────────────────────
+
+  describe('type conversions in getCurrent()', () => {
+    test('boolean field "true" → true', async () => {
+      await configManager.setOverrides({ REVIEW_ENABLE_HUMAN_GATE: 'true' });
+      expect(configManager.getCurrent().review.enableHumanGate).toBe(true);
+    });
+
+    test('boolean field "false" → false', async () => {
+      await configManager.setOverrides({ REVIEW_ENABLE_HUMAN_GATE: 'false' });
+      expect(configManager.getCurrent().review.enableHumanGate).toBe(false);
+    });
+
+    test('number field is parsed correctly', async () => {
+      await configManager.setOverrides({ REVIEW_MAX_PARALLEL_RUNS: '4' });
+      expect(configManager.getCurrent().review.maxParallelRuns).toBe(4);
+    });
+
+    test('comma-separated REVIEW_ALLOWED_COMMANDS parsed to array', async () => {
+      await configManager.setOverrides({ REVIEW_ALLOWED_COMMANDS: 'git, rg, cat' });
+      expect(configManager.getCurrent().review.allowedCommands).toEqual(['git', 'rg', 'cat']);
     });
   });
 });
