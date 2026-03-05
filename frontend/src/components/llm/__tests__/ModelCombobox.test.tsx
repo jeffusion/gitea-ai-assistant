@@ -11,6 +11,12 @@ vi.mock('@/services/llmProviderService', async () => {
   return {
     ...actual,
     fetchModels: vi.fn(),
+    fetchModelSuggestions: vi.fn().mockResolvedValue({
+      openai_compatible: ['gpt-4o', 'gpt-4o-mini', 'deepseek-chat'],
+      openai_responses: ['gpt-4o', 'gpt-4o-mini', 'o3-mini'],
+      anthropic: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022'],
+      gemini: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'],
+    }),
   };
 });
 

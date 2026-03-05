@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { useQuery } from '@tanstack/react-query';
-import { fetchModels, MODEL_SUGGESTIONS } from '@/services/llmProviderService';
+import { fetchModels, fetchModelSuggestions } from '@/services/llmProviderService';
 import type { ProviderType } from '@/services/llmProviderService';
 
 interface ModelComboboxProps {
@@ -42,9 +42,16 @@ export function ModelCombobox({
     staleTime: 5 * 60 * 1000,
   });
 
+  // Fetch dynamic model suggestions from backend (powered by models.dev)
+  const { data: suggestions = {} } = useQuery({
+    queryKey: ['llm-model-suggestions'],
+    queryFn: fetchModelSuggestions,
+    staleTime: 30 * 60 * 1000, // 30 min cache
+  });
+
   // Build tagged model list: API > suggestions > custom input
   const useApiFetched = fetchedModels.length > 0;
-  const suggestionModels = providerType ? MODEL_SUGGESTIONS[providerType] || [] : [];
+  const suggestionModels = providerType ? suggestions[providerType] || [] : [];
 
   type TaggedModel = { name: string; tag: 'API' | '推荐' | '自定义' };
 
