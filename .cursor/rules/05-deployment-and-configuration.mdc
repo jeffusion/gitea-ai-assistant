@@ -5,27 +5,29 @@ alwaysApply: false
 ---
 # Deployment and Configuration
 
-## Environment Variables
+## Environment Variables (Minimal)
 
-The application is configured through environment variables, defined in [src/config/index.ts](mdc:src/config/index.ts):
+Only three infrastructure-level settings are read from environment variables. Everything else is managed through the Admin Dashboard Web UI:
 
-- **Gitea Configuration**:
-  - `GITEA_API_URL`: Gitea API endpoint URL
-  - `GITEA_ACCESS_TOKEN`: Access token for Gitea API
+- `PORT`: Server port (default: `5174`)
+- `DATABASE_PATH`: SQLite database file path (optional, default: `./data/assistant.db`)
+- `MASTER_KEY_PATH`: Encryption master key file path (optional, default: `./data/master.key`)
 
-- **LLM Provider Configuration**:
-  - Configured exclusively through the Admin Dashboard Web UI
-  - Supports OpenAI Compatible, OpenAI Responses API, Anthropic, Google Gemini
-  - API keys stored encrypted (AES-256-GCM) in SQLite database
+## First-Boot Seeding
 
-- **Server Configuration**:
-  - `PORT`: Server port (default: 3000)
-  - `WEBHOOK_SECRET`: Secret for webhook verification
+On first startup with an empty `system_settings` table, `configManager.seedDefaults()` automatically:
+- Generates `JWT_SECRET` and `WEBHOOK_SECRET` (64-char hex via `crypto.randomBytes(32)`)
+- Seeds all config fields with their default values
+- Sets `ADMIN_PASSWORD` to `password` (must be changed via Web UI)
 
-- **Custom Prompts**:
-  - `CUSTOM_SUMMARY_PROMPT`: Custom prompt for summary reviews
-  - `CUSTOM_LINE_COMMENT_PROMPT`: Custom prompt for line comments
+## Web UI Configuration
 
+All runtime settings are managed through the Admin Dashboard at `http://your-server:PORT`:
+- Gitea connection (API URL, access token, admin token)
+- Security settings (webhook secret, admin password, JWT secret)
+- Review engine settings (engine mode, parallelism, file limits, confidence)
+- Feishu integration (webhook URL and secret)
+- Memory/learning features (Qdrant URL, enable flags)
 ## Deployment Options
 
 ### Local Development
@@ -48,7 +50,7 @@ The [Dockerfile](mdc:Dockerfile) provides containerization support:
 docker build -t gitea-assistant:latest .
 
 # Run the container
-docker run -p 3000:3000 --env-file .env gitea-assistant:latest
+docker run -p 3000:3000 -v ./data:/app/data -e PORT=3000 gitea-assistant:latest
 ```
 
 ### Kubernetes Deployment
@@ -58,12 +60,12 @@ The [kubernetes.yaml](mdc:k8s/gitea-assistant.yaml) file provides Kubernetes dep
 Deployment can be managed using:
 ```bash
 # Apply configuration
-kubectl apply -f kubernetes.yaml
+kubectl apply -k k8s/
 ```
 
 ### Webhook Setup
 
 Configure Gitea webhooks to point to the `/webhook/gitea` endpoint with:
 - Content type: application/json
-- Secret: matching WEBHOOK_SECRET environment variable
+- Secret: matching the Webhook Secret configured in the Admin Dashboard
 - Events: Pull Request and Status events

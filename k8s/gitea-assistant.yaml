@@ -12,13 +12,8 @@ metadata:
     app.kubernetes.io/part-of: gitea-assistant
 type: Opaque
 data:
-  # REQUIRED: replace with your own base64-encoded values
+  # REQUIRED: replace with your own base64-encoded Gitea access token
   GITEA_ACCESS_TOKEN: eW91cl9naXRlYV90b2tlbg==
-  WEBHOOK_SECRET: eW91cl93ZWJob29rX3NlY3JldA==
-  ADMIN_PASSWORD: cGFzc3dvcmQ=
-  # Optional
-  # FEISHU_WEBHOOK_URL: ""
-  # FEISHU_WEBHOOK_SECRET: ""
 
 ---
 apiVersion: v1
@@ -30,18 +25,13 @@ metadata:
     app.kubernetes.io/name: gitea-assistant
     app.kubernetes.io/part-of: gitea-assistant
 data:
+  # Required: set to your Gitea instance API endpoint
   GITEA_API_URL: "http://localhost:3000/api/v1"
   PORT: "3000"
+  # Optional: Qdrant vector DB for memory features (configure memory settings via Web UI)
   QDRANT_URL: "http://qdrant.gitea-assistant.svc.cluster.local:6333"
-  REVIEW_ENGINE: "legacy"
-  REVIEW_WORKDIR: "/tmp/gitea-assistant"
-  REVIEW_MAX_PARALLEL_RUNS: "2"
-  REVIEW_MAX_FILES_PER_RUN: "200"
-  REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE: "0.8"
-  REVIEW_ENABLE_HUMAN_GATE: "true"
-  ENABLE_MEMORY: "false"
-  ENABLE_REFLECTION: "false"
-  ENABLE_DEBATE: "false"
+  # All other settings (review engine, Feishu, admin password, etc.) are managed
+  # through the Admin Dashboard Web UI. They are auto-seeded on first boot.
 
 ---
 apiVersion: apps/v1

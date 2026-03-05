@@ -115,7 +115,45 @@ git commit -m "feat: add user handler"
 git push origin feature/add-user-handler 2>/dev/null
 popd > /dev/null
 
-echo "=== [5/6] 配置 Webhook ==="
+echo "=== [5/7] 配置 Assistant 设置 ==="
+ADMIN_DEFAULT_PASS="password"
+
+# Wait for assistant to be healthy
+for i in $(seq 1 20); do
+  if curl -sf "${ASSISTANT_URL}/" > /dev/null 2>&1; then
+    echo "  Assistant 已就绪"
+    break
+  fi
+  echo "  等待 Assistant... ($i/20)"
+  sleep 3
+done
+
+# Login to get JWT
+LOGIN_RESP=$(curl -sf -X POST "${ASSISTANT_URL}/admin/login" \
+  -H "Content-Type: application/json" \
+  -d "{\"password\": \"${ADMIN_DEFAULT_PASS}\"}" 2>/dev/null || true)
+ADMIN_JWT=$(echo "${LOGIN_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || true)
+
+if [ -z "${ADMIN_JWT}" ]; then
+  echo "  WARNING: 无法获取管理员 JWT，跳过 assistant 配置"
+else
+  echo "  JWT 获取成功，配置 assistant 设置..."
+  curl -sf -X PUT "${ASSISTANT_URL}/admin/config" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${ADMIN_JWT}" \
+    -d "{
+      \"WEBHOOK_SECRET\": \"${WEBHOOK_SECRET}\",
+      \"GITEA_API_URL\": \"http://gitea:3000/api/v1\",
+      \"REVIEW_ENGINE\": \"agent\",
+      \"REVIEW_WORKDIR\": \"/tmp/e2e-review\",
+      \"REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE\": \"0.5\",
+      \"REVIEW_ENABLE_HUMAN_GATE\": \"false\",
+      \"REVIEW_ALLOWED_COMMANDS\": \"git,rg,cat,sed,wc\",
+      \"REVIEW_COMMAND_TIMEOUT_MS\": \"30000\"
+    }" > /dev/null 2>&1 && echo "  Assistant 配置完成" || echo "  WARNING: assistant 配置失败"
+fi
+
+echo "=== [6/7] 配置 Webhook ==="
 curl -sf -X POST "${GITEA_URL}/api/v1/repos/${ADMIN_USER}/${REPO_NAME}/hooks" \
   -H "Authorization: token ${GITEA_TOKEN}" \
   -H "Content-Type: application/json" \
@@ -129,8 +167,7 @@ curl -sf -X POST "${GITEA_URL}/api/v1/repos/${ADMIN_USER}/${REPO_NAME}/hooks" \
       \"secret\": \"${WEBHOOK_SECRET}\"
     }
   }" > /dev/null 2>&1 || echo "  Webhook 配置失败（可能已存在）"
-
-echo "=== [6/6] 创建 Pull Request ==="
+echo "=== [7/7] 创建 Pull Request ==="
 PR_RESPONSE=$(curl -sf -X POST "${GITEA_URL}/api/v1/repos/${ADMIN_USER}/${REPO_NAME}/pulls" \
   -H "Authorization: token ${GITEA_TOKEN}" \
   -H "Content-Type: application/json" \
