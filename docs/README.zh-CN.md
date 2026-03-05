@@ -185,20 +185,27 @@ docker-compose up -d
 
 Kubernetes 部署清单位于 `k8s/` 目录。
 
-**1. 配置**
-
-ConfigMap 中唯一的环境变量是 `PORT`。所有其他设置（Gitea 连接、Webhook 密钥、管理员密码、审查引擎、飞书等）均在部署后通过 **Web 管理后台** 配置，首次启动时自动以安全默认值初始化。
-
-请确保为 `/app/data` 目录配置持久化存储，以保留 SQLite 数据库和加密密钥。
-
-**2. 部署**
-**3. 部署**
+**1. 创建加密密钥**
 
 ```bash
-# 使用 Kustomize（推荐）
-kubectl apply -k k8s/
+# 生成密钥并创建 Secret
+kubectl apply -f k8s/namespace.yaml
+ENCRYPTION_KEY=$(openssl rand -hex 32)
+kubectl -n gitea-assistant create secret generic gitea-assistant-secret \
+  --from-literal=ENCRYPTION_KEY=$ENCRYPTION_KEY
+# 请保存此密钥！重新部署时需要使用。
+echo "你的 ENCRYPTION_KEY: $ENCRYPTION_KEY"
+```
 
-# 或逐个应用
+**2. 部署**
+
+```bash
+kubectl apply -k k8s/
+```
+
+或逐个应用：
+
+```bash
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -f k8s/qdrant.yaml
 kubectl apply -f k8s/gitea-assistant.yaml
