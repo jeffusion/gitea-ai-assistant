@@ -14,6 +14,7 @@ import { secretRepo } from '../db/repositories/secret-repo';
 import { settingsRepo } from '../db/repositories/settings-repo';
 import { llmGateway } from '../llm/gateway';
 import { MODEL_ROLES } from '../llm/types';
+import { tokenCounter } from '../review/context/token-counter';
 
 export const llmConfigRouter = new Hono();
 
@@ -287,6 +288,39 @@ llmConfigRouter.post('/providers/:id/test', async (c) => {
       error: error.message || 'Unknown error',
     });
   }
+});
+
+// ── Model Suggestions (from models.dev via tokenlens) ───────────────────
+
+/**
+ * Map our ProviderType to models.dev provider keys.
+ * openai_compatible is special: it aggregates multiple providers since
+ * users often point compatible endpoints at DeepSeek, Qwen, etc.
+ */
+const PROVIDER_TYPE_TO_CATALOG_KEYS: Record<string, string[]> = {
+  openai_compatible: ['openai', 'deepseek', 'qwen'],
+  openai_responses: ['openai'],
+  anthropic: ['anthropic'],
+  gemini: ['google'],
+};
+
+llmConfigRouter.get('/model-suggestions', async (c) => {
+  // Ensure catalog is loaded (lazy init on first request)
+  if (!tokenCounter.hasCatalog) {
+    await tokenCounter.refreshCatalog();
+  }
+
+  const result: Record<string, string[]> = {};
+
+  for (const [providerType, catalogKeys] of Object.entries(PROVIDER_TYPE_TO_CATALOG_KEYS)) {
+    const models: string[] = [];
+    for (const key of catalogKeys) {
+      models.push(...tokenCounter.getModelSuggestions(key));
+    }
+    result[providerType] = models;
+  }
+
+  return c.json(result);
 });
 
 // ── System Settings ─────────────────────────────────────────────────────

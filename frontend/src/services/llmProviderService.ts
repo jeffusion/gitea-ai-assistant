@@ -31,11 +31,21 @@ export interface TestResult {
   error?: string;
 }
 
-export const MODEL_SUGGESTIONS: Record<ProviderType, string[]> = {
-  openai_compatible: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'deepseek-chat', 'qwen-plus'],
-  openai_responses: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini', 'o3-mini'],
-  anthropic: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022', 'claude-opus-4-20250514'],
+/** Fallback suggestions when API is unavailable (e.g. catalog not loaded yet). */
+const FALLBACK_SUGGESTIONS: Record<ProviderType, string[]> = {
+  openai_compatible: ['gpt-4o', 'gpt-4o-mini', 'deepseek-chat'],
+  openai_responses: ['gpt-4o', 'gpt-4o-mini', 'o3-mini'],
+  anthropic: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022'],
   gemini: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'],
+};
+
+export const fetchModelSuggestions = async (): Promise<Record<string, string[]>> => {
+  try {
+    const response = await api.get<Record<string, string[]>>('/llm/model-suggestions');
+    return response.data;
+  } catch {
+    return FALLBACK_SUGGESTIONS;
+  }
 };
 
 export const fetchProviders = async (): Promise<ProviderDto[]> => {
