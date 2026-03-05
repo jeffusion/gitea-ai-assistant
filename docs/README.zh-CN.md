@@ -51,26 +51,22 @@
 git clone https://github.com/user/gitea-ai-assistant.git
 cd gitea-ai-assistant
 bun install
-cp .env.example .env
 ```
 
 ### 配置说明
 
-编辑 `.env` 文件：
+创建 `.env` 文件，仅填写基础设施级别的配置：
 
 ```bash
-# Gitea
-GITEA_API_URL=https://your-gitea-instance.com/api/v1
-GITEA_ACCESS_TOKEN=your_gitea_token
+# 服务端口（唯一必需的配置项）
+PORT=3000
 
-# 安全
-WEBHOOK_SECRET=your_webhook_secret  # openssl rand -hex 32
-
-# 管理后台
-ADMIN_PASSWORD=your_admin_password
+# 可选：自定义数据路径（以下为默认值）
+# DATABASE_PATH=./data/assistant.db
+# MASTER_KEY_PATH=./data/master.key
 ```
 
-> **注意**: LLM 提供商设置（API 密钥、模型、端点）通过管理后台 Web 界面配置，而非环境变量。启动服务后，访问 `http://your-server:3000` 进行配置。
+> **所有其他配置**（Gitea 连接、Webhook 密钥、管理员密码、审查引擎、飞书、记忆系统等）均通过 **Web 管理后台** 在 `http://your-server:3000` 进行配置。首次启动时，所有设置会自动以安全的默认值进行初始化。
 
 完整配置项请参阅 [配置参考](#配置参考)。
 
@@ -86,7 +82,7 @@ bun run start  # 生产模式
 **方式一：管理后台（推荐）**
 
 1. 在浏览器中访问 `http://your-server:3000`
-2. 使用 `ADMIN_PASSWORD` 登录
+2. 使用管理员密码登录（默认：`password`，请在后台及时修改）
 3. 点击仓库对应的「启用」按钮自动配置 Webhook
 
 **方式二：手动配置**
@@ -94,80 +90,87 @@ bun run start  # 生产模式
 在 Gitea 仓库设置中添加 Webhook：
 - **URL**: `http://your-server:3000/webhook/gitea`
 - **内容类型**: `application/json`
-- **密钥**: 与 `WEBHOOK_SECRET` 相同
+- **密钥**: 与管理后台中配置的 Webhook 密钥相同
 - **触发事件**: 「Pull Request」和「Status」
-
 ## 配置参考
 
-### 核心配置
+### 环境变量（最小化）
+
+仅包含数据库初始化前必须已知的基础设施级别配置：
 
 | 变量 | 描述 | 默认值 |
 |------|------|--------|
-| `GITEA_API_URL` | Gitea API 地址 | 必填 |
-| `GITEA_ACCESS_TOKEN` | 代码审查令牌（需要读取和评论权限） | 必填 |
-| `GITEA_ADMIN_TOKEN` | Webhook 管理令牌（可选） | - |
-| `PORT` | 服务端口 | `3000` |
-| `WEBHOOK_SECRET` | Webhook 签名验证密钥 | 必填 |
+| `PORT` | 服务端口 | `5174` |
+| `DATABASE_PATH` | SQLite 数据库文件路径 | `./data/assistant.db` |
+| `MASTER_KEY_PATH` | 加密主密钥文件路径 | `./data/master.key` |
 
-### LLM 提供商配置
+### Web 界面配置（管理后台）
+
+所有运行时配置均通过 **管理后台** `http://your-server:PORT` 进行管理，修改后立即生效，无需重启。
+
+首次以空数据库启动时，所有设置会自动以安全默认值初始化：
+- `JWT_SECRET` 和 `WEBHOOK_SECRET` 自动生成（通过 `crypto.randomBytes` 生成 64 位十六进制字符串）
+- `ADMIN_PASSWORD` 默认为 `password`，**请立即修改**
+
+#### Gitea
+
+| 配置项 | 描述 |
+|--------|------|
+| Gitea API 地址 | Gitea API 端点（如 `https://gitea.example.com/api/v1`） |
+| 访问令牌 | 代码审查令牌（需读取和评论权限） |
+| 管理员令牌 | Webhook 管理令牌（可选） |
+
+#### 安全
+
+| 配置项 | 描述 | 默认值 |
+|--------|------|--------|
+| Webhook 密钥 | HMAC-SHA256 Webhook 签名密钥 | 自动生成 |
+| 管理员密码 | 后台登录密码 | `password` |
+| JWT 密钥 | JWT 签名密钥 | 自动生成 |
+
+#### LLM 提供商配置
 
 LLM 提供商和模型通过**管理后台** Web 界面进行配置：
 
-1. 访问管理后台 `http://your-server:3000`
-2. 导航到 **LLM 配置** 页面
-3. 添加 LLM 提供商（OpenAI 兼容、OpenAI Responses API、Anthropic、Google Gemini）
-4. 为审查角色分配模型（legacy、planner、specialist、judge、embedding）
+1. 导航到 **LLM 配置** 页面
+2. 添加 LLM 提供商（OpenAI 兼容、OpenAI Responses API、Anthropic、Google Gemini）
+3. 为审查角色分配模型（legacy、planner、specialist、judge、embedding）
 
 > API 密钥使用 AES-256-GCM 加密存储在本地 SQLite 数据库中。
-### 自定义提示词
 
-| 变量 | 描述 |
-|------|------|
-| `CUSTOM_SUMMARY_PROMPT` | 自定义总结审查提示词 |
-| `CUSTOM_LINE_COMMENT_PROMPT` | 自定义行级评论提示词 |
+#### 飞书集成
 
-### 管理后台
+| 配置项 | 描述 |
+|--------|------|
+| 飞书 Webhook 地址 | 飞书机器人 Webhook URL |
+| 飞书 Webhook 密钥 | 飞书 Webhook 密钥（可选） |
 
-| 变量 | 描述 | 默认值 |
-|------|------|--------|
-| `ADMIN_PASSWORD` | 后台登录密码 | `password` |
-| `JWT_SECRET` | JWT 签名密钥 | 自动生成 |
+#### Agent 审查引擎
 
-### 飞书集成
+| 配置项 | 描述 | 默认值 |
+|--------|------|--------|
+| 审查引擎 | 引擎模式（`legacy` 或 `agent`） | `legacy` |
+| 工作目录 | 仓库克隆工作目录 | `/tmp/gitea-assistant` |
+| 最大并发数 | 最大并发审查任务数 | `2` |
+| 最大文件数 | 单次审查最大文件数 | `200` |
+| 自动发布置信度 | 自动发布最小置信度 | `0.8` |
+| 启用人工审批 | 发布前要求人工确认 | `true` |
 
-| 变量 | 描述 |
-|------|------|
-| `FEISHU_WEBHOOK_URL` | 飞书机器人 Webhook 地址 |
-| `FEISHU_WEBHOOK_SECRET` | 飞书 Webhook 密钥（可选） |
+#### 记忆与学习（实验性）
 
-### Agent 审查引擎
-
-设置 `REVIEW_ENGINE=agent` 启用多代理审查：
-
-| 变量 | 描述 | 默认值 |
-|------|------|--------|
-| `REVIEW_ENGINE` | 引擎模式（`legacy` 或 `agent`） | `legacy` |
-| `REVIEW_WORKDIR` | 仓库克隆工作目录 | `/tmp/gitea-assistant` |
-| `REVIEW_MAX_PARALLEL_RUNS` | 最大并发任务数 | `2` |
-| `REVIEW_MAX_FILES_PER_RUN` | 单次审查最大文件数 | `200` |
-| `REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE` | 自动发布最小置信度 | `0.8` |
-| `REVIEW_ENABLE_HUMAN_GATE` | 启用人工审批 | `true` |
-### 记忆与学习（实验性）
-
-| 变量 | 描述 | 默认值 |
-|------|------|--------|
-| `QDRANT_URL` | Qdrant 向量数据库地址 | - |
-| `ENABLE_MEMORY` | 启用记忆系统 | `false` |
-| `ENABLE_REFLECTION` | 启用自我批评 | `false` |
-| `ENABLE_DEBATE` | 启用多代理辩论 | `false` |
-
+| 配置项 | 描述 | 默认值 |
+|--------|------|--------|
+| Qdrant 地址 | Qdrant 向量数据库地址 | - |
+| 启用记忆 | 启用记忆系统 | `false` |
+| 启用反思 | 启用自我批评 | `false` |
+| 启用辩论 | 启用多代理辩论 | `false` |
 ## 部署指南
 
 ### Docker
 
 ```bash
 docker build -t gitea-assistant .
-docker run -d -p 3000:3000 --env-file .env gitea-assistant
+docker run -d -p 3000:3000 -v ./data:/app/data -e PORT=3000 gitea-assistant
 ```
 
 ### Docker Compose
@@ -182,12 +185,10 @@ Kubernetes 部署清单位于 `k8s/` 目录。
 
 **1. 配置密钥**
 
-将凭证编码为 base64 并更新 `k8s/gitea-assistant.yaml` 中的 Secret：
+只需将 Gitea 访问令牌编码为 base64 并填入 `k8s/gitea-assistant.yaml`：
 
 ```bash
 echo -n "your_gitea_token" | base64
-echo -n "your_webhook_secret" | base64
-echo -n "your_admin_password" | base64
 ```
 
 **2. 配置应用**
@@ -195,9 +196,8 @@ echo -n "your_admin_password" | base64
 编辑 `k8s/gitea-assistant.yaml` 中的 ConfigMap：
 
 - 将 `GITEA_API_URL` 设置为你的 Gitea 实例 API 地址
-- 根据需要调整审查引擎配置
 
-> **注意**: LLM 提供商配置通过部署后的管理后台进行。请确保为 `/app/data` 目录配置持久化存储，以保留 LLM 设置和加密的 API 密钥。
+> **注意**: 所有其他设置（Webhook 密钥、管理员密码、审查引擎、飞书等）均在应用部署后通过管理后台进行配置，首次启动时自动初始化。请确保为 `/app/data` 目录配置持久化存储。
 **3. 部署**
 
 ```bash

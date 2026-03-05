@@ -51,26 +51,22 @@ AI-powered code review assistant for Gitea. Automatically reviews Pull Requests 
 git clone https://github.com/user/gitea-ai-assistant.git
 cd gitea-ai-assistant
 bun install
-cp .env.example .env
 ```
 
 ### Configuration
 
-Edit `.env` with your settings:
+Create a `.env` file with only infrastructure-level settings:
 
 ```bash
-# Gitea
-GITEA_API_URL=https://your-gitea-instance.com/api/v1
-GITEA_ACCESS_TOKEN=your_gitea_token
+# Server port (the only required setting)
+PORT=3000
 
-# Security
-WEBHOOK_SECRET=your_webhook_secret  # openssl rand -hex 32
-
-# Admin Dashboard
-ADMIN_PASSWORD=your_admin_password
+# Optional: custom data paths (defaults shown)
+# DATABASE_PATH=./data/assistant.db
+# MASTER_KEY_PATH=./data/master.key
 ```
 
-> **Note**: LLM provider settings (API keys, models, endpoints) are configured through the Admin Dashboard Web UI, not environment variables. Access the dashboard at `http://your-server:3000` after starting the server.
+> **All other configuration** (Gitea connection, webhook secret, admin password, review engine, Feishu, memory settings, etc.) is managed through the **Admin Dashboard Web UI** at `http://your-server:3000`. On first boot, all settings are seeded with secure defaults automatically.
 
 See [Configuration Reference](#configuration-reference) for all options.
 
@@ -86,7 +82,7 @@ bun run start  # Production mode
 **Option 1: Admin Dashboard (Recommended)**
 
 1. Access `http://your-server:3000`
-2. Log in with `ADMIN_PASSWORD`
+2. Log in with the admin password (default: `password` — change it in the dashboard)
 3. Click "Enable" on repositories to auto-configure webhooks
 
 **Option 2: Manual Configuration**
@@ -94,80 +90,87 @@ bun run start  # Production mode
 In Gitea repository settings, add a webhook:
 - **URL**: `http://your-server:3000/webhook/gitea`
 - **Content Type**: `application/json`
-- **Secret**: Same as `WEBHOOK_SECRET`
+- **Secret**: Same as the Webhook Secret configured in the dashboard
 - **Events**: "Pull Request" and "Status"
-
 ## Configuration Reference
 
-### Core Settings
+### Environment Variables (Minimal)
+
+Only infrastructure-level settings that must be known before the database is initialized:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `GITEA_API_URL` | Gitea API endpoint | Required |
-| `GITEA_ACCESS_TOKEN` | Token for code review (read + comment permissions) | Required |
-| `GITEA_ADMIN_TOKEN` | Token for webhook management (optional) | - |
-| `PORT` | Server port | `3000` |
-| `WEBHOOK_SECRET` | Webhook signature secret | Required |
+| `PORT` | Server port | `5174` |
+| `DATABASE_PATH` | SQLite database file path | `./data/assistant.db` |
+| `MASTER_KEY_PATH` | Encryption master key file path | `./data/master.key` |
 
-### LLM Provider Configuration
+### Web UI Configuration (Admin Dashboard)
+
+All runtime configuration is managed through the **Admin Dashboard** at `http://your-server:PORT`. Changes take effect immediately without restart.
+
+On first boot with an empty database, all settings are seeded with secure defaults:
+- `JWT_SECRET` and `WEBHOOK_SECRET` are auto-generated (64-char hex via `crypto.randomBytes`)
+- `ADMIN_PASSWORD` defaults to `password` — **change this immediately**
+
+#### Gitea
+
+| Setting | Description |
+|---------|-------------|
+| Gitea API URL | Gitea API endpoint (e.g. `https://gitea.example.com/api/v1`) |
+| Access Token | Token for code review (read + comment permissions) |
+| Admin Token | Token for webhook management (optional) |
+
+#### Security
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Webhook Secret | HMAC-SHA256 webhook signature secret | Auto-generated |
+| Admin Password | Dashboard login password | `password` |
+| JWT Secret | JWT signing secret | Auto-generated |
+
+#### LLM Provider Configuration
 
 LLM providers and models are configured exclusively through the **Admin Dashboard** Web UI:
 
-1. Access the dashboard at `http://your-server:3000`
-2. Navigate to **LLM 配置** (LLM Configuration)
-3. Add your LLM providers (OpenAI Compatible, OpenAI Responses API, Anthropic, Google Gemini)
-4. Assign models to review roles (legacy, planner, specialist, judge, embedding)
+1. Navigate to **LLM 配置** (LLM Configuration)
+2. Add your LLM providers (OpenAI Compatible, OpenAI Responses API, Anthropic, Google Gemini)
+3. Assign models to review roles (legacy, planner, specialist, judge, embedding)
 
-> API keys are stored encrypted (AES-256-GCM) in a local SQLite database.
-### Custom Prompts
+> API keys are stored encrypted (AES-256-GCM) in the local SQLite database.
 
-| Variable | Description |
-|----------|-------------|
-| `CUSTOM_SUMMARY_PROMPT` | Override the default summary review prompt |
-| `CUSTOM_LINE_COMMENT_PROMPT` | Override the default line comment prompt |
+#### Feishu Integration
 
-### Admin Dashboard
+| Setting | Description |
+|---------|-------------|
+| Feishu Webhook URL | Feishu bot webhook URL |
+| Feishu Webhook Secret | Feishu webhook secret (optional) |
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `ADMIN_PASSWORD` | Dashboard login password | `password` |
-| `JWT_SECRET` | JWT signing secret | Auto-generated |
+#### Agent Review Engine
 
-### Feishu Integration
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Review Engine | Engine mode (`legacy` or `agent`) | `legacy` |
+| Review Work Directory | Working directory for repo clones | `/tmp/gitea-assistant` |
+| Max Parallel Runs | Max concurrent review tasks | `2` |
+| Max Files per Run | Max files analyzed per review | `200` |
+| Auto-publish Min Confidence | Min confidence score for auto-publish | `0.8` |
+| Enable Human Gate | Require human approval before publishing | `true` |
 
-| Variable | Description |
-|----------|-------------|
-| `FEISHU_WEBHOOK_URL` | Feishu bot webhook URL |
-| `FEISHU_WEBHOOK_SECRET` | Feishu webhook secret (optional) |
+#### Memory & Learning (Experimental)
 
-### Agent Review Engine
-
-Enable with `REVIEW_ENGINE=agent` for advanced multi-agent reviews:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `REVIEW_ENGINE` | Engine mode (`legacy` or `agent`) | `legacy` |
-| `REVIEW_WORKDIR` | Working directory for repo clones | `/tmp/gitea-assistant` |
-| `REVIEW_MAX_PARALLEL_RUNS` | Max concurrent tasks | `2` |
-| `REVIEW_MAX_FILES_PER_RUN` | Max files per review | `200` |
-| `REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE` | Min confidence for auto-publish | `0.8` |
-| `REVIEW_ENABLE_HUMAN_GATE` | Enable human approval | `true` |
-### Memory & Learning (Experimental)
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `QDRANT_URL` | Qdrant vector database URL | - |
-| `ENABLE_MEMORY` | Enable memory system | `false` |
-| `ENABLE_REFLECTION` | Enable self-critique | `false` |
-| `ENABLE_DEBATE` | Enable multi-agent debate | `false` |
-
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Qdrant URL | Qdrant vector database URL | - |
+| Enable Memory | Enable memory system | `false` |
+| Enable Reflection | Enable self-critique | `false` |
+| Enable Debate | Enable multi-agent debate | `false` |
 ## Deployment
 
 ### Docker
 
 ```bash
 docker build -t gitea-assistant .
-docker run -d -p 3000:3000 --env-file .env gitea-assistant
+docker run -d -p 3000:3000 -v ./data:/app/data -e PORT=3000 gitea-assistant
 ```
 
 ### Docker Compose
@@ -182,22 +185,21 @@ Kubernetes manifests are located in the `k8s/` directory.
 
 **1. Configure Secrets**
 
-Encode your credentials as base64 and update `k8s/gitea-assistant.yaml`:
+Only the Gitea access token needs to be in the Secret (the only sensitive env-var-level setting):
 
 ```bash
 echo -n "your_gitea_token" | base64
-echo -n "your_webhook_secret" | base64
-echo -n "your_admin_password" | base64
 ```
+
+Update `GITEA_ACCESS_TOKEN` in `k8s/gitea-assistant.yaml`.
 
 **2. Configure Application**
 
 Edit the ConfigMap in `k8s/gitea-assistant.yaml`:
 
 - Set `GITEA_API_URL` to your Gitea instance API endpoint
-- Adjust review engine settings as needed
 
-> **Note**: LLM provider configuration is done through the Admin Dashboard after deployment. Ensure persistent storage is configured for the `/app/data` directory to retain LLM settings and encrypted API keys.
+> **Note**: All other settings (webhook secret, admin password, review engine, Feishu, etc.) are configured through the Admin Dashboard Web UI after deployment. They are auto-seeded on first boot. Ensure persistent storage is configured for the `/app/data` directory.
 **3. Deploy**
 
 ```bash
