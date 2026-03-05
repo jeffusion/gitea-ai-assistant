@@ -2,31 +2,31 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-基于 AI 的 Gitea 代码审查助手。自动审查 Pull Request 和提交，使用 OpenAI 提供智能代码质量分析，支持总体评论和行级反馈。
+基于 AI 的 Gitea 代码审查助手。自动审查 Pull Request 和提交，支持多种 LLM 提供商（OpenAI 兼容、OpenAI Responses API、Anthropic、Google Gemini），提供智能代码质量分析，支持总体评论和行级反馈。
 
 **[English Documentation](../README.md)**
 
 ## 功能特点
 
-- 🤖 **AI 代码审查** - 使用 OpenAI 模型自动审查 PR 和提交
+- 🤖 **AI 代码审查** - 使用可插拔的 LLM 提供商自动审查 PR 和提交
 - 📝 **行级评论** - 针对具体代码变更的精确反馈
 - 🔄 **双引擎模式** - Legacy（简单）或 Agent（多代理）审查模式
 - 🔔 **飞书通知** - PR 事件通知集成
-- 🎛️ **管理后台** - 用于管理仓库 Webhook 和配置的 Web 界面
+- 🎛️ **管理后台** - 用于管理仓库 Webhook 和 LLM 提供商配置的 Web 界面
 - 🔐 **安全验证** - HMAC-SHA256 签名验证
 
 ## 架构设计
 
 ```
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   Gitea 服务器   │────▶│  Gitea Assistant │────▶│   OpenAI API    │
-│   (Webhooks)    │     │  (Hono + Bun)    │     │                 │
+│   Gitea 服务器   │────▶│  Gitea Assistant │────▶│   LLM 网关      │
+│   (Webhooks)    │     │  (Hono + Bun)    │     │  (多提供商)    │
 └─────────────────┘     └──────────────────┘     └─────────────────┘
-                               │
-                               ▼
-                        ┌──────────────────┐
-                        │    管理后台       │
-                        │   (React SPA)    │
+                               │                        │
+                               ▼                        ├─ OpenAI 兼容
+                        ┌──────────────────┐            ├─ OpenAI Responses API
+                        │    管理后台       │            ├─ Anthropic
+                        │   (React SPA)    │            └─ Google Gemini
                         └──────────────────┘
 ```
 
@@ -43,7 +43,7 @@
 
 - [Bun](https://bun.sh/) >= 1.2.5
 - 可访问的 Gitea 实例
-- OpenAI API 密钥
+- 至少一个 LLM 提供商的 API 密钥（OpenAI、Anthropic、Google Gemini 或任何 OpenAI 兼容端点）
 
 ### 安装步骤
 
@@ -63,16 +63,14 @@ cp .env.example .env
 GITEA_API_URL=https://your-gitea-instance.com/api/v1
 GITEA_ACCESS_TOKEN=your_gitea_token
 
-# OpenAI
-OPENAI_API_KEY=your_openai_key
-OPENAI_MODEL=gpt-4o-mini
-
 # 安全
 WEBHOOK_SECRET=your_webhook_secret  # openssl rand -hex 32
 
 # 管理后台
 ADMIN_PASSWORD=your_admin_password
 ```
+
+> **注意**: LLM 提供商设置（API 密钥、模型、端点）通过管理后台 Web 界面配置，而非环境变量。启动服务后，访问 `http://your-server:3000` 进行配置。
 
 完整配置项请参阅 [配置参考](#配置参考)。
 
@@ -108,12 +106,19 @@ bun run start  # 生产模式
 | `GITEA_API_URL` | Gitea API 地址 | 必填 |
 | `GITEA_ACCESS_TOKEN` | 代码审查令牌（需要读取和评论权限） | 必填 |
 | `GITEA_ADMIN_TOKEN` | Webhook 管理令牌（可选） | - |
-| `OPENAI_BASE_URL` | OpenAI API 基础地址 | `https://api.openai.com/v1` |
-| `OPENAI_API_KEY` | OpenAI API 密钥 | 必填 |
-| `OPENAI_MODEL` | 使用的模型 | `gpt-4o-mini` |
 | `PORT` | 服务端口 | `3000` |
 | `WEBHOOK_SECRET` | Webhook 签名验证密钥 | 必填 |
 
+### LLM 提供商配置
+
+LLM 提供商和模型通过**管理后台** Web 界面进行配置：
+
+1. 访问管理后台 `http://your-server:3000`
+2. 导航到 **LLM 配置** 页面
+3. 添加 LLM 提供商（OpenAI 兼容、OpenAI Responses API、Anthropic、Google Gemini）
+4. 为审查角色分配模型（legacy、planner、specialist、judge、embedding）
+
+> API 密钥使用 AES-256-GCM 加密存储在本地 SQLite 数据库中。
 ### 自定义提示词
 
 | 变量 | 描述 |
@@ -143,14 +148,10 @@ bun run start  # 生产模式
 |------|------|--------|
 | `REVIEW_ENGINE` | 引擎模式（`legacy` 或 `agent`） | `legacy` |
 | `REVIEW_WORKDIR` | 仓库克隆工作目录 | `/tmp/gitea-assistant` |
-| `REVIEW_MODEL_PLANNER` | 规划模型 | `gpt-4o-mini` |
-| `REVIEW_MODEL_SPECIALIST` | 专家模型 | `gpt-4o-mini` |
-| `REVIEW_MODEL_JUDGE` | 判断模型 | `gpt-4o-mini` |
 | `REVIEW_MAX_PARALLEL_RUNS` | 最大并发任务数 | `2` |
 | `REVIEW_MAX_FILES_PER_RUN` | 单次审查最大文件数 | `200` |
 | `REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE` | 自动发布最小置信度 | `0.8` |
 | `REVIEW_ENABLE_HUMAN_GATE` | 启用人工审批 | `true` |
-
 ### 记忆与学习（实验性）
 
 | 变量 | 描述 | 默认值 |
@@ -185,7 +186,6 @@ Kubernetes 部署清单位于 `k8s/` 目录。
 
 ```bash
 echo -n "your_gitea_token" | base64
-echo -n "your_openai_key" | base64
 echo -n "your_webhook_secret" | base64
 echo -n "your_admin_password" | base64
 ```
@@ -195,8 +195,9 @@ echo -n "your_admin_password" | base64
 编辑 `k8s/gitea-assistant.yaml` 中的 ConfigMap：
 
 - 将 `GITEA_API_URL` 设置为你的 Gitea 实例 API 地址
-- 根据需要调整模型和审查引擎配置
+- 根据需要调整审查引擎配置
 
+> **注意**: LLM 提供商配置通过部署后的管理后台进行。请确保为 `/app/data` 目录配置持久化存储，以保留 LLM 设置和加密的 API 密钥。
 **3. 部署**
 
 ```bash
