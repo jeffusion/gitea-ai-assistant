@@ -31,11 +31,16 @@ When contributing to this project, adhere to these structural guidelines:
    - External API interactions belong in the [services/](mdc:src/services) directory
    - Each service should have a clear, single responsibility
 
-3. **Configuration**:
-   - Environment-based configurations go in [config/index.ts](mdc:src/config/index.ts)
-   - Use environment variables for configurable values
+3. **LLM Layer**:
+   - LLM provider adapters in [llm/](mdc:src/llm)
+   - Database layer in [db/](mdc:src/db)
+   - Encryption utilities in [crypto/](mdc:src/crypto)
 
-4. **Utils**:
+4. **Configuration**:
+   - Environment-based configurations go in [config/index.ts](mdc:src/config/index.ts)
+   - LLM provider settings are managed through Web UI + SQLite DB
+
+5. **Utils**:
    - Reusable utility functions belong in [utils/](mdc:src/utils)
    - Logging should use the custom logger from [utils/logger.ts](mdc:src/utils/logger.ts)
 

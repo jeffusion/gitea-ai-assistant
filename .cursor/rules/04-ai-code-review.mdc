@@ -7,7 +7,7 @@ alwaysApply: true
 
 ## Overview
 
-The AI Code Review system is the core feature of this application. It automatically analyzes code changes in Pull Requests and commits, providing insightful feedback using OpenAI's language models.
+The AI Code Review system is the core feature of this application. It automatically analyzes code changes in Pull Requests and commits, providing insightful feedback using pluggable LLM providers via the LLM Gateway.
 
 ## Key Components
 
@@ -36,7 +36,7 @@ The AI Code Review system is the core feature of this application. It automatica
    - Generate AI prompts with context
 
 3. **AI Review**:
-   - Send processed data to OpenAI API
+   - Route request through LLM Gateway to configured provider
    - Generate summary feedback
    - Generate line-level comments
 
