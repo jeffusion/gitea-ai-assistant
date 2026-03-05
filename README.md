@@ -185,20 +185,27 @@ docker-compose up -d
 
 Kubernetes manifests are located in the `k8s/` directory.
 
-**1. Configure**
-
-The only env var in the ConfigMap is `PORT`. All other settings (Gitea connection, webhook secret, admin password, review engine, Feishu, etc.) are configured through the **Admin Dashboard Web UI** after deployment — they are auto-seeded with secure defaults on first boot.
-
-Ensure persistent storage is configured for the `/app/data` directory to retain the SQLite database and encryption key.
-
-**2. Deploy**
-**3. Deploy**
+**1. Create the encryption secret**
 
 ```bash
-# Using Kustomize (recommended)
-kubectl apply -k k8s/
+# Generate a key and create the secret
+kubectl apply -f k8s/namespace.yaml
+ENCRYPTION_KEY=$(openssl rand -hex 32)
+kubectl -n gitea-assistant create secret generic gitea-assistant-secret \
+  --from-literal=ENCRYPTION_KEY=$ENCRYPTION_KEY
+# Save this key! You'll need it if you ever redeploy.
+echo "Your ENCRYPTION_KEY: $ENCRYPTION_KEY"
+```
 
-# Or apply individually
+**2. Deploy**
+
+```bash
+kubectl apply -k k8s/
+```
+
+Or apply individually:
+
+```bash
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -f k8s/qdrant.yaml
 kubectl apply -f k8s/gitea-assistant.yaml
