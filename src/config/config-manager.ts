@@ -1,101 +1,6 @@
-/**
- * Three-layer configuration manager.
- * Priority: Zod defaults → process.env → JSON overrides
- *
- * Override file format:
- *   { version: 1, updatedAt: string, overrides: Record<string, string> }
- *
- * Bun-friendly IO: reads via readFile, writes atomically via temp+rename.
- */
-
-import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
-import { config as dotenvConfig } from 'dotenv';
-import { z } from 'zod';
-
-// Load .env before any process.env access (must precede singleton construction)
-dotenvConfig();
-
-// ---------------------------------------------------------------------------
-// Override file types
-// ---------------------------------------------------------------------------
-
-interface OverridesFile {
-  version: 1;
-  updatedAt: string;
-  overrides: Record<string, string>;
-}
-
-// ---------------------------------------------------------------------------
-// Zod schema (identical to src/config/index.ts)
-// ---------------------------------------------------------------------------
-
-const defaultAllowedReviewCommands = ['git', 'rg', 'cat', 'sed', 'wc'];
-
-const envSchema = z.object({
-  // Gitea
-  GITEA_API_URL: z.string().url().default('http://localhost:5174/api/v1'),
-  GITEA_ACCESS_TOKEN: z.string().default('test_token'),
-  GITEA_ADMIN_TOKEN: z.string().optional(),
-
-  CUSTOM_SUMMARY_PROMPT: z.string().optional(),
-  CUSTOM_LINE_COMMENT_PROMPT: z.string().optional(),
-  GLOBAL_PROMPT: z.string().optional(),
-
-  // Feishu
-  FEISHU_WEBHOOK_URL: z.preprocess(
-    (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
-    z.string().url().optional()
-  ),
-  FEISHU_WEBHOOK_SECRET: z.string().optional(),
-
-  // App
-  PORT: z.string().transform(Number).default('5174'),
-  WEBHOOK_SECRET: z.string().default('test_webhook_secret'),
-
-  // Admin
-  ADMIN_PASSWORD: z.string().default('password'),
-  JWT_SECRET: z.string().default('a-secure-secret-for-jwt'),
-
-  // Review engine
-  REVIEW_ENGINE: z.enum(['legacy', 'agent']).default('legacy'),
-  REVIEW_WORKDIR: z.string().default('/tmp/gitea-assistant'),
-  REVIEW_MAX_PARALLEL_RUNS: z.coerce.number().int().min(1).max(8).default(2),
-  REVIEW_MAX_FILES_PER_RUN: z.coerce.number().int().min(1).max(1000).default(200),
-  REVIEW_MAX_FILE_CONTENT_CHARS: z.coerce.number().int().min(1000).max(1_000_000).default(40_000),
-  REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.8),
-  REVIEW_ENABLE_HUMAN_GATE: z
-    .enum(['true', 'false'])
-    .default('true')
-    .transform((value) => value === 'true'),
-  REVIEW_ALLOWED_COMMANDS: z.string().default(defaultAllowedReviewCommands.join(',')),
-  REVIEW_COMMAND_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(10000),
-
-  // Memory & learning
-  QDRANT_URL: z.preprocess(
-    (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
-    z.string().url().optional()
-  ),
-  ENABLE_MEMORY: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((value) => value === 'true'),
-  FEW_SHOT_EXAMPLES_COUNT: z.coerce.number().int().min(0).max(20).default(10),
-
-  // Reflection & debate
-  ENABLE_REFLECTION: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((value) => value === 'true'),
-  MAX_REFLECTION_ROUNDS: z.coerce.number().int().min(1).max(5).default(2),
-  ENABLE_DEBATE: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((value) => value === 'true'),
-  DEBATE_THRESHOLD: z.enum(['high', 'medium']).default('high'),
-});
+import { randomBytes } from 'node:crypto';
+import { settingsRepo } from '../db/repositories/settings-repo';
+import { CONFIG_FIELDS, type ConfigFieldMeta } from './config-schema';
 
 // ---------------------------------------------------------------------------
 // Config shape (matches default export of src/config/index.ts)
@@ -143,195 +48,171 @@ export interface AppConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Dev fallback (matches src/config/index.ts behavior when validation fails)
-// ---------------------------------------------------------------------------
-
-
-// ---------------------------------------------------------------------------
 // ConfigManager
 // ---------------------------------------------------------------------------
 
 class ConfigManager {
-  private readonly overridesPath: string;
-  private overrides: Record<string, string> = {};
+  private readonly fieldsMap = new Map<string, ConfigFieldMeta>(
+    CONFIG_FIELDS.map((field) => [field.envKey, field])
+  );
 
-  constructor() {
-    this.overridesPath = resolve(process.env.CONFIG_OVERRIDES_PATH || './config-overrides.json');
-    this.loadOverridesSync();
+  private defaultToString(value: string | number | boolean): string {
+    if (typeof value === 'string') return value;
+    return String(value);
   }
 
-  /** Synchronously load overrides at construction time (file is tiny). */
-  private loadOverridesSync(): void {
+  private getRawValue(key: string): string | undefined {
     try {
-      const text = readFileSync(this.overridesPath, 'utf-8');
-      const data: OverridesFile = JSON.parse(text);
-      if (data && typeof data.overrides === 'object' && data.overrides !== null) {
-        this.overrides = { ...data.overrides };
+      const fromDb = settingsRepo.get(key);
+      if (fromDb !== null) {
+        return fromDb;
       }
     } catch {
-      // File missing or invalid JSON — start with empty overrides
+      // DB not initialized yet (e.g. during tests that don't init DB)
+      // Fall through to return the default value below
     }
+
+    const field = this.fieldsMap.get(key);
+    if (!field || field.defaultValue === undefined) {
+      return undefined;
+    }
+
+    return this.defaultToString(field.defaultValue);
   }
 
-  // ── Override file I/O ────────────────────────────────────────────────────
-
-  /** Load overrides from disk. If file is missing or malformed, treat as empty. */
-  async loadOverrides(): Promise<void> {
-    try {
-      const text = await readFile(this.overridesPath, 'utf-8');
-      const data: OverridesFile = JSON.parse(text);
-      if (data && typeof data.overrides === 'object' && data.overrides !== null) {
-        this.overrides = { ...data.overrides };
-      } else {
-        this.overrides = {};
-      }
-    } catch {
-      // File missing or invalid JSON — start with empty overrides
-      this.overrides = {};
+  getAllRawValues(): Record<string, string | undefined> {
+    const values: Record<string, string | undefined> = {};
+    for (const field of CONFIG_FIELDS) {
+      values[field.envKey] = this.getRawValue(field.envKey);
     }
+    return values;
   }
 
-  /** Persist current overrides to disk. Tries atomic rename; falls back to direct write. */
-  private async persistOverrides(): Promise<void> {
-    const dir = dirname(this.overridesPath);
-    await mkdir(dir, { recursive: true });
+  getCurrent(): AppConfig {
+    const values = this.getAllRawValues();
+    const portValue = process.env.PORT;
+    const parsedPort = portValue !== undefined && portValue !== '' ? Number(portValue) : 5174;
+    const port = Number.isFinite(parsedPort) ? parsedPort : 5174;
 
-    const payload: OverridesFile = {
-      version: 1,
-      updatedAt: new Date().toISOString(),
-      overrides: { ...this.overrides },
+    const toNumber = (key: string, fallback: number): number => {
+      const raw = values[key];
+      if (raw === undefined) return fallback;
+      const num = Number(raw);
+      return Number.isFinite(num) ? num : fallback;
     };
 
-    const json = JSON.stringify(payload, null, 2);
+    const toBoolean = (key: string, fallback: boolean): boolean => {
+      const raw = values[key];
+      if (raw === undefined) return fallback;
+      return raw === 'true';
+    };
 
-    // Atomic rename may fail on K8s volumes (EBUSY/EXDEV); fall back to direct write.
-    const tmpPath = `${this.overridesPath}.${randomUUID()}.tmp`;
-    try {
-      await writeFile(tmpPath, json, 'utf-8');
-      await rename(tmpPath, this.overridesPath);
-    } catch {
-      await writeFile(this.overridesPath, json, 'utf-8');
-      // Clean up orphaned tmp file (best effort)
-      try { await unlink(tmpPath); } catch { /* ignore */ }
-    }
-  }
-
-  // ── Core API ─────────────────────────────────────────────────────────────
-
-  /**
-   * Returns the fully resolved config object with the same shape as the
-   * default export of `src/config/index.ts`.
-   *
-   * Layering: Zod defaults → process.env → overrides JSON
-   */
-  getCurrent(): AppConfig {
-    // Build a merged env-like record: process.env overlaid with overrides
-    const merged: Record<string, string | undefined> = {};
-    for (const key of Object.keys(envSchema.shape)) {
-      const envVal = process.env[key];
-      if (envVal !== undefined && envVal !== '') {
-        merged[key] = envVal;
-      }
-      // Override wins if present and non-empty
-      const ov = this.overrides[key];
-      if (ov !== undefined && ov !== '') {
-        merged[key] = ov;
-      }
-    }
-
-    const parseResult = envSchema.safeParse(merged);
-
-    if (!parseResult.success) {
-      throw new Error('Configuration validation error');
-    }
-
-    const env = parseResult.data;
+    const toStringArray = (key: string, fallback: string[]): string[] => {
+      const raw = values[key];
+      if (raw === undefined) return fallback;
+      return raw
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+    };
 
     return {
       gitea: {
-        apiUrl: env.GITEA_API_URL,
-        accessToken: env.GITEA_ACCESS_TOKEN,
+        apiUrl: values.GITEA_API_URL ?? 'http://localhost:5174/api/v1',
+        accessToken: values.GITEA_ACCESS_TOKEN ?? 'test_token',
       },
       feishu: {
-        webhookUrl: env.FEISHU_WEBHOOK_URL,
-        webhookSecret: env.FEISHU_WEBHOOK_SECRET,
+        webhookUrl: values.FEISHU_WEBHOOK_URL,
+        webhookSecret: values.FEISHU_WEBHOOK_SECRET,
       },
       app: {
-        port: env.PORT,
-        webhookSecret: env.WEBHOOK_SECRET,
+        port,
+        webhookSecret: values.WEBHOOK_SECRET ?? 'test_webhook_secret',
       },
       admin: {
-        password: env.ADMIN_PASSWORD,
-        jwtSecret: env.JWT_SECRET,
-        giteaAdminToken: env.GITEA_ADMIN_TOKEN,
+        password: values.ADMIN_PASSWORD ?? 'password',
+        jwtSecret: values.JWT_SECRET ?? 'a-secure-secret-for-jwt',
+        giteaAdminToken: values.GITEA_ADMIN_TOKEN,
       },
       review: {
-        engine: env.REVIEW_ENGINE,
-        workdir: env.REVIEW_WORKDIR,
-        customSummaryPrompt: env.CUSTOM_SUMMARY_PROMPT,
-        customLineCommentPrompt: env.CUSTOM_LINE_COMMENT_PROMPT,
-        globalPrompt: env.GLOBAL_PROMPT,
-        maxParallelRuns: env.REVIEW_MAX_PARALLEL_RUNS,
-        maxFilesPerRun: env.REVIEW_MAX_FILES_PER_RUN,
-        maxFileContentChars: env.REVIEW_MAX_FILE_CONTENT_CHARS,
-        autoPublishMinConfidence: env.REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE,
-        enableHumanGate: env.REVIEW_ENABLE_HUMAN_GATE,
-        allowedCommands: env.REVIEW_ALLOWED_COMMANDS.split(',')
-          .map((item) => item.trim())
-          .filter(Boolean),
-        commandTimeoutMs: env.REVIEW_COMMAND_TIMEOUT_MS,
-        qdrantUrl: env.QDRANT_URL,
-        enableMemory: env.ENABLE_MEMORY,
-        fewShotExamplesCount: env.FEW_SHOT_EXAMPLES_COUNT,
-        enableReflection: env.ENABLE_REFLECTION,
-        maxReflectionRounds: env.MAX_REFLECTION_ROUNDS,
-        enableDebate: env.ENABLE_DEBATE,
-        debateThreshold: env.DEBATE_THRESHOLD,
+        engine: values.REVIEW_ENGINE ?? 'legacy',
+        workdir: values.REVIEW_WORKDIR ?? '/tmp/gitea-assistant',
+        customSummaryPrompt: values.CUSTOM_SUMMARY_PROMPT,
+        customLineCommentPrompt: values.CUSTOM_LINE_COMMENT_PROMPT,
+        globalPrompt: values.GLOBAL_PROMPT,
+        maxParallelRuns: toNumber('REVIEW_MAX_PARALLEL_RUNS', 2),
+        maxFilesPerRun: toNumber('REVIEW_MAX_FILES_PER_RUN', 200),
+        maxFileContentChars: toNumber('REVIEW_MAX_FILE_CONTENT_CHARS', 40000),
+        autoPublishMinConfidence: toNumber('REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE', 0.8),
+        enableHumanGate: toBoolean('REVIEW_ENABLE_HUMAN_GATE', true),
+        allowedCommands: toStringArray('REVIEW_ALLOWED_COMMANDS', [
+          'git',
+          'rg',
+          'cat',
+          'sed',
+          'wc',
+        ]),
+        commandTimeoutMs: toNumber('REVIEW_COMMAND_TIMEOUT_MS', 10000),
+        qdrantUrl: values.QDRANT_URL,
+        enableMemory: toBoolean('ENABLE_MEMORY', false),
+        fewShotExamplesCount: toNumber('FEW_SHOT_EXAMPLES_COUNT', 10),
+        enableReflection: toBoolean('ENABLE_REFLECTION', false),
+        maxReflectionRounds: toNumber('MAX_REFLECTION_ROUNDS', 2),
+        enableDebate: toBoolean('ENABLE_DEBATE', false),
+        debateThreshold: values.DEBATE_THRESHOLD ?? 'high',
       },
     };
   }
 
-  /** Return raw overrides record. */
-  getOverrides(): Record<string, string> {
-    return { ...this.overrides };
-  }
-
-  /**
-   * Merge updates into overrides and persist.
-   * If a value is empty string `''`, that key is deleted (reset to lower layer).
-   */
   async setOverrides(updates: Record<string, string>): Promise<void> {
     for (const [key, value] of Object.entries(updates)) {
+      const field = this.fieldsMap.get(key);
+      if (!field) {
+        continue;
+      }
+
       if (value === '') {
-        delete this.overrides[key];
+        settingsRepo.delete(key);
       } else {
-        this.overrides[key] = value;
+        settingsRepo.set(key, value, field.sensitive);
       }
     }
-    await this.persistOverrides();
   }
 
-  /** Remove specified keys from overrides and persist. */
   async resetKeys(keys: string[]): Promise<void> {
     for (const key of keys) {
-      delete this.overrides[key];
+      settingsRepo.delete(key);
     }
-    await this.persistOverrides();
   }
 
-  /**
-   * Determine where the effective value for a given env key comes from.
-   */
-  getSource(envKey: string): 'default' | 'env' | 'override' {
-    const ov = this.overrides[envKey];
-    if (ov !== undefined && ov !== '') {
-      return 'override';
+  getSource(envKey: string): 'default' | 'db' {
+    try {
+      return settingsRepo.get(envKey) !== null ? 'db' : 'default';
+    } catch {
+      return 'default';
     }
-    const envVal = process.env[envKey];
-    if (envVal !== undefined && envVal !== '') {
-      return 'env';
+  }
+
+  seedDefaults(): void {
+    if (settingsRepo.listAll().length > 0) {
+      return;
     }
-    return 'default';
+
+    for (const field of CONFIG_FIELDS) {
+      let value: string | undefined;
+
+      if (field.envKey === 'JWT_SECRET' || field.envKey === 'WEBHOOK_SECRET') {
+        value = randomBytes(32).toString('hex');
+      } else if (field.envKey === 'ADMIN_PASSWORD') {
+        value = 'password';
+      } else if (field.defaultValue !== undefined) {
+        value = this.defaultToString(field.defaultValue);
+      }
+
+      if (value !== undefined) {
+        settingsRepo.set(field.envKey, value, field.sensitive);
+      }
+    }
   }
 }
 

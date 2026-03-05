@@ -7,7 +7,7 @@
 // Types
 // ---------------------------------------------------------------------------
 
-export type ConfigGroup = 'gitea' | 'feishu' | 'app' | 'admin' | 'review' | 'memory';
+export type ConfigGroup = 'gitea' | 'feishu' | 'security' | 'review' | 'memory';
 
 export type ConfigFieldType = 'string' | 'number' | 'boolean' | 'url' | 'text' | 'enum';
 
@@ -18,8 +18,6 @@ export interface ConfigFieldMeta {
   description: string;
   type: ConfigFieldType;
   sensitive: boolean;
-  readonly?: boolean;
-  readonlyWarning?: string;
   enumValues?: string[];
   min?: number;
   max?: number;
@@ -51,15 +49,9 @@ export const CONFIG_GROUPS: ConfigGroupMeta[] = [
     icon: 'bell',
   },
   {
-    key: 'app',
-    label: '应用',
-    description: '服务端口与 Webhook 安全',
-    icon: 'settings',
-  },
-  {
-    key: 'admin',
-    label: '管理后台',
-    description: '后台登录密码与 JWT 密钥',
+    key: 'security',
+    label: '安全设置',
+    description: 'Webhook、后台密码与 JWT 密钥',
     icon: 'shield',
   },
   {
@@ -152,48 +144,32 @@ export const CONFIG_FIELDS: ConfigFieldMeta[] = [
     sensitive: true,
   },
 
-  // ── 应用 ────────────────────────────────────────────────────────────────
-  {
-    envKey: 'PORT',
-    group: 'app',
-    label: '监听端口',
-    description: '服务监听的 HTTP 端口号，修改需通过 .env 配置并重启服务',
-    type: 'number',
-    sensitive: false,
-    readonly: true,
-    defaultValue: 5174,
-  },
   {
     envKey: 'WEBHOOK_SECRET',
-    group: 'app',
+    group: 'security',
     label: 'Webhook 密钥',
-    description:
-      '用于验证 Gitea Webhook 请求来源的 HMAC 密钥，修改需通过 .env 配置并同步更新 Gitea',
+    description: '用于验证 Gitea Webhook 请求来源的 HMAC 密钥',
     type: 'string',
     sensitive: true,
-    readonly: true,
     defaultValue: 'test_webhook_secret',
   },
 
-  // ── 管理后台 ────────────────────────────────────────────────────────────
   {
     envKey: 'ADMIN_PASSWORD',
-    group: 'admin',
+    group: 'security',
     label: '管理员密码',
     description: '后台管理界面的登录密码',
     type: 'string',
     sensitive: true,
-    readonlyWarning: '修改后当前登录会话可能失效',
     defaultValue: 'password',
   },
   {
     envKey: 'JWT_SECRET',
-    group: 'admin',
+    group: 'security',
     label: 'JWT 密钥',
-    description: '用于签发后台登录 Token 的密钥，修改需通过 .env 配置',
+    description: '用于签发后台登录 Token 的密钥',
     type: 'string',
     sensitive: true,
-    readonly: true,
     defaultValue: 'a-secure-secret-for-jwt',
   },
 

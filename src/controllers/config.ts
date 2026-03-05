@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { type AppConfig, configManager } from '../config/config-manager';
+import { configManager } from '../config/config-manager';
 import { CONFIG_FIELDS, CONFIG_GROUPS, type ConfigFieldMeta } from '../config/config-schema';
 import { logger } from '../utils/logger';
 
@@ -9,7 +9,6 @@ const MASKED_VALUE = '••••••••';
 
 /** Number fields that must be integers (decimal not allowed). */
 const INTEGER_FIELDS = new Set([
-  'PORT',
   'REVIEW_MAX_PARALLEL_RUNS',
   'REVIEW_MAX_FILES_PER_RUN',
   'REVIEW_MAX_FILE_CONTENT_CHARS',
@@ -22,83 +21,6 @@ const INTEGER_FIELDS = new Set([
 const FIELDS_MAP = new Map<string, ConfigFieldMeta>(CONFIG_FIELDS.map((f) => [f.envKey, f]));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Map an envKey to its effective value from the resolved AppConfig.
- * Explicit switch — no dynamic property access.
- */
-function getEffectiveValue(
-  envKey: string,
-  current: AppConfig
-): string | number | boolean | undefined {
-  switch (envKey) {
-    // Gitea
-    case 'GITEA_API_URL':
-      return current.gitea.apiUrl;
-    case 'GITEA_ACCESS_TOKEN':
-      return current.gitea.accessToken;
-    case 'GITEA_ADMIN_TOKEN':
-      return current.admin.giteaAdminToken;
-    // Review prompts (moved from OpenAI group)
-    case 'CUSTOM_SUMMARY_PROMPT':
-      return current.review.customSummaryPrompt;
-    case 'CUSTOM_LINE_COMMENT_PROMPT':
-      return current.review.customLineCommentPrompt;
-    case 'GLOBAL_PROMPT':
-      return current.review.globalPrompt;
-    // Feishu
-    case 'FEISHU_WEBHOOK_URL':
-      return current.feishu.webhookUrl;
-    case 'FEISHU_WEBHOOK_SECRET':
-      return current.feishu.webhookSecret;
-    // App
-    case 'PORT':
-      return current.app.port;
-    case 'WEBHOOK_SECRET':
-      return current.app.webhookSecret;
-    // Admin
-    case 'ADMIN_PASSWORD':
-      return current.admin.password;
-    case 'JWT_SECRET':
-      return current.admin.jwtSecret;
-    // Review
-    case 'REVIEW_ENGINE':
-      return current.review.engine;
-    case 'REVIEW_WORKDIR':
-      return current.review.workdir;
-    case 'REVIEW_MAX_PARALLEL_RUNS':
-      return current.review.maxParallelRuns;
-    case 'REVIEW_MAX_FILES_PER_RUN':
-      return current.review.maxFilesPerRun;
-    case 'REVIEW_MAX_FILE_CONTENT_CHARS':
-      return current.review.maxFileContentChars;
-    case 'REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE':
-      return current.review.autoPublishMinConfidence;
-    case 'REVIEW_ENABLE_HUMAN_GATE':
-      return current.review.enableHumanGate;
-    case 'REVIEW_ALLOWED_COMMANDS':
-      return current.review.allowedCommands.join(',');
-    case 'REVIEW_COMMAND_TIMEOUT_MS':
-      return current.review.commandTimeoutMs;
-    // Memory
-    case 'QDRANT_URL':
-      return current.review.qdrantUrl;
-    case 'ENABLE_MEMORY':
-      return current.review.enableMemory;
-    case 'FEW_SHOT_EXAMPLES_COUNT':
-      return current.review.fewShotExamplesCount;
-    case 'ENABLE_REFLECTION':
-      return current.review.enableReflection;
-    case 'MAX_REFLECTION_ROUNDS':
-      return current.review.maxReflectionRounds;
-    case 'ENABLE_DEBATE':
-      return current.review.enableDebate;
-    case 'DEBATE_THRESHOLD':
-      return current.review.debateThreshold;
-    default:
-      return undefined;
-  }
-}
 
 /**
  * Validate a single field value against its metadata.
@@ -157,13 +79,13 @@ export const configRouter = new Hono();
  * effective values, and source. Sensitive fields are masked.
  */
 configRouter.get('/', (c) => {
-  const current = configManager.getCurrent();
+  const rawValues = configManager.getAllRawValues();
 
   const groups = CONFIG_GROUPS.map((group) => {
     const groupFields = CONFIG_FIELDS.filter((f) => f.group === group.key);
 
     const fields = groupFields.map((field) => {
-      const rawValue = getEffectiveValue(field.envKey, current);
+      const rawValue = rawValues[field.envKey];
       const hasValue = rawValue !== undefined && rawValue !== '';
       const source = configManager.getSource(field.envKey);
       const value = field.sensitive && hasValue ? MASKED_VALUE : rawValue;
@@ -174,8 +96,6 @@ configRouter.get('/', (c) => {
         description: field.description,
         type: field.type,
         sensitive: field.sensitive,
-        ...(field.readonly && { readonly: true }),
-        ...(field.readonlyWarning !== undefined && { readonlyWarning: field.readonlyWarning }),
         ...(field.enumValues !== undefined && { enumValues: field.enumValues }),
         ...(field.min !== undefined && { min: field.min }),
         ...(field.max !== undefined && { max: field.max }),
@@ -199,9 +119,9 @@ configRouter.get('/', (c) => {
 });
 
 /**
- * PUT / — Validate and persist override updates.
+ * PUT / — Validate and persist configuration updates.
  * Masked sentinel ('••••••••') for sensitive fields is silently skipped.
- * Empty string '' causes the key to be reset (deleted from overrides).
+ * Empty string '' causes the key to be reset (deleted from DB).
  */
 configRouter.put('/', async (c) => {
   try {
@@ -221,11 +141,6 @@ configRouter.put('/', async (c) => {
         errors.push(`未知配置项: ${key}`);
         continue;
       }
-      // Silently skip readonly fields — frontend sends entire form state
-      if (field.readonly) {
-        continue;
-      }
-
       const value = String(rawValue ?? '');
 
       // Skip masked sentinel for sensitive fields — do not overwrite with mask
@@ -262,7 +177,7 @@ configRouter.put('/', async (c) => {
 });
 
 /**
- * POST /reset — Remove specified keys from overrides (revert to env / default).
+ * POST /reset — Remove specified keys from DB (revert to default).
  */
 configRouter.post('/reset', async (c) => {
   try {
