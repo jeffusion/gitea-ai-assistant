@@ -183,21 +183,13 @@ docker-compose up -d
 
 Kubernetes 部署清单位于 `k8s/` 目录。
 
-**1. 配置密钥**
+**1. 配置**
 
-只需将 Gitea 访问令牌编码为 base64 并填入 `k8s/gitea-assistant.yaml`：
+ConfigMap 中唯一的环境变量是 `PORT`。所有其他设置（Gitea 连接、Webhook 密钥、管理员密码、审查引擎、飞书等）均在部署后通过 **Web 管理后台** 配置，首次启动时自动以安全默认值初始化。
 
-```bash
-echo -n "your_gitea_token" | base64
-```
+请确保为 `/app/data` 目录配置持久化存储，以保留 SQLite 数据库和加密密钥。
 
-**2. 配置应用**
-
-编辑 `k8s/gitea-assistant.yaml` 中的 ConfigMap：
-
-- 将 `GITEA_API_URL` 设置为你的 Gitea 实例 API 地址
-
-> **注意**: 所有其他设置（Webhook 密钥、管理员密码、审查引擎、飞书等）均在应用部署后通过管理后台进行配置，首次启动时自动初始化。请确保为 `/app/data` 目录配置持久化存储。
+**2. 部署**
 **3. 部署**
 
 ```bash

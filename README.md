@@ -183,23 +183,13 @@ docker-compose up -d
 
 Kubernetes manifests are located in the `k8s/` directory.
 
-**1. Configure Secrets**
+**1. Configure**
 
-Only the Gitea access token needs to be in the Secret (the only sensitive env-var-level setting):
+The only env var in the ConfigMap is `PORT`. All other settings (Gitea connection, webhook secret, admin password, review engine, Feishu, etc.) are configured through the **Admin Dashboard Web UI** after deployment — they are auto-seeded with secure defaults on first boot.
 
-```bash
-echo -n "your_gitea_token" | base64
-```
+Ensure persistent storage is configured for the `/app/data` directory to retain the SQLite database and encryption key.
 
-Update `GITEA_ACCESS_TOKEN` in `k8s/gitea-assistant.yaml`.
-
-**2. Configure Application**
-
-Edit the ConfigMap in `k8s/gitea-assistant.yaml`:
-
-- Set `GITEA_API_URL` to your Gitea instance API endpoint
-
-> **Note**: All other settings (webhook secret, admin password, review engine, Feishu, etc.) are configured through the Admin Dashboard Web UI after deployment. They are auto-seeded on first boot. Ensure persistent storage is configured for the `/app/data` directory.
+**2. Deploy**
 **3. Deploy**
 
 ```bash
