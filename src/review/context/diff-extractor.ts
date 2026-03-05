@@ -1,8 +1,10 @@
 import { lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { logger } from '../../utils/logger';
 import { ChangedFile, DiffFile, ReviewContext, ReviewRun } from '../types';
 import { LocalRepoManager } from './local-repo-manager';
 import { SandboxExec } from './sandbox-exec';
+import { tokenCounter } from './token-counter';
 
 function toStatus(status: string): ChangedFile['status'] {
   const value = status.trim().charAt(0).toUpperCase();
@@ -65,10 +67,23 @@ export class DiffExtractor {
 
     const fileContents = await this.readChangedFileContents(workspacePath, changedFiles);
 
+    // Token-budget guard: clip raw diff to 30k tokens to prevent context overflow
+    // This is the raw diff that gets passed around; toCompactContext() does further reduction
+    const MAX_RAW_DIFF_TOKENS = 30_000;
+    let clippedDiff = diff;
+    const diffTokens = tokenCounter.count(diff);
+    if (diffTokens > MAX_RAW_DIFF_TOKENS) {
+      logger.warn('Raw diff exceeds token budget, clipping', {
+        estimatedTokens: diffTokens,
+        limit: MAX_RAW_DIFF_TOKENS,
+      });
+      clippedDiff = tokenCounter.clip(diff, MAX_RAW_DIFF_TOKENS);
+    }
+
     return {
       workspacePath,
       mirrorPath,
-      diff,
+      diff: clippedDiff,
       changedFiles,
       parsedDiff,
       fileContents,

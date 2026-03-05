@@ -4,6 +4,7 @@ import type { LLMGateway } from '../../llm/gateway';
 import type { LLMMessage } from '../../llm/types';
 import { withGlobalPrompt } from '../../utils/global-prompt';
 import { logger } from '../../utils/logger';
+import { tokenCounter } from '../context/token-counter';
 import { LearningSystem } from '../learning/learning-system';
 import { findingResponseSchema } from '../schema/finding-schema';
 import { ToolRegistry } from '../tools/registry';
@@ -128,7 +129,7 @@ ${critique.missedIssues.map((missed) => `- ${missed}`).join('\n')}
 总体评估: ${critique.overallAssessment}
 
 代码上下文：
-${context.diff.slice(0, 3000)}
+${tokenCounter.clip(context.diff, 1000)}
 
 任务：
 1. 修正有问题的findings（根据批评意见）

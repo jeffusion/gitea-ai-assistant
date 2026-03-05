@@ -1,8 +1,10 @@
 import config from '../config';
+import { llmGateway } from '../llm/gateway';
 import { logger } from '../utils/logger';
 import { DiffExtractor } from './context/diff-extractor';
 import { LocalRepoManager } from './context/local-repo-manager';
 import { SandboxExec } from './context/sandbox-exec';
+import { tokenCounter } from './context/token-counter';
 import { ReviewOrchestrator } from './orchestrator';
 import { FileReviewStore } from './store/file-review-store';
 import { CommitReviewPayload, PullRequestReviewPayload, ReviewRun } from './types';
@@ -63,6 +65,22 @@ class ReviewEngine {
       return;
     }
 
+    // Configure LLM Gateway resilience from current config
+    llmGateway.updateResilienceConfig(
+      config.review.llmMaxConcurrentCalls,
+      {
+        maxAttempts: config.review.llmRetryMaxAttempts,
+        baseDelayMs: config.review.llmRetryBaseDelayMs,
+      }
+    );
+
+    // Preload dynamic model catalog from models.dev (non-blocking)
+    tokenCounter.refreshCatalog().catch((error) => {
+      logger.warn('Model catalog preload failed, using static data', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+
     await this.store.init();
     const recovered = await this.store.recoverInterruptedRuns();
     if (recovered > 0) {
@@ -78,7 +96,10 @@ class ReviewEngine {
     }, 1000);
 
     this.started = true;
-    logger.info('Agent Review Engine 已启动');
+    logger.info('Agent Review Engine 已启动', {
+      llmMaxConcurrent: config.review.llmMaxConcurrentCalls,
+      llmRetryMaxAttempts: config.review.llmRetryMaxAttempts,
+    });
   }
 
   async stop(): Promise<void> {
@@ -86,6 +107,7 @@ class ReviewEngine {
       clearInterval(this.timer);
       this.timer = null;
     }
+    tokenCounter.stopRefresh();
     this.started = false;
   }
 

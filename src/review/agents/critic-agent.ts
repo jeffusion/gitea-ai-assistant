@@ -3,6 +3,7 @@ import type { LLMGateway } from '../../llm/gateway';
 import type { LLMMessage } from '../../llm/types';
 import { withGlobalPrompt } from '../../utils/global-prompt';
 import { logger } from '../../utils/logger';
+import { tokenCounter } from '../context/token-counter';
 import { Finding, ReviewContext } from '../types';
 
 export interface CritiqueResult {
@@ -41,7 +42,7 @@ export class CriticAgent {
 ${JSON.stringify(findings, null, 2)}
 
 原始代码变更片段（供参考）：
-${context.diff.slice(0, 3000)}
+${tokenCounter.clip(context.diff, 1000)}
 
 评估标准：
 1. **Evidence充分性**: 证据是否充分支持结论？是否引用了具体代码？
@@ -147,7 +148,7 @@ Finding:
 - Confidence: ${finding.confidence}
 
 代码上下文：
-${context.diff.slice(0, 2000)}
+${tokenCounter.clip(context.diff, 700)}
 
 判断：
 1. 这个finding是否有效（不是误报）？

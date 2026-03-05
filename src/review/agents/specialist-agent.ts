@@ -9,6 +9,7 @@ import { findingResponseSchema } from '../schema/finding-schema';
 import { ToolRegistry } from '../tools/registry';
 import type { ToolExecutionContext, ToolResult } from '../tools/types';
 import { AgentResult, Finding, FindingCategory, ReviewContext, ReviewRun } from '../types';
+import { tokenCounter } from '../context/token-counter';
 
 function buildFingerprint(category: string, path: string, line: number, title: string): string {
   return createHash('sha256')
@@ -18,8 +19,8 @@ function buildFingerprint(category: string, path: string, line: number, title: s
 }
 
 function toCompactContext(context: ReviewContext): string {
-  // 全局上下文大小限制：100k chars（约33k tokens），为系统prompt、few-shot、响应留空间
-  const MAX_CONTEXT_CHARS = 100_000;
+  // Token-based budget: 25k tokens for context, leaving room for system prompt + few-shot + response
+  const MAX_CONTEXT_TOKENS = 25_000;
 
   const files = context.changedFiles.map((file) => ({
     path: file.path,
@@ -28,7 +29,7 @@ function toCompactContext(context: ReviewContext): string {
     deletions: file.deletions,
   }));
 
-  // 策略：逐步缩减直到满足限制
+  // 策略：逐步缩减直到满足 token 限制
   // 1. changedFiles元数据（小且必需）
   // 2. parsedDiff（关键，逐步减少每个文件的changes数量）
   // 3. fileContents（最大，按需截断或移除部分文件）
@@ -36,7 +37,6 @@ function toCompactContext(context: ReviewContext): string {
   let maxChangesPerFile = 200;
   let maxFileContentsEntries = Object.keys(context.fileContents).length;
 
-  // 尝试构建并测量大小
   const tryBuild = (changesLimit: number, contentEntriesLimit: number): string => {
     const snippets = context.parsedDiff.map((file) => ({
       path: file.path,
@@ -63,9 +63,9 @@ function toCompactContext(context: ReviewContext): string {
 
   let result = tryBuild(maxChangesPerFile, maxFileContentsEntries);
 
-  // 如果超过限制，逐步缩减
+  // 如果超过 token 限制，逐步缩减
   while (
-    result.length > MAX_CONTEXT_CHARS &&
+    tokenCounter.count(result) > MAX_CONTEXT_TOKENS &&
     (maxChangesPerFile > 20 || maxFileContentsEntries > 0)
   ) {
     if (maxChangesPerFile > 20) {
@@ -77,13 +77,13 @@ function toCompactContext(context: ReviewContext): string {
     result = tryBuild(maxChangesPerFile, maxFileContentsEntries);
   }
 
-  // 如果仍然超限，强制截断（保留前N个字符）
-  if (result.length > MAX_CONTEXT_CHARS) {
-    logger.warn('Context size still exceeds limit after reduction, truncating', {
-      originalSize: result.length,
-      limit: MAX_CONTEXT_CHARS,
+  // 如果仍然超限，强制截断
+  if (tokenCounter.count(result) > MAX_CONTEXT_TOKENS) {
+    logger.warn('Context size still exceeds token limit after reduction, truncating', {
+      estimatedTokens: tokenCounter.count(result),
+      limit: MAX_CONTEXT_TOKENS,
     });
-    result = `${result.slice(0, MAX_CONTEXT_CHARS)}\n... [truncated]`;
+    result = tokenCounter.clip(result, MAX_CONTEXT_TOKENS);
   }
 
   return result;
