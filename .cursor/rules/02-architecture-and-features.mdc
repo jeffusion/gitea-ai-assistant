@@ -37,6 +37,15 @@ The application follows a clean, layered architecture:
    - Centralizes application configuration from environment variables
    - Manages Feishu webhook configurations
 
+4. **LLM Gateway** ([src/llm/](mdc:src/llm))
+   - Multi-provider LLM abstraction layer
+   - Provider adapters for OpenAI Compatible, OpenAI Responses API, Anthropic, Google Gemini
+   - Role-based model routing (legacy, planner, specialist, judge, embedding)
+
+5. **Database Layer** ([src/db/](mdc:src/db))
+   - SQLite-based LLM provider and role configuration
+   - API key encryption with AES-256-GCM
+
 4. **Utilities**
    - [src/utils/logger.ts](mdc:src/utils/logger.ts): Custom logging utilities
 

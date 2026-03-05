@@ -10,7 +10,7 @@ alwaysApply: true
 - **Runtime**: Bun (JavaScript/TypeScript runtime)
 - **Language**: TypeScript
 - **Framework**: Hono (lightweight web framework)
-- **API Integration**: OpenAI API, Gitea API
+- **API Integration**: LLM Gateway (OpenAI Compatible, OpenAI Responses API, Anthropic, Google Gemini), Gitea API
 - **Containerization**: Docker, Kubernetes
 
 ## Key Dependencies
@@ -22,7 +22,9 @@ From [package.json](mdc:package.json):
 - **hono**: Lightweight, ultrafast web framework
 - **@hono/zod-validator**: Schema validation for Hono
 - **zod**: TypeScript-first schema validation
-- **openai**: OpenAI API client
+- **openai**: OpenAI API client (used for OpenAI Compatible and Responses providers)
+- **@anthropic-ai/sdk**: Anthropic Messages API client
+- **@google/genai**: Google Gemini API client
 - **axios**: HTTP client for API requests
 - **dotenv**: Environment variable management
 - **lodash-es**: Utility library
@@ -36,10 +38,8 @@ From [package.json](mdc:package.json):
 
 ## Environment Configuration
 
-The application uses environment variables for configuration, which are processed in [src/config/index.ts](mdc:src/config/index.ts). Key configurations include:
+The application uses a hybrid configuration approach:
 
-- Gitea API settings
-- OpenAI API settings
-- Custom prompts for AI review
-- Server configuration
-- Webhook security
+- **Environment variables** ([src/config/index.ts](mdc:src/config/index.ts)): Gitea settings, server config, webhook security, review engine params
+- **Web UI + SQLite DB** ([src/db/](mdc:src/db)): LLM provider settings (API keys, models, endpoints) — managed via Admin Dashboard
+- **bun:sqlite**: Embedded database for LLM configuration persistence

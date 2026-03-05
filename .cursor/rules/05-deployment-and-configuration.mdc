@@ -13,10 +13,10 @@ The application is configured through environment variables, defined in [src/con
   - `GITEA_API_URL`: Gitea API endpoint URL
   - `GITEA_ACCESS_TOKEN`: Access token for Gitea API
 
-- **OpenAI Configuration**:
-  - `OPENAI_BASE_URL`: OpenAI API base URL
-  - `OPENAI_API_KEY`: API key for OpenAI
-  - `OPENAI_MODEL`: Model to use (e.g., "gpt-4o")
+- **LLM Provider Configuration**:
+  - Configured exclusively through the Admin Dashboard Web UI
+  - Supports OpenAI Compatible, OpenAI Responses API, Anthropic, Google Gemini
+  - API keys stored encrypted (AES-256-GCM) in SQLite database
 
 - **Server Configuration**:
   - `PORT`: Server port (default: 3000)
@@ -53,7 +53,7 @@ docker run -p 3000:3000 --env-file .env gitea-assistant:latest
 
 ### Kubernetes Deployment
 
-The [kubernetes.yaml](mdc:kubernetes.yaml) and [kubernetes.yaml.template](mdc:kubernetes.yaml.template) files provide Kubernetes deployment configuration.
+The [kubernetes.yaml](mdc:k8s/gitea-assistant.yaml) file provides Kubernetes deployment configuration. Persistent storage is required for the `/app/data` directory.
 
 Deployment can be managed using:
 ```bash

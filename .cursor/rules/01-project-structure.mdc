@@ -16,13 +16,17 @@ The application entry point is [src/index.ts](mdc:src/index.ts), which sets up t
   - **services/**: Service layer for external API interactions
   - **config/**: Configuration management
   - **utils/**: Utility functions
+  - **llm/**: Multi-provider LLM gateway and provider adapters
+  - **db/**: SQLite database layer for LLM configuration
+  - **crypto/**: Encryption utilities for API key storage
+  - **agent/**: Multi-agent review engine (planner, specialists, judge)
 
 ## Configuration Files
 
 - [package.json](mdc:package.json): Project dependencies and scripts
 - [tsconfig.json](mdc:tsconfig.json): TypeScript compiler configuration
 - [Dockerfile](mdc:Dockerfile): Container configuration
-- [kubernetes.yaml](mdc:kubernetes.yaml): Kubernetes deployment configuration
+- [kubernetes.yaml](mdc:k8s/gitea-assistant.yaml): Kubernetes deployment configuration
 
 ## Build and Deployment
 
