@@ -46,9 +46,6 @@ services:
       - NODE_ENV=production
       - GITEA_API_URL=http://gitea:3000/api/v1
       - GITEA_ACCESS_TOKEN=${E2E_GITEA_TOKEN:-placeholder}
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-test_key}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
       - FEISHU_WEBHOOK_URL=http://localhost:9999/noop
       - PORT=3000
       - WEBHOOK_SECRET=e2e-test-secret

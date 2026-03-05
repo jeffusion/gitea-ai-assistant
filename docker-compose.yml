@@ -10,7 +10,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./config-overrides.json:/app/config-overrides.json
+      - assistant_data:/app/data
     env_file:
       - .env
     depends_on:
@@ -60,4 +60,6 @@ services:
 
 volumes:
   qdrant_data:
+    driver: local
+  assistant_data:
     driver: local
