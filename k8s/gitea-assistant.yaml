@@ -14,7 +14,6 @@ type: Opaque
 data:
   # REQUIRED: replace with your own base64-encoded values
   GITEA_ACCESS_TOKEN: eW91cl9naXRlYV90b2tlbg==
-  OPENAI_API_KEY: eW91cl9vcGVuYWlfa2V5
   WEBHOOK_SECRET: eW91cl93ZWJob29rX3NlY3JldA==
   ADMIN_PASSWORD: cGFzc3dvcmQ=
   # Optional
@@ -32,15 +31,10 @@ metadata:
     app.kubernetes.io/part-of: gitea-assistant
 data:
   GITEA_API_URL: "http://localhost:3000/api/v1"
-  OPENAI_BASE_URL: "https://api.openai.com/v1"
-  OPENAI_MODEL: "gpt-4o-mini"
   PORT: "3000"
   QDRANT_URL: "http://qdrant.gitea-assistant.svc.cluster.local:6333"
   REVIEW_ENGINE: "legacy"
   REVIEW_WORKDIR: "/tmp/gitea-assistant"
-  REVIEW_MODEL_PLANNER: "gpt-4o-mini"
-  REVIEW_MODEL_SPECIALIST: "gpt-4o-mini"
-  REVIEW_MODEL_JUDGE: "gpt-4o-mini"
   REVIEW_MAX_PARALLEL_RUNS: "2"
   REVIEW_MAX_FILES_PER_RUN: "200"
   REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE: "0.8"
@@ -48,7 +42,6 @@ data:
   ENABLE_MEMORY: "false"
   ENABLE_REFLECTION: "false"
   ENABLE_DEBATE: "false"
-  CONFIG_OVERRIDES_PATH: "/app/data/config-overrides.json"
 
 ---
 apiVersion: apps/v1
@@ -109,7 +102,8 @@ spec:
             failureThreshold: 3
       volumes:
         - name: data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: gitea-assistant-data
 
 ---
 apiVersion: v1
