@@ -2,13 +2,12 @@
  * AES-256-GCM encryption module for API key storage.
  *
  * Master key lifecycle:
- *   1. On first startup, generate 32 random bytes → write to DATA_DIR/master.key (chmod 600)
- *   2. On subsequent startups, read existing master.key
+ *   1. Read `ENCRYPTION_KEY` env var (hex-encoded, 64 hex chars = 32 bytes)
+ *   2. If not set, throw — the app refuses to start without an explicit key
  *   3. Key stays in memory for process lifetime; never logged or exposed via API
+ *
+ * Generate a key: `openssl rand -hex 32`
  */
-
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -17,7 +16,6 @@ import { dirname, resolve } from 'node:path';
 const KEY_LENGTH = 32; // AES-256
 const IV_LENGTH = 12; // GCM recommended nonce size
 
-
 // ---------------------------------------------------------------------------
 // Master Key Management
 // ---------------------------------------------------------------------------
@@ -25,45 +23,28 @@ const IV_LENGTH = 12; // GCM recommended nonce size
 let masterKey: Buffer | null = null;
 
 /**
- * Resolve the master key file path.
- * Defaults to `data/master.key` relative to CWD, overridable via `MASTER_KEY_PATH` env.
- */
-function getMasterKeyPath(): string {
-  return resolve(process.env.MASTER_KEY_PATH || './data/master.key');
-}
-
-/**
- * Initialize (load or generate) the master encryption key.
+ * Initialize the master encryption key from `ENCRYPTION_KEY` env var.
  * MUST be called once at application startup before any encrypt/decrypt operations.
+ *
+ * @throws If ENCRYPTION_KEY is not set or has wrong length
  */
 export function initMasterKey(): void {
-  const keyPath = getMasterKeyPath();
-
-  if (existsSync(keyPath)) {
-    const raw = readFileSync(keyPath);
-    if (raw.length !== KEY_LENGTH) {
-      throw new Error(
-        `Master key at ${keyPath} is ${raw.length} bytes, expected ${KEY_LENGTH}. Delete the file and restart to generate a new key (all encrypted API keys will need to be re-entered).`
-      );
-    }
-    masterKey = Buffer.from(raw);
-    console.log(`🔑 Master key loaded from ${keyPath}`);
-  } else {
-    const dir = dirname(keyPath);
-    mkdirSync(dir, { recursive: true });
-
-    const key = Buffer.from(crypto.getRandomValues(new Uint8Array(KEY_LENGTH)));
-    writeFileSync(keyPath, key, { mode: 0o600 });
-
-    try {
-      chmodSync(keyPath, 0o600);
-    } catch {
-      // chmod may fail on some filesystems (e.g. Windows); non-fatal
-    }
-
-    masterKey = key;
-    console.log(`🔑 Generated new master key at ${keyPath}`);
+  const envKey = process.env.ENCRYPTION_KEY;
+  if (!envKey) {
+    throw new Error(
+      'ENCRYPTION_KEY env var is required but not set. Generate one with: openssl rand -hex 32'
+    );
   }
+
+  const buf = Buffer.from(envKey, 'hex');
+  if (buf.length !== KEY_LENGTH) {
+    throw new Error(
+      `ENCRYPTION_KEY env var is ${buf.length} bytes (decoded from hex), expected ${KEY_LENGTH}. Provide exactly 64 hex characters.`
+    );
+  }
+
+  masterKey = buf;
+  console.log('🔑 Master key loaded from ENCRYPTION_KEY env var');
 }
 
 /**
