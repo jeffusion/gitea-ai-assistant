@@ -12,6 +12,7 @@ import { initDatabase } from './db/database';
 import { codexEngine } from './review/codex/codex-engine';
 import { mcpRouter } from './review/codex/mcp-handler';
 import { reviewEngine } from './review/engine';
+import { cleanupScheduler } from './review/cleanup-scheduler';
 
 initMasterKey();
 initDatabase();
@@ -83,6 +84,9 @@ reviewEngine.start().catch((error) => {
 codexEngine.start().catch((error) => {
   console.error('❌ 启动Codex Review Engine失败', error);
 });
+
+// 启动清理调度器（定期清理过期 mirror/workspace 目录）
+cleanupScheduler.start();
 
 // 初始化反馈系统（总是初始化，记忆系统可选）
 const reviewStore = reviewEngine.getStore();
