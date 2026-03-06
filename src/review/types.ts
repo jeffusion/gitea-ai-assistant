@@ -1,4 +1,4 @@
-export type ReviewEngineMode = 'legacy' | 'agent';
+export type ReviewEngineMode = 'legacy' | 'agent' | 'codex';
 
 export type ReviewEventType = 'pull_request' | 'commit_status';
 
