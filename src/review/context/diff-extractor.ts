@@ -38,7 +38,8 @@ export class DiffExtractor {
   async buildContext(
     run: ReviewRun,
     mirrorPath: string,
-    workspacePath: string
+    workspacePath: string,
+    lastReviewedHead?: string
   ): Promise<ReviewContext> {
     const targetSha = run.headSha || run.commitSha;
     if (!targetSha) {
@@ -46,6 +47,11 @@ export class DiffExtractor {
     }
 
     let baseSha = run.baseSha;
+    // 增量审查：如果提供了 lastReviewedHead，用它替换 baseSha
+    const incremental = !!lastReviewedHead;
+    if (lastReviewedHead) {
+      baseSha = lastReviewedHead;
+    }
     if (!baseSha) {
       baseSha =
         (await this.localRepoManager.resolveCommitParent(workspacePath, targetSha)) || undefined;
@@ -55,11 +61,11 @@ export class DiffExtractor {
     const isRootCommit = !baseSha;
     const diff = isRootCommit
       ? await this.getRootCommitDiff(workspacePath, targetSha)
-      : await this.getDiff(workspacePath, run.eventType, baseSha!, targetSha);
+      : await this.getDiff(workspacePath, run.eventType, baseSha!, targetSha, incremental);
 
     const changedFiles = isRootCommit
       ? await this.getRootCommitChangedFiles(workspacePath, targetSha)
-      : await this.getChangedFiles(workspacePath, baseSha!, targetSha);
+      : await this.getChangedFiles(workspacePath, baseSha!, targetSha, incremental);
 
     // 构建允许的文件路径集合，确保parsedDiff也受REVIEW_MAX_FILES_PER_RUN限制
     const allowedPaths = new Set(changedFiles.map((f) => f.path));
@@ -103,12 +109,13 @@ export class DiffExtractor {
     workspacePath: string,
     eventType: ReviewRun['eventType'],
     baseSha: string,
-    targetSha: string
+    targetSha: string,
+    incremental = false
   ): Promise<string> {
     if (eventType === 'pull_request') {
       const response = await this.sandboxExec.run(
         'git',
-        ['diff', '--unified=3', `${baseSha}...${targetSha}`],
+        ['diff', '--unified=3', `${baseSha}${incremental ? '..' : '...'}${targetSha}`],
         {
           cwd: workspacePath,
           timeoutMs: this.commandTimeoutMs,
@@ -197,11 +204,12 @@ export class DiffExtractor {
   private async getChangedFiles(
     workspacePath: string,
     baseSha: string,
-    targetSha: string
+    targetSha: string,
+    incremental = false
   ): Promise<ChangedFile[]> {
     const statusResult = await this.sandboxExec.run(
       'git',
-      ['diff', '--name-status', `${baseSha}...${targetSha}`],
+      ['diff', '--name-status', `${baseSha}${incremental ? '..' : '...'}${targetSha}`],
       {
         cwd: workspacePath,
         timeoutMs: this.commandTimeoutMs,
@@ -210,7 +218,7 @@ export class DiffExtractor {
 
     const numStatResult = await this.sandboxExec.run(
       'git',
-      ['diff', '--numstat', `${baseSha}...${targetSha}`],
+      ['diff', '--numstat', `${baseSha}${incremental ? '..' : '...'}${targetSha}`],
       {
         cwd: workspacePath,
         timeoutMs: this.commandTimeoutMs,
