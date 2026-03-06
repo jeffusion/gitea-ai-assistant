@@ -1,5 +1,6 @@
 
-import type { ConfigGroupDto } from '@/services/configService';
+import React from 'react';
+import type { ConfigGroupDto, ConfigFieldDto } from '@/services/configService';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ConfigFieldInput } from './ConfigFieldInput';
@@ -24,6 +25,8 @@ interface ConfigGroupCardProps {
   onFieldChange: (envKey: string, value: any) => void;
   onReset: (keys: string[]) => void;
   isResetting: boolean;
+  /** Optional custom renderer for individual fields. Return `undefined` to use default ConfigFieldInput. */
+  renderField?: (field: ConfigFieldDto, value: any, onChange: (val: any) => void) => React.ReactNode | undefined;
 }
 
 export function ConfigGroupCard({
@@ -32,6 +35,7 @@ export function ConfigGroupCard({
   onFieldChange,
   onReset,
   isResetting,
+  renderField,
 }: ConfigGroupCardProps) {
   const hasOverride = group.fields.some((f) => f.source === 'db');
 
@@ -79,14 +83,18 @@ export function ConfigGroupCard({
         )}
       </CardHeader>
       <CardContent className="divide-y divide-white/5 p-6 bg-zinc-950/20">
-        {group.fields.map((field) => (
-          <ConfigFieldInput
-            key={field.envKey}
-            field={field}
-            value={localConfig[field.envKey]}
-            onChange={(val) => onFieldChange(field.envKey, val)}
-          />
-        ))}
+        {group.fields.map((field) => {
+          const custom = renderField?.(field, localConfig[field.envKey], (val) => onFieldChange(field.envKey, val));
+          if (custom !== undefined) return <React.Fragment key={field.envKey}>{custom}</React.Fragment>;
+          return (
+            <ConfigFieldInput
+              key={field.envKey}
+              field={field}
+              value={localConfig[field.envKey]}
+              onChange={(val) => onFieldChange(field.envKey, val)}
+            />
+          );
+        })}
       </CardContent>
     </Card>
   );

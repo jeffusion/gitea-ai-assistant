@@ -8,6 +8,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Save, AlertCircle, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
+/** Groups shown on the system config page (excludes review & memory — moved to ReviewConfigPage). */
+const SYSTEM_GROUPS = new Set(['gitea', 'feishu', 'security']);
+
 export function ConfigManager() {
   const queryClient = useQueryClient();
   const [localConfig, setLocalConfig] = useState<Record<string, any>>({});
@@ -22,7 +25,7 @@ export function ConfigManager() {
   useEffect(() => {
     if (data) {
       const initialState: Record<string, any> = {};
-      data.groups.forEach((group) => {
+      data.groups.filter((g) => SYSTEM_GROUPS.has(g.key)).forEach((group) => {
         group.fields.forEach((field) => {
           if (field.sensitive && field.hasValue) {
             initialState[field.envKey] = '••••••••';
@@ -96,6 +99,7 @@ export function ConfigManager() {
   const handleResetAll = () => {
     if (!data) return;
     const allOverrideKeys = data.groups
+      .filter((g) => SYSTEM_GROUPS.has(g.key))
       .flatMap((g) => g.fields)
       .filter((f) => f.source === 'db')
       .map((f) => f.envKey);
@@ -105,7 +109,9 @@ export function ConfigManager() {
     }
   };
 
-  const hasOverrides = data?.groups.some((g) =>
+  const visibleGroups = data?.groups.filter((g) => SYSTEM_GROUPS.has(g.key));
+
+  const hasOverrides = visibleGroups?.some((g) =>
     g.fields.some((f) => f.source === 'db')
   ) ?? false;
 
@@ -165,7 +171,7 @@ export function ConfigManager() {
       </div>
 
       <div className="max-w-5xl mx-auto space-y-8 mt-6 px-4 md:px-6 lg:px-8">
-        {data?.groups.map((group) => (
+        {visibleGroups?.map((group) => (
           <ConfigGroupCard
             key={group.key}
             group={group}
