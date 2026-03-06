@@ -112,7 +112,7 @@ export class LocalRepoManager {
         // fetch使用认证参数
         await this.sandboxExec.run(
           'git',
-          [...authArgs, '--git-dir', mirrorPath, 'fetch', '--prune', 'origin', '+refs/*:refs/*'],
+          [...authArgs, '--git-dir', mirrorPath, 'fetch', '--prune', 'origin', '+refs/*:refs/*', '^refs/reviewed/*'],
           {
             cwd: this.workDir,
             timeoutMs: this.commandTimeoutMs,
@@ -247,4 +247,69 @@ export class LocalRepoManager {
       return false;
     }
   }
+
+  /**
+   * 保存审查快照 ref，记录 PR 最后一次成功审查的 baseSha 和 headSha
+   * 存储在 mirror 的 refs/reviewed/pr/{prNumber}/head 和 refs/reviewed/pr/{prNumber}/base
+   */
+  async saveReviewedRef(mirrorPath: string, prNumber: number, baseSha: string, headSha: string): Promise<void> {
+    const unlock = await this.acquireMirrorLock(mirrorPath);
+    try {
+      const headRef = `refs/reviewed/pr/${prNumber}/head`;
+      const baseRef = `refs/reviewed/pr/${prNumber}/base`;
+      await this.sandboxExec.run(
+        'git',
+        ['--git-dir', mirrorPath, 'update-ref', headRef, headSha],
+        {
+          cwd: this.workDir,
+          timeoutMs: this.commandTimeoutMs,
+        }
+      );
+      await this.sandboxExec.run(
+        'git',
+        ['--git-dir', mirrorPath, 'update-ref', baseRef, baseSha],
+        {
+          cwd: this.workDir,
+          timeoutMs: this.commandTimeoutMs,
+        }
+      );
+      logger.info('已保存审查快照 ref', { mirrorPath, prNumber, baseSha, headSha });
+    } finally {
+      unlock();
+    }
+  }
+
+  /**
+   * 解析上次审查的快照（baseSha + headSha）
+   * 如果任一 ref 不存在，返回 null
+   */
+  async resolveReviewedRef(mirrorPath: string, prNumber: number): Promise<{ baseSha: string; headSha: string } | null> {
+    try {
+      const headRef = `refs/reviewed/pr/${prNumber}/head`;
+      const baseRef = `refs/reviewed/pr/${prNumber}/base`;
+      const headResult = await this.sandboxExec.run(
+        'git',
+        ['--git-dir', mirrorPath, 'rev-parse', '--verify', headRef],
+        {
+          cwd: this.workDir,
+          timeoutMs: this.commandTimeoutMs,
+        }
+      );
+      const baseResult = await this.sandboxExec.run(
+        'git',
+        ['--git-dir', mirrorPath, 'rev-parse', '--verify', baseRef],
+        {
+          cwd: this.workDir,
+          timeoutMs: this.commandTimeoutMs,
+        }
+      );
+      const headSha = headResult.stdout.trim();
+      const baseSha = baseResult.stdout.trim();
+      if (!headSha || !baseSha) return null;
+      return { baseSha, headSha };
+    } catch {
+      return null;
+    }
+  }
+
 }

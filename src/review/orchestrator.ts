@@ -171,6 +171,34 @@ export class ReviewOrchestrator {
         latencyMs: Date.now() - workspaceStepStart,
       });
 
+      // ── 增量审查基线解析 ─────────────────────────────────────────────
+      let lastReviewedHead: string | undefined;
+      if (run.eventType === 'pull_request' && run.prNumber) {
+        const snapshot = await this.localRepoManager.resolveReviewedRef(
+          repoPaths.mirrorPath,
+          run.prNumber
+        );
+        if (snapshot && targetSha) {
+          if (snapshot.baseSha === run.baseSha) {
+            // base 未变（追加 commit 或 force-push 修改 commit）→ 增量审查
+            lastReviewedHead = snapshot.headSha;
+            logger.info('增量审查模式：使用上次审查快照', {
+              runId: run.id,
+              lastReviewedHead: snapshot.headSha,
+              currentHead: targetSha,
+              baseSha: run.baseSha,
+            });
+          } else {
+            // base 变了（PR 分支做了 rebase）→ 全量审查
+            logger.info('PR base 已变更（可能 rebase），回退全量审查', {
+              runId: run.id,
+              savedBaseSha: snapshot.baseSha,
+              currentBaseSha: run.baseSha,
+            });
+          }
+        }
+      }
+
       const contextStart = Date.now();
       await this.store.addStep({
         runId: run.id,
@@ -182,7 +210,8 @@ export class ReviewOrchestrator {
       const context = await this.diffExtractor.buildContext(
         run,
         repoPaths.mirrorPath,
-        repoPaths.workspacePath
+        repoPaths.workspacePath,
+        lastReviewedHead
       );
 
       await this.store.addStep({
@@ -477,6 +506,23 @@ export class ReviewOrchestrator {
         gated: policyResult.gated.length,
         dropped: policyResult.dropped.length,
       });
+
+      // ── 审查成功：保存审查快照 ref ──────────────────────────────────
+      if (run.eventType === 'pull_request' && run.prNumber && targetSha) {
+        try {
+          await this.localRepoManager.saveReviewedRef(
+            repoPaths!.mirrorPath,
+            run.prNumber,
+            run.baseSha!,
+            targetSha
+          );
+        } catch (refError) {
+          logger.warn('保存审查快照 ref 失败（非致命）', {
+            runId: run.id,
+            error: refError instanceof Error ? refError.message : String(refError),
+          });
+        }
+      }
     } catch (error) {
       await this.store.addStep({
         runId: run.id,
