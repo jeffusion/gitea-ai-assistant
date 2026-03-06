@@ -9,6 +9,8 @@ import { llmConfigRouter } from './controllers/llm-config';
 import { handleGiteaWebhook } from './controllers/review';
 import { initMasterKey } from './crypto/secrets';
 import { initDatabase } from './db/database';
+import { codexEngine } from './review/codex/codex-engine';
+import { mcpRouter } from './review/codex/mcp-handler';
 import { reviewEngine } from './review/engine';
 
 initMasterKey();
@@ -39,6 +41,9 @@ app.get('/', (c) => {
     },
   });
 });
+
+// MCP 端点（Codex 审查引擎使用，无需认证）
+app.route('/mcp/gitea-review', mcpRouter);
 
 // 统一的Gitea webhook路由 - 处理所有事件类型
 app.post('/webhook/gitea', handleGiteaWebhook);
@@ -71,8 +76,12 @@ app.get('*', serveStatic({ path: './public/index.html' }));
 const port = config.app.port;
 console.log(`⚡️ 服务启动在 http://localhost:${port}`);
 
+// 启动审查引擎（根据配置选择）
 reviewEngine.start().catch((error) => {
   console.error('❌ 启动Agent Review Engine失败', error);
+});
+codexEngine.start().catch((error) => {
+  console.error('❌ 启动Codex Review Engine失败', error);
 });
 
 // 初始化反馈系统（总是初始化，记忆系统可选）
