@@ -2,6 +2,7 @@ import * as crypto from 'node:crypto';
 import { Context } from 'hono';
 import { map } from 'lodash-es';
 import config from '../config';
+import { codexEngine } from '../review/codex/codex-engine';
 import { reviewEngine } from '../review/engine';
 import { aiReviewService } from '../services/ai-review';
 import { feishuService } from '../services/feishu';
@@ -150,13 +151,13 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
     }
   }
 
-  if (config.review.engine === 'agent') {
+  if (config.review.engine === 'agent' || config.review.engine === 'codex') {
     // Fork PR策略：始终clone base repo（保证有baseSha），headCloneUrl作为额外remote（保证有headSha）
     const baseCloneUrl = resolveCloneUrl(repo);
     const headSha = pullRequest.head?.sha;
     const baseSha = pullRequest.base?.sha;
     if (!baseCloneUrl || !headSha || !baseSha) {
-      return c.json({ error: '缺少Agent审查所需字段(clone_url/base sha/head sha)' }, 400);
+      return c.json({ error: '缺少审查所需字段(clone_url/base sha/head sha)' }, 400);
     }
 
     // 检测fork PR：head.repo存在且与base repo不同
@@ -167,7 +168,8 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
 
     // 包含baseSha以支持retarget场景：相同headSha但baseSha变化时需要重新审查
     const idempotencyKey = `${owner}/${repoName}#${prNumber}:${baseSha}...${headSha}`;
-    const { run, reused } = await reviewEngine.enqueuePullRequest({
+    const engineInstance = config.review.engine === 'codex' ? codexEngine : reviewEngine;
+    const { run, reused } = await engineInstance.enqueuePullRequest({
       eventType: 'pull_request',
       idempotencyKey,
       owner,
@@ -179,10 +181,11 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
       headSha,
     });
 
+    const engineLabel = config.review.engine === 'codex' ? 'Codex' : 'Agent';
     return c.json(
       {
         status: reused ? 'deduplicated' : 'accepted',
-        message: reused ? '审查任务已存在，已去重' : 'Agent代码审查任务已入队',
+        message: reused ? '审查任务已存在，已去重' : `${engineLabel}代码审查任务已入队`,
         runId: run.id,
       },
       202
@@ -261,15 +264,16 @@ async function handleCommitStatusEvent(c: Context, body: any): Promise<Response>
     removed: commitInfo.removed.length,
   });
 
-  // Agent模式优先处理：从本地仓库派生diff，不依赖webhook文件列表
-  if (config.review.engine === 'agent') {
+  // Agent/Codex模式优先处理：从本地仓库派生diff，不依赖webhook文件列表
+  if (config.review.engine === 'agent' || config.review.engine === 'codex') {
     const cloneUrl = resolveCloneUrl(body.repository);
     if (!cloneUrl) {
-      return c.json({ error: '缺少Agent审查所需字段(clone_url)' }, 400);
+      return c.json({ error: '缺少审查所需字段(clone_url)' }, 400);
     }
 
     const idempotencyKey = `${owner}/${repoName}@${commitSha}`;
-    const { run, reused } = await reviewEngine.enqueueCommit({
+    const engineInstance = config.review.engine === 'codex' ? codexEngine : reviewEngine;
+    const { run, reused } = await engineInstance.enqueueCommit({
       eventType: 'commit_status',
       idempotencyKey,
       owner,
@@ -280,10 +284,11 @@ async function handleCommitStatusEvent(c: Context, body: any): Promise<Response>
       relatedPrNumber: relatedPR?.number,
     });
 
+    const engineLabel = config.review.engine === 'codex' ? 'Codex' : 'Agent';
     return c.json(
       {
         status: reused ? 'deduplicated' : 'accepted',
-        message: reused ? '审查任务已存在，已去重' : 'Agent提交审查任务已入队',
+        message: reused ? '审查任务已存在，已去重' : `${engineLabel}提交审查任务已入队`,
         runId: run.id,
       },
       202

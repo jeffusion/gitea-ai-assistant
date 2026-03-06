@@ -41,6 +41,13 @@ export interface AppConfig {
     llmRetryMaxAttempts: number;
     llmRetryBaseDelayMs: number;
     enableTriage: boolean;
+    // Codex engine
+    codexApiUrl: string;
+    codexApiKey: string | undefined;
+    codexModel: string;
+    codexTimeoutMs: number;
+    codexReviewPrompt: string | undefined;
+    // Memory (shared)
     qdrantUrl: string | undefined;
     enableMemory: boolean;
     fewShotExamplesCount: number;
@@ -161,6 +168,13 @@ class ConfigManager {
         llmRetryMaxAttempts: toNumber('LLM_RETRY_MAX_ATTEMPTS', 3),
         llmRetryBaseDelayMs: toNumber('LLM_RETRY_BASE_DELAY_MS', 1000),
         enableTriage: toBoolean('ENABLE_TRIAGE', true),
+        // Codex engine
+        codexApiUrl: values.CODEX_API_URL ?? 'https://api.openai.com/v1',
+        codexApiKey: values.CODEX_API_KEY,
+        codexModel: values.CODEX_MODEL ?? 'o3',
+        codexTimeoutMs: toNumber('CODEX_TIMEOUT_MS', 300000),
+        codexReviewPrompt: values.CODEX_REVIEW_PROMPT,
+        // Memory
         qdrantUrl: values.QDRANT_URL,
         enableMemory: toBoolean('ENABLE_MEMORY', false),
         fewShotExamplesCount: toNumber('FEW_SHOT_EXAMPLES_COUNT', 10),
