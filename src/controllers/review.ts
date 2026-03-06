@@ -8,6 +8,8 @@ import { aiReviewService } from '../services/ai-review';
 import { feishuService } from '../services/feishu';
 import { PullRequestDetails, PullRequestFile, giteaService } from '../services/gitea';
 import { logger } from '../utils/logger';
+import { LocalRepoManager } from '../review/context/local-repo-manager';
+import { SandboxExec } from '../review/context/sandbox-exec';
 
 
 // Gitea webhook事件类型
@@ -95,6 +97,11 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
     body.action !== 'edited' &&
     body.action !== 'review_requested'
   ) {
+    // PR 关闭/合并事件 → 清理审查快照 refs
+    if (body.action === 'closed') {
+      return handlePullRequestClosed(c, body);
+    }
+
     return c.json({ status: 'ignored', message: '无需处理的事件类型' }, 200);
   }
 
@@ -199,6 +206,55 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
 
   // 立即返回以不阻塞Webhook
   return c.json({ status: 'accepted', message: '代码审查请求已接受' }, 202);
+}
+
+/**
+ * 处理 PR 关闭/合并事件：清理审查快照 refs
+ */
+async function handlePullRequestClosed(c: Context, body: any): Promise<Response> {
+  const { pull_request: pullRequest, repository: repo } = body;
+  if (!pullRequest || !repo) {
+    return c.json({ status: 'ignored', message: 'PR close 无效数据' }, 200);
+  }
+
+  const prNumber = pullRequest.number;
+  const owner = repo.owner.login;
+  const repoName = repo.name;
+
+  logger.info('PR 已关闭，开始清理审查快照', { owner, repo: repoName, prNumber, merged: !!pullRequest.merged });
+
+  // 异步清理，不阻塞 webhook 响应
+  (async () => {
+    try {
+      const sandboxExec = new SandboxExec(config.review.allowedCommands);
+      const localRepoManager = new LocalRepoManager(
+        config.review.workdir,
+        sandboxExec,
+        config.review.commandTimeoutMs,
+        config.gitea.accessToken
+      );
+      const mirrorPath = localRepoManager.getMirrorPath(owner, repoName);
+
+      // 检查 mirror 是否存在（可能从未审查过该仓库）
+      const { access } = await import('node:fs/promises');
+      try {
+        await access(mirrorPath);
+      } catch {
+        return; // mirror 不存在，无需清理
+      }
+
+      await localRepoManager.deleteReviewedRefs(mirrorPath, prNumber);
+    } catch (error) {
+      logger.warn('PR 关闭清理失败（非致命）', {
+        owner,
+        repo: repoName,
+        prNumber,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  })();
+
+  return c.json({ status: 'accepted', message: 'PR 关闭清理已触发' }, 200);
 }
 
 /**

@@ -312,4 +312,101 @@ export class LocalRepoManager {
     }
   }
 
+  /**
+   * 删除指定 PR 的审查快照 refs（PR 关闭时调用）
+   */
+  async deleteReviewedRefs(mirrorPath: string, prNumber: number): Promise<void> {
+    const unlock = await this.acquireMirrorLock(mirrorPath);
+    try {
+      for (const suffix of ['head', 'base']) {
+        const refName = `refs/reviewed/pr/${prNumber}/${suffix}`;
+        try {
+          await this.sandboxExec.run(
+            'git',
+            ['--git-dir', mirrorPath, 'update-ref', '-d', refName],
+            {
+              cwd: this.workDir,
+              timeoutMs: this.commandTimeoutMs,
+            }
+          );
+        } catch {
+          // ref 不存在时忽略
+        }
+      }
+      logger.info('已清理 PR 审查快照 refs', { mirrorPath, prNumber });
+    } finally {
+      unlock();
+    }
+  }
+
+  /**
+   * 根据 owner/repo 定位 mirror 路径
+   */
+  getMirrorPath(owner: string, repo: string): string {
+    return path.join(this.workDir, 'repos', `${hashRepo(owner, repo)}.git`);
+  }
+
+  /**
+   * 清理超过指定天数未访问的 mirror 目录
+   * 通过检查 .git 目录的 atime/mtime 判断最后活动时间
+   */
+  async cleanStaleMirrors(maxAgeDays: number): Promise<number> {
+    const { readdir, stat, rm } = await import('node:fs/promises');
+    const mirrorsRoot = path.join(this.workDir, 'repos');
+
+    let cleaned = 0;
+    let entries: string[];
+    try {
+      entries = await readdir(mirrorsRoot);
+    } catch {
+      return 0; // repos 目录不存在
+    }
+
+    const now = Date.now();
+    const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
+
+    for (const entry of entries) {
+      if (!entry.endsWith('.git')) continue;
+      const mirrorPath = path.join(mirrorsRoot, entry);
+      try {
+        const info = await stat(mirrorPath);
+        // 使用 mtime（最后修改时间，fetch 会更新）判断活跃度
+        const lastActive = Math.max(info.mtimeMs, info.atimeMs);
+        if (now - lastActive > maxAgeMs) {
+          await rm(mirrorPath, { recursive: true, force: true });
+          cleaned++;
+          logger.info('已清理过期 mirror 目录', { mirrorPath, lastActiveDaysAgo: Math.floor((now - lastActive) / (24 * 60 * 60 * 1000)) });
+        }
+      } catch (error) {
+        logger.warn('检查/清理 mirror 目录失败', {
+          mirrorPath,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    // 同时清理 workspaces 下的残留目录
+    const workspacesRoot = path.join(this.workDir, 'workspaces');
+    try {
+      const wsEntries = await readdir(workspacesRoot);
+      for (const entry of wsEntries) {
+        const wsPath = path.join(workspacesRoot, entry);
+        try {
+          const info = await stat(wsPath);
+          const lastActive = Math.max(info.mtimeMs, info.atimeMs);
+          if (now - lastActive > maxAgeMs) {
+            await rm(wsPath, { recursive: true, force: true });
+            cleaned++;
+            logger.info('已清理过期 workspace 目录', { wsPath });
+          }
+        } catch {
+          // 忽略单个目录清理失败
+        }
+      }
+    } catch {
+      // workspaces 目录不存在
+    }
+
+    return cleaned;
+  }
 }
