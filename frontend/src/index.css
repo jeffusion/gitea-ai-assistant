@@ -72,11 +72,11 @@
   }
   .bg-grid-pattern {
     background-size: 40px 40px;
-    background-image: linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-                      linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-image: linear-gradient(to right, hsl(var(--foreground) / 0.05) 1px, transparent 1px),
+                      linear-gradient(to bottom, hsl(var(--foreground) / 0.05) 1px, transparent 1px);
   }
   .glass-panel {
-    @apply bg-zinc-950/50 backdrop-blur-xl border border-white/10 shadow-2xl;
+    @apply bg-card/80 backdrop-blur-xl border border-border shadow-2xl;
   }
   .tech-glow {
     box-shadow: 0 0 20px -5px hsl(var(--primary) / 0.5);

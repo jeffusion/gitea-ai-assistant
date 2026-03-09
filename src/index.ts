@@ -24,7 +24,7 @@ const app = new Hono();
 // --- API 路由 ---
 
 // 健康检查路由
-app.get('/', (c) => {
+app.get('/api/health', (c) => {
   const webhookSecretConfigured = !!config.app.webhookSecret;
 
   return c.json({

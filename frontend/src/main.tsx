@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import axios from 'axios'
+import { ThemeProvider } from 'next-themes'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -21,13 +22,13 @@ const queryClient = new QueryClient({
   },
 });
 
-// Force dark mode as requested
-document.documentElement.classList.add('dark');
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </ThemeProvider>
   </React.StrictMode>,
 )

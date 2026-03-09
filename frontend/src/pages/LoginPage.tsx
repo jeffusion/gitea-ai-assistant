@@ -29,7 +29,7 @@ export function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-zinc-950">
+    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-background">
       {/* Background grid and gradient effects */}
       <div className="absolute inset-0 bg-grid-pattern opacity-10"></div>
       <div className="absolute top-[-20%] left-[-10%] h-[500px] w-[500px] rounded-full bg-primary/20 blur-[120px] pointer-events-none"></div>
@@ -39,17 +39,17 @@ export function LoginPage() {
         <div className="glass-panel relative rounded-2xl p-8 sm:p-10 transition-all duration-500 hover:border-primary/20">
           {/* Decorative terminal dots */}
           <div className="absolute top-4 left-4 flex gap-2">
-            <div className="h-2.5 w-2.5 rounded-full bg-rose-500/80 shadow-[0_0_5px_rgba(244,63,94,0.5)]"></div>
-            <div className="h-2.5 w-2.5 rounded-full bg-amber-500/80 shadow-[0_0_5px_rgba(245,158,11,0.5)]"></div>
-            <div className="h-2.5 w-2.5 rounded-full bg-emerald-500/80 shadow-[0_0_5px_rgba(16,185,129,0.5)]"></div>
+            <div className="h-2.5 w-2.5 rounded-full bg-danger/80 shadow-[0_0_5px_rgba(244,63,94,0.5)]"></div>
+            <div className="h-2.5 w-2.5 rounded-full bg-warning/80 shadow-[0_0_5px_rgba(245,158,11,0.5)]"></div>
+            <div className="h-2.5 w-2.5 rounded-full bg-success/80 shadow-[0_0_5px_rgba(16,185,129,0.5)]"></div>
           </div>
 
           <div className="mb-10 mt-6 flex flex-col items-center text-center">
-            <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-900 border border-primary/20 shadow-[0_0_20px_rgba(var(--primary),0.15)] ring-1 ring-primary/10 relative group">
+            <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted border border-primary/20 shadow-[0_0_20px_rgba(var(--primary),0.15)] ring-1 ring-primary/10 relative group">
               <div className="absolute inset-0 rounded-2xl bg-primary/20 blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
               <Bot className="h-8 w-8 text-primary relative z-10" />
             </div>
-            <h1 className="mb-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">Gitea AI Assistant</h1>
+            <h1 className="mb-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Gitea AI Assistant</h1>
             <div className="flex items-center gap-2 text-xs font-mono text-primary/70 bg-primary/5 px-3 py-1 rounded-full border border-primary/10">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
@@ -62,7 +62,7 @@ export function LoginPage() {
           <div className="grid gap-5">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label htmlFor="password" className="text-xs font-mono font-medium text-zinc-400 flex items-center gap-2">
+                <label htmlFor="password" className="text-xs font-mono font-medium text-muted-foreground flex items-center gap-2">
                   <span className="text-primary font-bold">&gt;</span> enter_admin_password
                 </label>
               </div>
@@ -75,14 +75,14 @@ export function LoginPage() {
                   onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleLogin()}
                   required
                   placeholder="••••••••"
-                  className="h-12 border-zinc-800 bg-zinc-900/50 font-mono text-zinc-100 placeholder:text-zinc-700 focus-visible:border-primary/50 focus-visible:ring-primary/20 transition-all duration-300"
+                  className="h-12 border-border bg-muted/50 font-mono text-foreground placeholder:text-muted-foreground/50 focus-visible:border-primary/50 focus-visible:ring-primary/20 transition-all duration-300"
                 />
-                <Terminal className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-600 transition-colors group-focus-within:text-primary/70" />
+                <Terminal className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary/70" />
               </div>
             </div>
 
             {error && (
-              <div className="flex items-start gap-2 rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-3 text-sm text-rose-400 animate-in fade-in slide-in-from-top-1">
+              <div className="flex items-start gap-2 rounded-lg border border-danger/20 bg-danger/10 px-3 py-3 text-sm text-danger animate-in fade-in slide-in-from-top-1">
                 <Activity className="h-4 w-4 mt-0.5 shrink-0" />
                 <p className="font-mono text-xs leading-relaxed">{error}</p>
               </div>
@@ -94,7 +94,7 @@ export function LoginPage() {
               className="tech-glow group relative mt-4 h-12 w-full overflow-hidden bg-primary text-primary-foreground transition-all hover:bg-primary/90 disabled:opacity-70 disabled:pointer-events-none"
             >
               <div className="absolute inset-0 flex h-full w-full justify-center [transform:skew(-12deg)_translateX(-150%)] group-hover:duration-1000 group-hover:[transform:skew(-12deg)_translateX(150%)]">
-                <div className="relative h-full w-12 bg-white/20"></div>
+                <div className="relative h-full w-12 bg-foreground/20"></div>
               </div>
               <span className="relative flex items-center gap-2 font-mono font-semibold tracking-wide">
                 {isLoading ? (

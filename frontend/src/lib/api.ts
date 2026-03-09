@@ -18,4 +18,20 @@ api.interceptors.request.use(
   }
 );
 
+// 添加响应拦截器，处理 401 未授权自动跳转登录页
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      localStorage.removeItem('authToken');
+      // 避免在登录接口本身触发跳转
+      const isLoginRequest = error.config?.url?.includes('/login');
+      if (!isLoginRequest) {
+        window.location.href = '/';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default api;

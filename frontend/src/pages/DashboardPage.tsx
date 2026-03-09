@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { LogOut, Bot, FolderGit2, Sliders, Menu, X, PanelLeftClose, PanelLeftOpen, FileSearch } from 'lucide-react';
+import { LogOut, Bot, FolderGit2, Sliders, Menu, X, PanelLeftClose, PanelLeftOpen, FileSearch, Sun, Moon } from 'lucide-react';
+import { useTheme } from 'next-themes';
 
 const navItems = [
   { path: '/repos', label: '仓库管理', icon: FolderGit2 },
@@ -11,6 +12,7 @@ const navItems = [
 
 export default function DashboardPage() {
   const location = useLocation();
+  const { setTheme, resolvedTheme } = useTheme();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -33,24 +35,24 @@ export default function DashboardPage() {
       {/* Mobile Overlay */}
       {isMobileMenuOpen && (
         <div 
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden animate-in fade-in"
+          className="fixed inset-0 z-40 bg-foreground/60 backdrop-blur-sm lg:hidden animate-in fade-in"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
       {/* Sidebar */}
       <aside 
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-zinc-950 transition-all duration-300 ease-in-out lg:relative ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-card transition-all duration-300 ease-in-out lg:relative ${
           isSidebarCollapsed ? 'w-[72px]' : 'w-64'
         } ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >
-        <div className="flex h-16 items-center justify-between px-4 border-b border-border/50 bg-zinc-950">
+        <div className="flex h-16 items-center justify-between px-4 border-b border-border/50 bg-card">
           <div className={`flex items-center gap-3 overflow-hidden transition-all duration-300 ${isSidebarCollapsed ? 'w-10 justify-center -ml-1' : 'w-full'}`}>
             <div className="flex shrink-0 h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-[0_0_15px_rgba(20,184,166,0.15)] ring-1 ring-primary/10">
               <Bot className="h-5 w-5" />
             </div>
             {!isSidebarCollapsed && (
-              <span className="truncate font-bold tracking-tight text-zinc-100 whitespace-nowrap">
+              <span className="truncate font-bold tracking-tight text-foreground whitespace-nowrap">
                 Gitea AI Assistant
               </span>
             )}
@@ -58,7 +60,7 @@ export default function DashboardPage() {
           <Button 
             variant="ghost" 
             size="icon" 
-            className="lg:hidden shrink-0 h-8 w-8 text-zinc-400 hover:text-zinc-100"
+            className="lg:hidden shrink-0 h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={() => setIsMobileMenuOpen(false)}
           >
             <X className="h-4 w-4" />
@@ -76,7 +78,7 @@ export default function DashboardPage() {
                   `group relative flex w-full items-center rounded-xl p-2.5 transition-all duration-200 ${
                     isActive
                       ? 'bg-primary/10 text-primary'
-                      : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100'
+                      : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
                   } ${isSidebarCollapsed ? 'justify-center' : 'justify-start gap-3'}`
                 }
                 title={isSidebarCollapsed ? item.label : undefined}
@@ -86,7 +88,7 @@ export default function DashboardPage() {
                     {isActive && (
                       <div className="absolute left-0 top-1/2 h-1/2 w-1 -translate-y-1/2 rounded-r-full bg-primary shadow-[0_0_10px_rgba(20,184,166,0.5)]"></div>
                     )}
-                    <Icon className={`h-5 w-5 shrink-0 transition-transform duration-300 ${isActive ? 'text-primary scale-110' : 'text-zinc-500 group-hover:text-zinc-300'}`} />
+                    <Icon className={`h-5 w-5 shrink-0 transition-transform duration-300 ${isActive ? 'text-primary scale-110' : 'text-muted-foreground group-hover:text-foreground'}`} />
                     {!isSidebarCollapsed && (
                       <span className="font-medium tracking-wide text-sm">{item.label}</span>
                     )}
@@ -97,10 +99,10 @@ export default function DashboardPage() {
           })}
         </nav>
 
-        <div className="border-t border-border/50 p-3 bg-zinc-950">
+        <div className="border-t border-border/50 p-3 bg-card">
           <button
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-            className={`hidden lg:flex w-full items-center rounded-xl p-2.5 text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-300 ${
+            className={`hidden lg:flex w-full items-center rounded-xl p-2.5 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground ${
               isSidebarCollapsed ? 'justify-center' : 'justify-start gap-3'
             }`}
           >
@@ -124,7 +126,7 @@ export default function DashboardPage() {
             <Button 
               variant="ghost" 
               size="icon" 
-              className="lg:hidden text-zinc-400 hover:text-zinc-100 h-9 w-9 -ml-2"
+              className="lg:hidden text-muted-foreground hover:text-foreground h-9 w-9 -ml-2"
               onClick={() => setIsMobileMenuOpen(true)}
             >
               <Menu className="h-5 w-5" />
@@ -136,18 +138,28 @@ export default function DashboardPage() {
           </div>
           
           <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-zinc-900/50">
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-muted/50">
               <div className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-success"></span>
               </div>
-              <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider">System Online</span>
+              <span className="text-xs font-mono text-muted-foreground uppercase tracking-wider">System Online</span>
             </div>
             <div className="h-6 w-px bg-border/50 hidden sm:block"></div>
             <Button
               variant="ghost"
               size="icon"
-              className="rounded-full border border-border/50 bg-zinc-900 hover:bg-rose-500/10 hover:text-rose-400 hover:border-rose-500/20 transition-all h-9 w-9"
+              className="rounded-full border border-border/50 bg-muted hover:bg-accent/50 transition-all h-9 w-9"
+              onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+              title={resolvedTheme === 'dark' ? '切换为浅色主题' : '切换为深色主题'}
+            >
+              {resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              <span className="sr-only">切换主题</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full border border-border/50 bg-muted hover:bg-danger/10 hover:text-danger hover:border-danger/20 transition-all h-9 w-9"
               onClick={handleLogout}
               title="登出"
             >
