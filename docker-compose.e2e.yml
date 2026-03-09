@@ -50,7 +50,7 @@ services:
     ports:
       - "3334:3000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -58,7 +58,7 @@ services:
     ports:
       - "3334:3000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 5s
       timeout: 3s
       retries: 10

@@ -6,6 +6,7 @@ import { RepositoryManager } from './components/RepositoryManager';
 import { ConfigManager } from './components/ConfigManager';
 import { ReviewConfigPage } from './components/ReviewConfigPage';
 import { Toaster } from "@/components/ui/sonner"
+import { useTheme } from 'next-themes'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -32,7 +33,9 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function App() {
+function AppContent() {
+  const { resolvedTheme } = useTheme();
+
   return (
     <BrowserRouter>
       <Routes>
@@ -51,9 +54,13 @@ function App() {
           <Route path="*" element={<Navigate to="/repos" replace />} />
         </Route>
       </Routes>
-      <Toaster theme="dark" />
+      <Toaster theme={resolvedTheme === 'dark' ? 'dark' : 'light'} />
     </BrowserRouter>
   );
+}
+
+function App() {
+  return <AppContent />;
 }
 
 export default App;
