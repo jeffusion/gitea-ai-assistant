@@ -15,7 +15,7 @@ interface ConfigFieldInputProps {
 
 export function ConfigFieldInput({ field, value, onChange }: ConfigFieldInputProps) {
   const renderInput = () => {
-    const baseInputClasses = "bg-zinc-900/50 border-white/10 focus-visible:ring-primary focus-visible:border-primary transition-all duration-200";
+    const baseInputClasses = "bg-muted/50 border-border focus-visible:ring-primary focus-visible:border-primary transition-all duration-200";
     switch (field.type) {
       case 'boolean':
         return (
@@ -34,9 +34,9 @@ export function ConfigFieldInput({ field, value, onChange }: ConfigFieldInputPro
             <SelectTrigger className={`w-full ${baseInputClasses}`}>
               <SelectValue placeholder="请选择..." />
             </SelectTrigger>
-            <SelectContent className="bg-zinc-950 border-white/10">
+            <SelectContent className="bg-popover border-border">
               {field.enumValues?.map((val) => (
-                <SelectItem key={val} value={val} className="focus:bg-zinc-900 focus:text-primary">
+                <SelectItem key={val} value={val} className="focus:bg-accent focus:text-primary">
                   {val}
                 </SelectItem>
               ))}
@@ -82,22 +82,22 @@ export function ConfigFieldInput({ field, value, onChange }: ConfigFieldInputPro
   const getSourceBadge = () => {
     switch (field.source) {
       case 'db':
-        return <Badge className="ml-2 bg-primary/20 text-primary border-primary/30 tech-glow hover:bg-primary/30 transition-colors">已配置</Badge>;
+        return <Badge className="ml-2 bg-primary/20 text-primary border-primary/30 tech-glow hover:bg-accent hover:text-foreground hover:border-border/70 transition-colors">已配置</Badge>;
       case 'default':
       default:
-        return <Badge variant="outline" className="ml-2 border-zinc-600 text-zinc-400">默认值</Badge>;
+        return <Badge variant="outline" className="ml-2 border-border text-muted-foreground">默认值</Badge>;
     }
   };
 
   return (
-    <div className="flex flex-col py-5 px-1 gap-3 hover:bg-zinc-900/30 transition-colors rounded-lg">
+    <div className="flex flex-col py-5 px-1 gap-3 hover:bg-accent/40 transition-colors rounded-lg">
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
         <div className="flex flex-col space-y-1.5 flex-1">
           <div className="flex items-center">
-            <Label className="text-base font-semibold text-zinc-100">{field.label || field.envKey}</Label>
+            <Label className="text-base font-semibold text-foreground">{field.label || field.envKey}</Label>
             {getSourceBadge()}
           </div>
-          <div className="text-sm text-zinc-400 leading-relaxed">
+          <div className="text-sm text-muted-foreground leading-relaxed">
             {field.description}
           </div>
           <div className="pt-1">

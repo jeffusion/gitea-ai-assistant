@@ -119,34 +119,34 @@ export function ConfigManager() {
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center mb-6">
-          <Skeleton className="h-10 w-48 bg-zinc-900/50" />
-          <Skeleton className="h-10 w-24 bg-zinc-900/50" />
+          <Skeleton className="h-10 w-48 bg-muted/60" />
+          <Skeleton className="h-10 w-24 bg-muted/60" />
         </div>
-        <Skeleton className="h-[300px] w-full rounded-xl bg-zinc-900/50 border border-white/5" />
-        <Skeleton className="h-[300px] w-full rounded-xl bg-zinc-900/50 border border-white/5" />
+        <Skeleton className="h-[300px] w-full rounded-xl bg-muted/60 border border-border/60" />
+        <Skeleton className="h-[300px] w-full rounded-xl bg-muted/60 border border-border/60" />
       </div>
     );
   }
 
   if (isError) {
     return (
-      <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-500 rounded-lg flex items-center gap-3 glass-panel">
-        <AlertCircle className="w-5 h-5 text-rose-500" />
+      <div className="theme-error-panel flex items-center gap-3">
+        <AlertCircle className="w-5 h-5 text-danger" />
         <div className="font-medium tracking-wide">加载配置失败: {error.message}</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen pb-12">
+    <div className="theme-page-frame">
       {/* 固定在顶部的操作栏 */}
-      <div className="sticky top-0 z-10 bg-zinc-950/80 backdrop-blur-xl border-b border-white/10 py-3 px-4 md:px-6 lg:px-8 shadow-2xl">
-        <div className="flex items-center justify-end gap-3 max-w-5xl mx-auto">
+      <div className="sticky top-0 z-10 theme-sticky-bar py-3 px-4 md:px-6 lg:px-8">
+        <div className="theme-page-actions">
           <Button
             variant="outline"
             onClick={handleResetAll}
             disabled={!hasOverrides || resetMutation.isPending}
-            className="border-white/10 text-zinc-400 hover:text-zinc-100 hover:bg-white/5 transition-colors"
+            className="theme-interactive-elevate border-border text-muted-foreground hover:text-foreground hover:bg-accent/40 transition-colors"
           >
             <RotateCcw className="w-4 h-4 mr-2" />
             全部重置
@@ -154,11 +154,11 @@ export function ConfigManager() {
           <Button
             onClick={handleSave}
             disabled={!hasChanges || saveMutation.isPending}
-            className="min-w-[130px] bg-primary text-zinc-950 font-bold hover:bg-primary/90 tech-glow transition-all"
+            className="theme-interactive-elevate min-w-[130px] bg-primary text-primary-foreground font-bold hover:bg-primary/90 tech-glow transition-all"
           >
             {saveMutation.isPending ? (
               <span className="flex items-center gap-2">
-                <span className="size-4 animate-spin rounded-full border-2 border-zinc-950 border-t-transparent" /> 保存中...
+                <span className="size-4 animate-spin rounded-full border-2 border-primary-foreground/50 border-t-transparent" /> 保存中...
               </span>
             ) : (
               <>
@@ -170,7 +170,7 @@ export function ConfigManager() {
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto space-y-8 mt-6 px-4 md:px-6 lg:px-8">
+      <div className="theme-page-content">
         {visibleGroups?.map((group) => (
           <ConfigGroupCard
             key={group.key}

@@ -21,7 +21,7 @@ export function LoginPage() {
       } else {
         setError('登录失败，返回的 token 为空。');
       }
-    } catch (err) {
+    } catch {
       setError('登录失败，请检查密码是否正确或查看服务日志。');
     } finally {
       setIsLoading(false);
@@ -29,28 +29,28 @@ export function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-background">
+    <div className="theme-shell-gradient relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-background">
       {/* Background grid and gradient effects */}
-      <div className="absolute inset-0 bg-grid-pattern opacity-10"></div>
-      <div className="absolute top-[-20%] left-[-10%] h-[500px] w-[500px] rounded-full bg-primary/20 blur-[120px] pointer-events-none"></div>
-      <div className="absolute bottom-[-20%] right-[-10%] h-[500px] w-[500px] rounded-full bg-primary/10 blur-[100px] pointer-events-none"></div>
+      <div className="absolute inset-0 bg-grid-pattern opacity-[0.04]"></div>
+      <div className="absolute top-[-25%] left-[-14%] h-[460px] w-[460px] rounded-full bg-primary/14 blur-[120px] pointer-events-none"></div>
+      <div className="absolute bottom-[-26%] right-[-12%] h-[460px] w-[460px] rounded-full bg-accent/20 blur-[120px] pointer-events-none"></div>
 
       <div className="z-10 w-full max-w-md px-4 sm:px-6 relative">
-        <div className="glass-panel relative rounded-2xl p-8 sm:p-10 transition-all duration-500 hover:border-primary/20">
+        <div className="theme-card-shell theme-interactive-elevate relative p-8 sm:p-10">
           {/* Decorative terminal dots */}
           <div className="absolute top-4 left-4 flex gap-2">
-            <div className="h-2.5 w-2.5 rounded-full bg-danger/80 shadow-[0_0_5px_rgba(244,63,94,0.5)]"></div>
-            <div className="h-2.5 w-2.5 rounded-full bg-warning/80 shadow-[0_0_5px_rgba(245,158,11,0.5)]"></div>
-            <div className="h-2.5 w-2.5 rounded-full bg-success/80 shadow-[0_0_5px_rgba(16,185,129,0.5)]"></div>
+            <div className="h-2.5 w-2.5 rounded-full bg-danger/80 theme-glow-danger"></div>
+            <div className="h-2.5 w-2.5 rounded-full bg-warning/80 theme-glow-warning"></div>
+            <div className="h-2.5 w-2.5 rounded-full bg-success/80 theme-glow-success"></div>
           </div>
 
           <div className="mb-10 mt-6 flex flex-col items-center text-center">
-            <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted border border-primary/20 shadow-[0_0_20px_rgba(var(--primary),0.15)] ring-1 ring-primary/10 relative group">
-              <div className="absolute inset-0 rounded-2xl bg-primary/20 blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+            <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/70 border border-primary/20 theme-glow-primary ring-1 ring-primary/10 relative group">
+              <div className="absolute inset-0 rounded-2xl bg-accent/80 blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
               <Bot className="h-8 w-8 text-primary relative z-10" />
             </div>
             <h1 className="mb-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Gitea AI Assistant</h1>
-            <div className="flex items-center gap-2 text-xs font-mono text-primary/70 bg-primary/5 px-3 py-1 rounded-full border border-primary/10">
+            <div className="theme-control-pill text-primary/80">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
@@ -75,14 +75,14 @@ export function LoginPage() {
                   onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleLogin()}
                   required
                   placeholder="••••••••"
-                  className="h-12 border-border bg-muted/50 font-mono text-foreground placeholder:text-muted-foreground/50 focus-visible:border-primary/50 focus-visible:ring-primary/20 transition-all duration-300"
+                  className="theme-input-surface h-12 font-mono placeholder:text-muted-foreground/50 transition-all duration-300"
                 />
                 <Terminal className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary/70" />
               </div>
             </div>
 
             {error && (
-              <div className="flex items-start gap-2 rounded-lg border border-danger/20 bg-danger/10 px-3 py-3 text-sm text-danger animate-in fade-in slide-in-from-top-1">
+              <div className="theme-error-panel flex items-start gap-2 px-3 py-3 text-sm animate-in fade-in slide-in-from-top-1">
                 <Activity className="h-4 w-4 mt-0.5 shrink-0" />
                 <p className="font-mono text-xs leading-relaxed">{error}</p>
               </div>

@@ -67,8 +67,8 @@ export function ModelCombobox({
   const taggedModels = buildTaggedList();
 
   const TAG_STYLES: Record<string, string> = {
-    '推荐': 'bg-blue-500/15 text-blue-400',
-    '自定义': 'bg-amber-500/15 text-amber-400',
+    '推荐': 'bg-info/15 text-info',
+    '自定义': 'bg-warning/15 text-warning',
   };
 
   useEffect(() => {
@@ -104,22 +104,23 @@ export function ModelCombobox({
           disabled={disabled}
           placeholder={placeholder}
           autoComplete="off"
-          className="bg-zinc-900 border-white/10 text-white w-full pr-10"
+          className="bg-muted/50 border-border text-foreground w-full pr-10"
         />
       </div>
 
       {isOpen && !disabled && taggedModels.length > 0 && (
-        <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto bg-zinc-900 border border-white/10 rounded-lg shadow-xl">
+        <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto bg-popover border border-border rounded-lg shadow-xl">
           <div className="py-1">
             {taggedModels.map((item, idx) => (
-              <div
+              <button
+                type="button"
                 key={`${item.tag}-${item.name}-${idx}`}
-                className="px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 cursor-pointer transition-colors flex items-center justify-between gap-2"
+                className="w-full px-3 py-2 text-sm text-foreground hover:bg-accent focus-visible:bg-accent focus-visible:outline-none cursor-pointer transition-colors flex items-center justify-between gap-2"
                 onClick={() => handleSelect(item.name)}
               >
                 <span className="truncate">{item.name}</span>
                 <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${TAG_STYLES[item.tag]}`}>{item.tag}</span>
-              </div>
+              </button>
             ))}
           </div>
         </div>

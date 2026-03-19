@@ -91,25 +91,25 @@ function ProviderDialogInner({ onOpenChange, provider }: Omit<ProviderDialogProp
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="glass-panel w-full max-w-md bg-zinc-950 border border-white/10 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="px-6 py-4 border-b border-white/10">
-          <h2 className="text-xl font-bold text-zinc-100">{isEdit ? '编辑提供商' : '添加提供商'}</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center theme-surface-overlay backdrop-blur-sm">
+      <div className="theme-dialog-panel">
+        <div className="theme-dialog-header">
+          <h2 className="text-xl font-bold text-foreground">{isEdit ? '编辑提供商' : '添加提供商'}</h2>
         </div>
         
-        <form onSubmit={handleSubmit} className="p-6 flex-1 overflow-y-auto space-y-5">
+        <form onSubmit={handleSubmit} className="theme-dialog-body space-y-5">
           <div className="space-y-2">
-            <Label htmlFor="name">名称 <span className="text-red-500">*</span></Label>
-            <Input id="name" value={name} onChange={e => setName(e.target.value)} placeholder="如: DeepSeek" autoComplete="off" className="bg-zinc-900 border-white/10 text-white" />
+            <Label htmlFor="name">名称 <span className="text-danger">*</span></Label>
+            <Input id="name" value={name} onChange={e => setName(e.target.value)} placeholder="如: DeepSeek" autoComplete="off" className="bg-muted/50 border-border text-foreground" />
           </div>
 
           <div className="space-y-2">
-            <Label>类型 <span className="text-red-500">*</span></Label>
+            <Label>类型 <span className="text-danger">*</span></Label>
             <Select value={type} onValueChange={(v) => setType(v as ProviderType)}>
-              <SelectTrigger className="bg-zinc-900 border-white/10 text-white">
+              <SelectTrigger className="bg-muted/50 border-border text-foreground">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-zinc-900 border-white/10 text-white">
+              <SelectContent className="bg-popover border-border text-foreground">
                 {TYPE_OPTIONS.map(opt => (
                   <SelectItem key={opt.value} value={opt.value} description={opt.description}>
                     {opt.label}
@@ -120,19 +120,19 @@ function ProviderDialogInner({ onOpenChange, provider }: Omit<ProviderDialogProp
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="baseUrl">Base URL {isBaseUrlRequired ? <span className="text-red-500">*</span> : <span className="text-zinc-500">(可选)</span>}</Label>
+            <Label htmlFor="baseUrl">Base URL {isBaseUrlRequired ? <span className="text-danger">*</span> : <span className="text-muted-foreground">(可选)</span>}</Label>
             <Input 
               id="baseUrl" 
               value={baseUrl} 
               onChange={e => setBaseUrl(e.target.value)} 
               placeholder={isBaseUrlRequired ? "https://api.openai.com/v1" : "留空以使用默认地址"} 
               autoComplete="off"
-              className="bg-zinc-900 border-white/10 text-white" 
+              className="bg-muted/50 border-border text-foreground" 
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="defaultModel">默认模型 <span className="text-red-500">*</span></Label>
+            <Label htmlFor="defaultModel">默认模型 <span className="text-danger">*</span></Label>
             <ModelCombobox
               providerType={type}
               value={defaultModel}
@@ -142,7 +142,7 @@ function ProviderDialogInner({ onOpenChange, provider }: Omit<ProviderDialogProp
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="apiKey">API Key {!isEdit && <span className="text-red-500">*</span>}</Label>
+            <Label htmlFor="apiKey">API Key {!isEdit && <span className="text-danger">*</span>}</Label>
             <Input 
               id="apiKey" 
               type="password"
@@ -150,14 +150,14 @@ function ProviderDialogInner({ onOpenChange, provider }: Omit<ProviderDialogProp
               onChange={e => setApiKeyInput(e.target.value)} 
               placeholder={isEdit && provider?.hasKey ? '•••••••• (输入以覆盖)' : 'sk-...'} 
               autoComplete="off"
-              className="bg-zinc-900 border-white/10 text-white" 
+              className="bg-muted/50 border-border text-foreground" 
             />
           </div>
 
         </form>
 
-        <div className="px-6 py-4 border-t border-white/10 flex justify-end gap-3 bg-zinc-900/50">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="border-white/10 text-zinc-300 hover:text-white hover:bg-zinc-800">
+        <div className="theme-dialog-footer flex justify-end gap-3">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="border-border text-muted-foreground hover:text-foreground hover:bg-accent">
             取消
           </Button>
           <Button type="submit" onClick={handleSubmit} disabled={saveMutation.isPending} className="bg-primary text-primary-foreground hover:bg-primary/90">

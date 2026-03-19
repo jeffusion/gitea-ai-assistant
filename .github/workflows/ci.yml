@@ -20,6 +20,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install frontend dependencies
+        run: cd frontend && bun install --frozen-lockfile
+
       - name: Lint
         run: bun run lint
 
@@ -28,3 +31,18 @@ jobs:
 
       - name: Run tests
         run: bun test
+
+      - name: Install Playwright Chromium
+        run: cd frontend && bunx playwright install --with-deps chromium
+
+      - name: Run visual regression
+        run: bun run ui:visual
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/

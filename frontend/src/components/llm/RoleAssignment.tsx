@@ -112,65 +112,65 @@ export function RoleAssignment() {
   const enabledProviders = providers.filter(p => p.isEnabled && p.hasKey);
 
   return (
-    <Card className="glass-panel border-white/10 shadow-xl overflow-hidden group">
-      <CardHeader className="flex flex-row items-center justify-between pb-4 space-y-0 border-b border-white/5 bg-zinc-950/30">
+    <Card className="gap-0 py-0 theme-card-shell group">
+      <CardHeader className="theme-card-header flex flex-row items-center justify-between pb-4 space-y-0">
         <div className="flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20 group-hover:bg-amber-500/20 transition-all duration-300">
-            <ShieldCheck className="h-5 w-5 text-amber-400" />
+          <div className="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center border border-warning/20 group-hover:bg-warning/20 transition-all duration-300">
+            <ShieldCheck className="h-5 w-5 text-warning" />
           </div>
-          <div className="space-y-1">
-            <CardTitle className="text-xl font-bold text-zinc-100 tracking-tight">
-              角色分配
-            </CardTitle>
-            <CardDescription className="text-zinc-400">
-              为 AI 审查系统的不同角色指定提供商和模型
-            </CardDescription>
+            <div className="space-y-1">
+              <CardTitle className="text-xl font-bold text-foreground tracking-tight">
+                角色分配
+              </CardTitle>
+              <CardDescription className="text-muted-foreground">
+                为 AI 审查系统的不同角色指定提供商和模型
+              </CardDescription>
+            </div>
           </div>
-        </div>
       </CardHeader>
 
-      <CardContent className="p-6 bg-zinc-950/20">
+      <CardContent className="theme-card-content">
         {isLoading ? (
-          <div className="h-32 flex items-center justify-center text-zinc-500 gap-2">
+          <div className="h-32 flex items-center justify-center text-muted-foreground gap-2">
             <div className="w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
             加载角色配置...
           </div>
         ) : (
-          <div className="divide-y divide-white/5">
+          <div className="divide-y divide-border/50">
             {ROLES.map(role => {
               const state = roleStates[role] || { providerId: null, model: '' };
               const isDirty = roles.find(r => r.role === role)?.providerId !== state.providerId || 
                              (roles.find(r => r.role === role)?.model || '') !== state.model;
               
               return (
-                <div key={role} className="flex flex-col md:flex-row items-start md:items-center gap-4 py-5 px-1 hover:bg-zinc-900/30 transition-colors rounded-lg">
+                <div key={role} className="flex flex-col md:flex-row items-start md:items-center gap-4 py-5 px-1 hover:bg-accent/40 transition-colors rounded-lg">
                   <div className="w-full md:w-1/3 space-y-1.5">
-                    <Label className="text-base font-semibold text-zinc-100">
+                    <Label className="text-base font-semibold text-foreground">
                       {ROLE_LABELS[role]?.label || role}
                     </Label>
-                    <p className="text-sm text-zinc-400 leading-relaxed">
+                    <p className="text-sm text-muted-foreground leading-relaxed">
                       {ROLE_LABELS[role]?.desc}
                     </p>
                   </div>
                   
                   <div className="w-full md:w-2/3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
                     <div className="flex-1 w-full space-y-1">
-                      <Label className="text-xs text-zinc-400">提供商</Label>
+                      <Label className="text-xs text-muted-foreground">提供商</Label>
                       <Select 
                         value={state.providerId || ''} 
                         onValueChange={(v) => handleProviderChange(role, v)}
                       >
-                        <SelectTrigger className="bg-zinc-900/50 border-white/10 text-white">
+                        <SelectTrigger className="bg-muted/50 border-border text-foreground">
                           <SelectValue placeholder="选择提供商" />
                         </SelectTrigger>
-                        <SelectContent className="bg-zinc-950 border-white/10 text-white">
+                        <SelectContent className="bg-popover border-border text-foreground">
                           {enabledProviders.map(p => (
-                            <SelectItem key={p.id} value={p.id} description={p.type} className="focus:bg-zinc-900 focus:text-primary">
+                            <SelectItem key={p.id} value={p.id} description={p.type} className="focus:bg-accent focus:text-primary">
                               {p.name}
                             </SelectItem>
                           ))}
                           {enabledProviders.length === 0 && (
-                            <div className="px-2 py-3 text-xs text-red-400 text-center border-t border-white/5">
+                            <div className="px-2 py-3 text-xs text-danger text-center border-t border-border/60">
                               无可用提供商。请先添加并启用。
                             </div>
                           )}
@@ -179,7 +179,7 @@ export function RoleAssignment() {
                     </div>
 
                     <div className="flex-1 w-full space-y-1">
-                      <Label className="text-xs text-zinc-400">使用的模型</Label>
+                      <Label className="text-xs text-muted-foreground">使用的模型</Label>
                       <ModelCombobox
                         providerType={providers.find(p => p.id === state.providerId)?.type}
                         value={state.model}
@@ -196,7 +196,7 @@ export function RoleAssignment() {
                         onClick={() => handleSave(role)}
                         disabled={!isDirty || saveMutation.isPending}
                         variant={isDirty ? 'default' : 'secondary'}
-                        className={`transition-all ${isDirty ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30' : 'bg-white/5 text-zinc-500 border border-transparent'}`}
+                        className={`transition-all ${isDirty ? 'bg-warning/15 text-warning border border-warning/30 hover:bg-warning/25' : 'bg-muted/50 text-muted-foreground border border-transparent'}`}
                       >
                         <Save className="w-4 h-4 mr-1.5" />
                         {isDirty ? '保存更改' : '已保存'}
