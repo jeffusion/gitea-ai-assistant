@@ -10,7 +10,7 @@ AI-powered code review assistant for Gitea. Automatically reviews Pull Requests 
 
 - 🤖 **AI Code Review** - Automatic review of PRs and commits using pluggable LLM providers
 - 📝 **Line-Level Comments** - Precise feedback on specific code changes
-- 🔄 **Dual Review Engines** - Legacy (simple) or Agent-based (multi-agent) review modes
+- 🔄 **Task-Based Review Engines** - Agent staged review (skip/light/full) plus optional Codex CLI execution mode
 - 🔔 **Feishu Notifications** - Integrated notification system for PR events
 - 🎛️ **Admin Dashboard** - Web UI for managing repository webhooks and LLM provider configuration
 - 🔐 **Secure Webhooks** - HMAC-SHA256 signature verification
@@ -34,8 +34,8 @@ AI-powered code review assistant for Gitea. Automatically reviews Pull Requests 
 
 | Engine | Description | Use Case |
 |--------|-------------|----------|
-| `legacy` | Single-pass AI review with summary + line comments | Simple, fast reviews |
-| `agent` | Multi-agent orchestration with specialists, reflection, and debate | Deep, comprehensive analysis |
+| `agent` | Task-based staged review (`skip` / `light` / `full`) with scoped specialist routing and optional reflection/debate escalation | Deep reviews with token-aware execution |
+| `codex` | Codex CLI review execution with independent configuration | External Codex-driven review pipeline |
 
 ## Quick Start
 
@@ -136,7 +136,7 @@ LLM providers and models are configured exclusively through the **Admin Dashboar
 
 1. Navigate to **LLM 配置** (LLM Configuration)
 2. Add your LLM providers (OpenAI Compatible, OpenAI Responses API, Anthropic, Google Gemini)
-3. Assign models to review roles (legacy, planner, specialist, judge, embedding)
+3. Assign models to review roles (planner, specialist, judge, embedding)
 
 > API keys are stored encrypted (AES-256-GCM) in the local SQLite database.
 
@@ -151,12 +151,27 @@ LLM providers and models are configured exclusively through the **Admin Dashboar
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| Review Engine | Engine mode (`legacy` or `agent`) | `legacy` |
+| Review Engine | Engine mode (`agent` or `codex`) | `agent` |
+| Enable Triage | Enable planner triage for task routing | `true` |
+| Small Max Files | Upper file-count bound for `small` review size | `3` |
+| Small Max Changed Lines | Upper changed-lines bound for `small` review size | `80` |
+| Medium Max Files | Upper file-count bound for `medium` review size | `10` |
+| Medium Max Changed Lines | Upper changed-lines bound for `medium` review size | `400` |
+| Token Budget Small | Token budget cap for `small` staged tasks | `12000` |
+| Token Budget Medium | Token budget cap for `medium` staged tasks | `45000` |
+| Token Budget Large | Token budget cap for `large` staged tasks | `120000` |
 | Review Work Directory | Working directory for repo clones | `/tmp/gitea-assistant` |
 | Max Parallel Runs | Max concurrent review tasks | `2` |
 | Max Files per Run | Max files analyzed per review | `200` |
 | Auto-publish Min Confidence | Min confidence score for auto-publish | `0.8` |
 | Enable Human Gate | Require human approval before publishing | `true` |
+
+Agent review execution model (current):
+
+- `skip`: docs/assets/rename-only style changes can bypass specialist review.
+- `light`: low-risk code changes run minimal scoped specialist checks.
+- `full`: sensitive or larger changes run full specialist tasks, with optional reflection/debate escalation.
+- Triage outputs task scopes (`paths`, `riskTags`, `mode`, `tokenBudget`) and orchestrator dispatches specialists by task scope instead of broad fan-out.
 
 #### Memory & Learning (Experimental)
 

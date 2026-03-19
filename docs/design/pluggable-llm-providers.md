@@ -132,11 +132,10 @@ CREATE TABLE llm_secrets (
 -- ============================================================
 -- 表3: model_role_assignments — 场景 → 模型映射
 -- ============================================================
--- 每个业务场景（如 planner/specialist/judge/legacy/embedding）绑定到
+-- 每个业务场景（如 planner/specialist/judge/embedding）绑定到
 -- 一个 provider + 具体 model，支持不同场景用不同 provider。
 CREATE TABLE model_role_assignments (
   role          TEXT PRIMARY KEY CHECK (role IN (
-                  'legacy',          -- 旧版单次审查（ai-review.ts）
                   'planner',         -- Agent 审查 planner
                   'specialist',      -- Agent 审查 specialist
                   'judge',           -- Agent 审查 judge
@@ -184,7 +183,7 @@ CREATE INDEX idx_providers_enabled ON llm_providers(is_enabled);
 // ── src/llm/types.ts ────────────────────────────────────────
 
 /** 模型角色枚举 */
-export type ModelRole = 'legacy' | 'planner' | 'specialist' | 'judge' | 'embedding';
+export type ModelRole = 'planner' | 'specialist' | 'judge' | 'embedding';
 
 /** 统一消息格式（内部表达，不暴露 provider 差异） */
 export interface LLMMessage {
@@ -346,7 +345,7 @@ export class LLMGateway {
 
   /**
    * 按业务角色调用 LLM
-   * @param role 业务角色（legacy/planner/specialist/judge/embedding）
+ * @param role 业务角色（planner/specialist/judge/embedding）
    * @param request 请求（不含 model，由角色映射决定）
    */
   async chatForRole(
@@ -686,19 +685,19 @@ Settings 页面
 │   │   ├── ▸ 高级配置 (collapsible, JSON key-value editor)
 │   │   └── [测试连接] [保存] [取消]
 │   │
-│   └── 🧩 角色分配 区域
+│   └── 🧩 角色分配与分级审查映射 区域
 │       ┌──────────────────────────────────────────────────────────────┐
-│       │ 角色         │ Provider 下拉        │ 模型 ID              │
+│       │ 角色/阶段            │ Provider 下拉        │ 模型 ID              │
 │       ├──────────────┼──────────────────────┼──────────────────────┤
-│       │ Legacy 审查  │ [公司 OpenAI 代理 ▾] │ [gpt-4o-mini      ] │
-│       │ Planner      │ [公司 OpenAI 代理 ▾] │ [gpt-4o-mini      ] │
-│       │ Specialist   │ [Anthropic Claude ▾] │ [claude-sonnet-4   ] │
-│       │ Judge        │ [公司 OpenAI 代理 ▾] │ [gpt-4o           ] │
-│       │ Embedding    │ [公司 OpenAI 代理 ▾] │ [text-embedding-3  ] │
+│       │ Planner(Triage)      │ [公司 OpenAI 代理 ▾] │ [gpt-4o-mini      ] │
+│       │ Specialist(任务执行) │ [Anthropic Claude ▾] │ [claude-sonnet-4   ] │
+│       │ Judge(汇总裁决)      │ [公司 OpenAI 代理 ▾] │ [gpt-4o           ] │
+│       │ Embedding(记忆检索)  │ [公司 OpenAI 代理 ▾] │ [text-embedding-3  ] │
 │       └──────────────────────────────────────────────────────────────┘
 │       [保存角色分配]
 │
 ├── ⚙️ 通用设置（现有 Gitea / 飞书 / App / Review 参数）
+│   ├── Agent 分级审查参数：small/medium 阈值、token budget、triage 开关
 │   └── (复用现有 ConfigManager 组件，数据源统一为 DB)
 ```
 
@@ -734,9 +733,9 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
 | # | 文件 | 当前代码 | 改造为 | 影响范围 |
 |---|---|---|---|---|
 | 1 | `src/index.ts:69-71` | `const openaiClient = new OpenAI({baseURL, apiKey})` | 删除；初始化 `LLMGateway` 单例并传入业务层 | 入口 |
-| 2 | `src/services/ai-review.ts:8-10` | `const openai = new OpenAI({...})` | 删除模块级 client；函数接收 `LLMGateway` 参数；`openai.chat.completions.create()` → `gateway.chatForRole('legacy', ...)` | Legacy 审查 |
-| 3 | `src/review/orchestrator.ts:45,61-63` | `private readonly openai: OpenAI` + `this.openai = new OpenAI(...)` | 构造函数改接收 `LLMGateway`；传给各 agent | Agent 编排 |
-| 4 | `src/review/agents/specialist-agent.ts:93` | `protected readonly openai: OpenAI` | → `protected readonly gateway: LLMGateway`；`reviewLegacy()` 和 `reviewWithReAct()` 中的 `this.openai.chat.completions.create()` 改为 `this.gateway.chatForRole('specialist', ...)` | 核心 agent |
+| 2 | `src/controllers/review.ts` | 旧版 webhook 存在回退分支 | 删除回退分支，仅保留 `agent` / `codex` 入队逻辑 | 审查主入口 |
+| 3 | `src/review/orchestrator.ts:45,61-63` | `private readonly openai: OpenAI` + `this.openai = new OpenAI(...)` | 构造函数改接收 `LLMGateway`；传给各 agent（任务化分级编排：skip/light/full） | Agent 编排 |
+| 4 | `src/review/agents/specialist-agent.ts:93` | `protected readonly openai: OpenAI` | → `protected readonly gateway: LLMGateway`；`reviewWithOptions()` 与 ReAct 调用改为 `this.gateway.chatForRole('specialist', ...)` | 核心 agent |
 | 5 | `src/review/agents/critic-agent.ts:23` | `private openai: OpenAI` | 同上 | 评审 agent |
 | 6 | `src/review/agents/reflexion-agent.ts:24` | `constructor(openai: OpenAI, ...)` | 构造传 gateway | 反思 agent |
 | 7 | `src/review/agents/debate-orchestrator.ts:17` | `private openai: OpenAI` | 同上 | 辩论 agent |

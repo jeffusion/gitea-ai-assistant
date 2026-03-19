@@ -57,7 +57,7 @@ describe('RoleAssignment', () => {
 
     vi.mocked(fetchRoles).mockResolvedValueOnce([
       {
-        role: 'legacy',
+        role: 'planner',
         providerId: 'p1',
         providerName: 'OpenAI',
         providerType: 'openai_responses',
@@ -77,7 +77,6 @@ describe('RoleAssignment', () => {
     renderWithQuery(<RoleAssignment />);
 
     expect(await screen.findByText('角色分配')).toBeInTheDocument();
-    expect(await screen.findByText('Legacy 审查')).toBeInTheDocument();
     expect(await screen.findByText('规划器 Planner')).toBeInTheDocument();
 
     // Radix Select renders placeholder in a span with pointer-events: none.
@@ -89,11 +88,11 @@ describe('RoleAssignment', () => {
 
     const modelInputs = screen.getAllByPlaceholderText('选择或输入模型...') as HTMLInputElement[];
     await waitFor(() => {
-      expect(modelInputs[1].value).toBe('gpt-4o-mini');
+      expect(modelInputs[0].value).toBe('gpt-4o');
     });
 
-    await user.clear(modelInputs[1]);
-    await user.type(modelInputs[1], 'custom-planner-model');
-    expect(modelInputs[1].value).toBe('custom-planner-model');
+    await user.clear(modelInputs[0]);
+    await user.type(modelInputs[0], 'custom-planner-model');
+    expect(modelInputs[0].value).toBe('custom-planner-model');
   });
 });

@@ -10,6 +10,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 import { migration001Init } from './migrations/001_init';
+import { migration002RemoveLegacyReviewMode } from './migrations/002_remove_legacy_review_mode';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -25,7 +26,7 @@ export interface Migration {
 // Migration registry (ordered by version)
 // ---------------------------------------------------------------------------
 
-const MIGRATIONS: Migration[] = [migration001Init];
+const MIGRATIONS: Migration[] = [migration001Init, migration002RemoveLegacyReviewMode];
 
 // ---------------------------------------------------------------------------
 // Database singleton

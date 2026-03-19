@@ -1,7 +1,7 @@
 import config from '../../config';
 import type { LLMGateway } from '../../llm/gateway';
 import type { LLMMessage } from '../../llm/types';
-import { withGlobalPrompt } from '../../utils/global-prompt';
+import { withCoreGlobalPrompt } from '../../utils/global-prompt';
 import { logger } from '../../utils/logger';
 import { Finding, FindingSeverity } from '../types';
 import { SpecialistAgent } from './specialist-agent';
@@ -105,7 +105,7 @@ export class DebateOrchestrator {
       const messages: LLMMessage[] = [
         {
           role: 'system',
-          content: withGlobalPrompt(
+          content: withCoreGlobalPrompt(
             `你是${agentName}，从你的专业角度独立评估代码问题。`,
             config.review.globalPrompt
           ),
@@ -186,7 +186,7 @@ ${otherOpinions
       const messages: LLMMessage[] = [
         {
           role: 'system',
-          content: withGlobalPrompt(
+          content: withCoreGlobalPrompt(
             `你是${agentName}，根据同行意见重新评估，但也要坚持你的专业判断。`,
             config.review.globalPrompt
           ),

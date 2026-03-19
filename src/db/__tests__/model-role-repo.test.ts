@@ -1,13 +1,3 @@
-// @ts-expect-error bun:test is provided by Bun at runtime
-declare module 'bun:test' {
-  export const describe: any;
-  export const test: any;
-  export const expect: any;
-  export const beforeEach: any;
-  export const afterEach: any;
-}
-
-// @ts-expect-error bun:test is provided by Bun at runtime
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
@@ -45,7 +35,7 @@ describe('model-role-repo', () => {
   afterEach(() => {
     closeDatabase();
     if (savedDbPath === undefined) {
-      delete process.env.DATABASE_PATH;
+      Reflect.deleteProperty(process.env, 'DATABASE_PATH');
     } else {
       process.env.DATABASE_PATH = savedDbPath;
     }
@@ -70,25 +60,25 @@ describe('model-role-repo', () => {
 
   describe('set()', () => {
     test('creates a new role assignment', () => {
-      modelRoleRepo.set('legacy', providerId, 'gpt-4o-mini');
+      modelRoleRepo.set('planner', providerId, 'gpt-4o-mini');
 
-      const assignment = modelRoleRepo.getByRole('legacy');
+      const assignment = modelRoleRepo.getByRole('planner');
       expect(assignment).not.toBeNull();
-      expect(assignment!.role).toBe('legacy');
+      expect(assignment!.role).toBe('planner');
       expect(assignment!.provider_id).toBe(providerId);
       expect(assignment!.model).toBe('gpt-4o-mini');
     });
 
     test('upserts: updates existing role assignment', () => {
-      modelRoleRepo.set('legacy', providerId, 'gpt-4o-mini');
-      modelRoleRepo.set('legacy', providerId, 'gpt-4o');
+      modelRoleRepo.set('planner', providerId, 'gpt-4o-mini');
+      modelRoleRepo.set('planner', providerId, 'gpt-4o');
 
-      const assignment = modelRoleRepo.getByRole('legacy');
+      const assignment = modelRoleRepo.getByRole('planner');
       expect(assignment!.model).toBe('gpt-4o');
     });
 
     test('can assign different roles', () => {
-      const roles: ModelRole[] = ['legacy', 'planner', 'specialist', 'judge', 'embedding'];
+      const roles: ModelRole[] = ['planner', 'specialist', 'judge', 'embedding'];
       for (const role of roles) {
         modelRoleRepo.set(role, providerId, `model-for-${role}`);
       }
@@ -104,7 +94,7 @@ describe('model-role-repo', () => {
 
   describe('getByRole()', () => {
     test('returns null when no assignment exists', () => {
-      expect(modelRoleRepo.getByRole('legacy')).toBeNull();
+      expect(modelRoleRepo.getByRole('planner')).toBeNull();
     });
 
     test('returns the correct assignment', () => {
@@ -123,7 +113,7 @@ describe('model-role-repo', () => {
     });
 
     test('returns all assignments with provider info (JOIN)', () => {
-      modelRoleRepo.set('legacy', providerId, 'gpt-4o-mini');
+      modelRoleRepo.set('specialist', providerId, 'gpt-4o-mini');
       modelRoleRepo.set('planner', providerId, 'gpt-4o');
 
       const all = modelRoleRepo.list();
@@ -136,7 +126,7 @@ describe('model-role-repo', () => {
     test('results are ordered by role', () => {
       modelRoleRepo.set('specialist', providerId, 'model-a');
       modelRoleRepo.set('embedding', providerId, 'model-b');
-      modelRoleRepo.set('legacy', providerId, 'model-c');
+      modelRoleRepo.set('planner', providerId, 'model-c');
 
       const all = modelRoleRepo.list();
       const roles = all.map((a) => a.role);
@@ -148,13 +138,13 @@ describe('model-role-repo', () => {
 
   describe('delete()', () => {
     test('deletes existing assignment, returns true', () => {
-      modelRoleRepo.set('legacy', providerId, 'gpt-4o-mini');
-      expect(modelRoleRepo.delete('legacy')).toBe(true);
-      expect(modelRoleRepo.getByRole('legacy')).toBeNull();
+      modelRoleRepo.set('planner', providerId, 'gpt-4o-mini');
+      expect(modelRoleRepo.delete('planner')).toBe(true);
+      expect(modelRoleRepo.getByRole('planner')).toBeNull();
     });
 
     test('returns false for non-existent role', () => {
-      expect(modelRoleRepo.delete('legacy')).toBe(false);
+      expect(modelRoleRepo.delete('planner')).toBe(false);
     });
   });
 
@@ -166,13 +156,13 @@ describe('model-role-repo', () => {
     });
 
     test('returns all roles assigned to a provider', () => {
-      modelRoleRepo.set('legacy', providerId, 'gpt-4o-mini');
+      modelRoleRepo.set('specialist', providerId, 'gpt-4o-mini');
       modelRoleRepo.set('planner', providerId, 'gpt-4o');
       modelRoleRepo.set('judge', providerId, 'gpt-4o');
 
       const roles = modelRoleRepo.getRolesByProvider(providerId);
       expect(roles).toHaveLength(3);
-      expect(roles).toContain('legacy');
+      expect(roles).toContain('specialist');
       expect(roles).toContain('planner');
       expect(roles).toContain('judge');
     });
@@ -183,11 +173,11 @@ describe('model-role-repo', () => {
         name: 'Other Provider',
         type: 'anthropic',
       });
-      modelRoleRepo.set('legacy', providerId, 'gpt-4o-mini');
+      modelRoleRepo.set('specialist', providerId, 'gpt-4o-mini');
       modelRoleRepo.set('planner', p2.id, 'claude-3-5-sonnet');
 
       const roles1 = modelRoleRepo.getRolesByProvider(providerId);
-      expect(roles1).toEqual(['legacy']);
+      expect(roles1).toEqual(['specialist']);
 
       const roles2 = modelRoleRepo.getRolesByProvider(p2.id);
       expect(roles2).toEqual(['planner']);
@@ -198,14 +188,14 @@ describe('model-role-repo', () => {
 
   describe('foreign key constraint', () => {
     test('cannot delete provider while role assignments exist (no CASCADE)', () => {
-      modelRoleRepo.set('legacy', providerId, 'gpt-4o-mini');
+      modelRoleRepo.set('specialist', providerId, 'gpt-4o-mini');
       modelRoleRepo.set('planner', providerId, 'gpt-4o');
 
       // FK constraint prevents delete — must remove assignments first
       expect(() => providerRepo.delete(providerId)).toThrow();
 
       // Clean up assignments first, then delete succeeds
-      modelRoleRepo.delete('legacy');
+      modelRoleRepo.delete('specialist');
       modelRoleRepo.delete('planner');
       expect(providerRepo.delete(providerId)).toBe(true);
     });

@@ -129,7 +129,7 @@ describe('SpecialistAgent ReAct loop', () => {
     expect(result.agentName).toBe('TestAgent');
   });
 
-  test('no toolRegistry → uses legacy single-call mode', async () => {
+  test('no toolRegistry → uses single-call json mode', async () => {
     const finding = {
       severity: 'high',
       confidence: 0.9,
@@ -188,15 +188,12 @@ describe('SpecialistAgent ReAct loop', () => {
     expect(calls).toHaveLength(2);
   });
 
-  test('ReAct: last iteration forces json_object + tool_choice=none', async () => {
+  test('ReAct: default staged mode uses 2 iterations and forces final json', async () => {
     const registry = new ToolRegistry();
     registry.register(makeDummyTool());
 
     const { gateway, getCalls } = createMockGateway([
       () => toolCallResponse([{ id: 'call_1', name: 'search_code', args: { query: 'x' } }]),
-      () => toolCallResponse([{ id: 'call_2', name: 'search_code', args: { query: 'y' } }]),
-      () => toolCallResponse([{ id: 'call_3', name: 'search_code', args: { query: 'z' } }]),
-      () => toolCallResponse([{ id: 'call_4', name: 'search_code', args: { query: 'w' } }]),
       () => jsonResponse({ findings: [], need_more_investigation: false }),
     ]);
 
@@ -204,14 +201,11 @@ describe('SpecialistAgent ReAct loop', () => {
     await agent.review(makeRun(), makeContext());
 
     const calls = getCalls();
-    expect(calls).toHaveLength(5);
-
-    for (let i = 0; i < 4; i++) {
-      expect(calls[i].providerOptions).toEqual({ tool_choice: 'auto' });
-      expect(calls[i].responseFormat).toBeUndefined();
-    }
-    expect(calls[4].providerOptions).toEqual({ tool_choice: 'none' });
-    expect(calls[4].responseFormat).toBe('json');
+    expect(calls).toHaveLength(2);
+    expect(calls[0].providerOptions).toEqual({ tool_choice: 'auto' });
+    expect(calls[0].responseFormat).toBeUndefined();
+    expect(calls[1].providerOptions).toEqual({ tool_choice: 'none' });
+    expect(calls[1].responseFormat).toBe('json');
   });
 
   test('ReAct: dead-loop prevention — need_more_investigation=true but no tool call injects user prompt', async () => {
@@ -411,6 +405,46 @@ describe('SpecialistAgent ReAct loop', () => {
     const result = await agent.review(makeRun(), makeContext());
 
     expect(result.findings).toHaveLength(0);
+  });
+
+  test('staged context includes deleted lines metadata for review', async () => {
+    const { gateway, getCalls } = createMockGateway([
+      () =>
+        jsonResponse({
+          findings: [],
+          need_more_investigation: false,
+        }),
+    ]);
+
+    const context = makeContext({
+      parsedDiff: [
+        {
+          path: 'src/foo.ts',
+          changes: [
+            { lineNumber: 12, oldLineNumber: 11, content: 'if (auth) {', type: 'context' },
+            { lineNumber: 12, oldLineNumber: 12, content: 'if (isAdmin(user)) {', type: 'delete' },
+            { lineNumber: 13, oldLineNumber: 13, content: 'return true;', type: 'add' },
+          ],
+        },
+      ],
+    });
+
+    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs');
+    await agent.reviewWithOptions(makeRun(), context, {
+      mode: 'full',
+      allowTools: false,
+      scopePaths: ['src/foo.ts'],
+      maxContextTokens: 6000,
+    });
+
+    const calls = getCalls();
+    expect(calls).toHaveLength(1);
+    const userMessage = calls[0].messages.find((message) => message.role === 'user');
+    expect(userMessage).toBeDefined();
+    if (!userMessage) throw new Error('Expected user message in request');
+
+    expect(userMessage.content).toContain('"type": "delete"');
+    expect(userMessage.content).toContain('"oldLineNumber": 12');
   });
 
   test('ReAct: auto-generates fingerprint when finding has none', async () => {

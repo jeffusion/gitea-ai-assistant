@@ -10,3 +10,15 @@ export function withGlobalPrompt(systemContent: string, globalPrompt: string | u
   }
   return `${systemContent}\n\n${globalPrompt}`;
 }
+
+export function withCoreGlobalPrompt(
+  systemContent: string,
+  globalPrompt: string | undefined,
+  maxChars = 240
+): string {
+  if (!globalPrompt || globalPrompt.trim() === '') {
+    return systemContent;
+  }
+  const compact = globalPrompt.trim().slice(0, maxChars);
+  return `${systemContent}\n\n${compact}`;
+}

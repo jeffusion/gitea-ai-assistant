@@ -94,7 +94,7 @@ llmConfigRouter.post('/providers', async (c) => {
 
   const allProviders = providerRepo.list();
   if (allProviders.length === 1) {
-    const modelRolesToBind: ModelRole[] = ['legacy', 'planner', 'specialist', 'judge', 'embedding'];
+    const modelRolesToBind: ModelRole[] = ['planner', 'specialist', 'judge', 'embedding'];
     for (const role of modelRolesToBind) {
       modelRoleRepo.set(role, created.id, body.defaultModel);
     }

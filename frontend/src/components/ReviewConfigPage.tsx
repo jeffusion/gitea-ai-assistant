@@ -17,15 +17,12 @@ import { toast } from 'sonner';
 // Engine-specific field visibility
 // ---------------------------------------------------------------------------
 
-type EngineMode = 'legacy' | 'agent' | 'codex';
+type EngineMode = 'agent' | 'codex';
 
 /** The engine selector field — always visible at the top. */
 const ENGINE_FIELD = 'REVIEW_ENGINE';
 
-/** Fields shared across legacy & agent (but NOT codex). */
-const LEGACY_AGENT_FIELDS = new Set([
-  'CUSTOM_SUMMARY_PROMPT',
-  'CUSTOM_LINE_COMMENT_PROMPT',
+const AGENT_SHARED_FIELDS = new Set([
   'GLOBAL_PROMPT',
   'REVIEW_WORKDIR',
   'REVIEW_MAX_PARALLEL_RUNS',
@@ -65,10 +62,8 @@ function getVisibleFields(engine: EngineMode, fields: ConfigFieldDto[]): ConfigF
   return fields.filter((f) => {
     if (f.envKey === ENGINE_FIELD) return false; // rendered separately
     switch (engine) {
-      case 'legacy':
-        return LEGACY_AGENT_FIELDS.has(f.envKey);
       case 'agent':
-        return LEGACY_AGENT_FIELDS.has(f.envKey) || AGENT_ONLY_FIELDS.has(f.envKey);
+        return AGENT_SHARED_FIELDS.has(f.envKey) || AGENT_ONLY_FIELDS.has(f.envKey);
       case 'codex':
         return CODEX_FIELDS.has(f.envKey);
       default:
@@ -82,7 +77,6 @@ function getVisibleFields(engine: EngineMode, fields: ConfigFieldDto[]): ConfigF
 // ---------------------------------------------------------------------------
 
 const ENGINE_OPTIONS: { value: EngineMode; label: string; description: string }[] = [
-  { value: 'legacy', label: 'Legacy', description: '传统单次 LLM 审查' },
   { value: 'agent', label: 'Agent', description: '多代理编排深度审查' },
   { value: 'codex', label: 'Codex', description: 'Codex CLI 审查' },
 ];
@@ -105,7 +99,7 @@ export function ReviewConfigPage() {
   const engine: EngineMode = useMemo(() => {
     const val = localConfig[ENGINE_FIELD];
     if (val === 'agent' || val === 'codex') return val;
-    return 'legacy';
+    return 'agent';
   }, [localConfig]);
 
   // Derived: review group and memory group from fetched data
@@ -231,13 +225,11 @@ export function ReviewConfigPage() {
   const syntheticReviewGroup: ConfigGroupDto | null = reviewGroup
     ? {
         ...reviewGroup,
-        label: engine === 'codex' ? 'Codex 审查设置' : engine === 'agent' ? 'Agent 审查设置' : 'Legacy 审查设置',
+        label: engine === 'codex' ? 'Codex 审查设置' : 'Agent 审查设置',
         description:
           engine === 'codex'
             ? 'Codex CLI 审查引擎配置'
-            : engine === 'agent'
-              ? '多代理编排审查引擎配置'
-              : '传统单次 LLM 审查引擎配置',
+            : '多代理编排审查引擎配置',
         fields: visibleReviewFields,
       }
     : null;
@@ -327,7 +319,7 @@ export function ReviewConfigPage() {
             </div>
           </CardHeader>
           <CardContent className="p-6 bg-zinc-950/20">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {ENGINE_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
@@ -377,7 +369,6 @@ export function ReviewConfigPage() {
           />
         )}
 
-        {/* LLM Provider config — legacy & agent only */}
         {engine !== 'codex' && (
           <>
             <ProviderList />

@@ -1,13 +1,3 @@
-// @ts-expect-error bun:test is provided by Bun at runtime
-declare module 'bun:test' {
-  export const describe: any;
-  export const test: any;
-  export const expect: any;
-  export const beforeEach: any;
-  export const afterEach: any;
-}
-
-// @ts-expect-error bun:test is provided by Bun at runtime
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
@@ -68,7 +58,9 @@ describe('llm-config controller', () => {
     mkdirSync(tmpDir, { recursive: true });
     dbPath = join(tmpDir, 'test.db');
     process.env.DATABASE_PATH = dbPath;
-    process.env.ENCRYPTION_KEY = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('hex');
+    process.env.ENCRYPTION_KEY = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString(
+      'hex'
+    );
 
     initMasterKey();
     initDatabase();
@@ -78,12 +70,12 @@ describe('llm-config controller', () => {
   afterEach(() => {
     closeDatabase();
     if (savedDbPath === undefined) {
-      delete process.env.DATABASE_PATH;
+      Reflect.deleteProperty(process.env, 'DATABASE_PATH');
     } else {
       process.env.DATABASE_PATH = savedDbPath;
     }
     if (savedEncryptionKey === undefined) {
-      delete process.env.ENCRYPTION_KEY;
+      Reflect.deleteProperty(process.env, 'ENCRYPTION_KEY');
     } else {
       process.env.ENCRYPTION_KEY = savedEncryptionKey;
     }
@@ -168,7 +160,7 @@ describe('llm-config controller', () => {
 
       const { data: roles } = await jsonRequest(app, 'GET', '/roles');
       const assignedRoles = roles.filter((r: any) => r.providerId !== null);
-      expect(assignedRoles).toHaveLength(5); // All 5 roles bound
+      expect(assignedRoles).toHaveLength(4);
     });
 
     test('rejects missing required fields', async () => {
@@ -334,7 +326,7 @@ describe('llm-config controller', () => {
     test('returns all MODEL_ROLES with null assignments when unassigned', async () => {
       const { status, data } = await jsonRequest(app, 'GET', '/roles');
       expect(status).toBe(200);
-      expect(data).toHaveLength(5); // 5 roles
+      expect(data).toHaveLength(4);
       expect(data[0]).toHaveProperty('role');
       expect(data[0]).toHaveProperty('providerId');
     });
@@ -346,13 +338,13 @@ describe('llm-config controller', () => {
         baseUrl: 'https://api.example.com/v1',
         defaultModel: 'gpt-4o-mini',
       });
-      modelRoleRepo.set('legacy', provider.id, 'gpt-4o');
+      modelRoleRepo.set('planner', provider.id, 'gpt-4o');
 
       const { data } = await jsonRequest(app, 'GET', '/roles');
-      const legacy = data.find((r: any) => r.role === 'legacy');
-      expect(legacy.providerId).toBe(provider.id);
-      expect(legacy.providerName).toBe('RoleTest');
-      expect(legacy.model).toBe('gpt-4o');
+      const planner = data.find((r: any) => r.role === 'planner');
+      expect(planner.providerId).toBe(provider.id);
+      expect(planner.providerName).toBe('RoleTest');
+      expect(planner.model).toBe('gpt-4o');
     });
   });
 
@@ -385,7 +377,7 @@ describe('llm-config controller', () => {
     });
 
     test('rejects missing providerId or model', async () => {
-      const { status, data } = await jsonRequest(app, 'PUT', '/roles/legacy', {
+      const { status, data } = await jsonRequest(app, 'PUT', '/roles/planner', {
         providerId: 'some-id',
       });
       expect(status).toBe(400);
@@ -393,7 +385,7 @@ describe('llm-config controller', () => {
     });
 
     test('returns 404 for non-existent provider', async () => {
-      const { status } = await jsonRequest(app, 'PUT', '/roles/legacy', {
+      const { status } = await jsonRequest(app, 'PUT', '/roles/planner', {
         providerId: 'non-existent',
         model: 'model',
       });

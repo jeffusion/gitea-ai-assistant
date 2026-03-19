@@ -10,14 +10,13 @@ import { fetchProviders, fetchRoles, setRole } from '@/services/llmProviderServi
 import { ModelCombobox } from './ModelCombobox';
 
 const ROLE_LABELS: Record<string, { label: string; desc: string }> = {
-  legacy: { label: 'Legacy 审查', desc: '基础的单次代码审查模式，速度快但分析较浅' },
   planner: { label: '规划器 Planner', desc: '多阶段审查的第一步，负责分析上下文并分配任务' },
   specialist: { label: '专家 Specialist', desc: '执行深度代码审查的主力模型，专注于发现具体问题' },
   judge: { label: '评审 Judge', desc: '对专家的建议进行审核、合并和过滤，确保评论质量' },
   embedding: { label: '嵌入 Embedding', desc: '用于向量化代码和注释，支持语义搜索 (Qdrant)' },
 };
 
-const ROLES = ['legacy', 'planner', 'specialist', 'judge', 'embedding'];
+const ROLES = ['planner', 'specialist', 'judge', 'embedding'];
 
 interface RoleState {
   providerId: string | null;

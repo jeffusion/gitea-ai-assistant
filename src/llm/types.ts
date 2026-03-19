@@ -10,11 +10,10 @@
 // ---------------------------------------------------------------------------
 
 /** Business role that maps to a specific provider + model via DB config. */
-export type ModelRole = 'legacy' | 'planner' | 'specialist' | 'judge' | 'embedding';
+export type ModelRole = 'planner' | 'specialist' | 'judge' | 'embedding';
 
 /** All valid model roles. */
 export const MODEL_ROLES: readonly ModelRole[] = [
-  'legacy',
   'planner',
   'specialist',
   'judge',

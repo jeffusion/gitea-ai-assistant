@@ -3,13 +3,6 @@ import type { LLMChatResponse, ModelRole } from '../../llm/types';
 import { TriageAgent } from '../agents/triage-agent';
 import type { ChangedFile, FindingCategory, ReviewContext } from '../types';
 
-const ALL_DOMAINS: FindingCategory[] = [
-  'correctness',
-  'security',
-  'reliability',
-  'maintainability',
-];
-
 function makeChangedFile(overrides: Partial<ChangedFile> = {}): ChangedFile {
   return {
     path: 'src/file.ts',
@@ -62,23 +55,37 @@ function createMockGateway(
   };
 }
 
-describe('TriageAgent', () => {
-  test('heuristic: empty changedFiles -> trivial + correctness (no LLM call)', async () => {
+describe('TriageAgent task-based routing', () => {
+  test('heuristic: empty changedFiles -> skip mode with no tasks', async () => {
     const { gateway, getCalls } = createMockGateway(async () =>
-      makeChatResponse(JSON.stringify({ complexity: 'complex', relevant_domains: ALL_DOMAINS }))
+      makeChatResponse(
+        JSON.stringify({
+          complexity: 'complex',
+          review_size: 'large',
+          mode: 'full',
+          relevant_domains: ['correctness', 'security', 'reliability', 'maintainability'],
+        })
+      )
     );
     const agent = new TriageAgent(gateway as any);
 
     const result = await agent.analyze(makeContext({ changedFiles: [] }));
 
-    expect(result.complexity).toBe('trivial');
-    expect(result.relevantDomains).toEqual(['correctness']);
+    expect(result.mode).toBe('skip');
+    expect(result.tasks).toHaveLength(0);
     expect(getCalls()).toHaveLength(0);
   });
 
-  test('heuristic: all non-code files -> trivial + correctness (no LLM call)', async () => {
+  test('heuristic: docs/assets only -> skip mode with no tasks', async () => {
     const { gateway, getCalls } = createMockGateway(async () =>
-      makeChatResponse(JSON.stringify({ complexity: 'complex', relevant_domains: ALL_DOMAINS }))
+      makeChatResponse(
+        JSON.stringify({
+          complexity: 'complex',
+          review_size: 'large',
+          mode: 'full',
+          relevant_domains: ['correctness', 'security', 'reliability', 'maintainability'],
+        })
+      )
     );
     const agent = new TriageAgent(gateway as any);
 
@@ -86,23 +93,19 @@ describe('TriageAgent', () => {
       makeContext({
         changedFiles: [
           makeChangedFile({ path: 'README.md' }),
-          makeChangedFile({ path: 'config/app.json' }),
-          makeChangedFile({ path: 'styles/base.css' }),
+          makeChangedFile({ path: 'docs/usage.adoc' }),
           makeChangedFile({ path: 'assets/logo.png' }),
-          makeChangedFile({ path: 'bun.lock', additions: 10, deletions: 10 }),
         ],
       })
     );
 
-    expect(result.complexity).toBe('trivial');
-    expect(result.relevantDomains).toEqual(['correctness']);
+    expect(result.mode).toBe('skip');
+    expect(result.tasks).toHaveLength(0);
     expect(getCalls()).toHaveLength(0);
   });
 
-  test('heuristic: single file <=3 line changes -> trivial + correctness (no LLM call)', async () => {
-    const { gateway, getCalls } = createMockGateway(async () =>
-      makeChatResponse(JSON.stringify({ complexity: 'complex', relevant_domains: ALL_DOMAINS }))
-    );
+  test('heuristic: tiny single-file code change -> light correctness task', async () => {
+    const { gateway, getCalls } = createMockGateway(async () => makeChatResponse(null));
     const agent = new TriageAgent(gateway as any);
 
     const result = await agent.analyze(
@@ -111,37 +114,36 @@ describe('TriageAgent', () => {
       })
     );
 
-    expect(result.complexity).toBe('trivial');
-    expect(result.relevantDomains).toEqual(['correctness']);
+    expect(result.mode).toBe('light');
+    expect(result.tasks).toHaveLength(1);
+    expect(result.tasks[0].domain).toBe('correctness');
+    expect(result.tasks[0].allowTools).toBe(false);
+    expect(result.tasks[0].maxIterations).toBe(1);
     expect(getCalls()).toHaveLength(0);
   });
 
-  test('heuristic: security-sensitive small PR -> standard + correctness/security (no LLM call)', async () => {
-    const { gateway, getCalls } = createMockGateway(async () =>
-      makeChatResponse(JSON.stringify({ complexity: 'complex', relevant_domains: ALL_DOMAINS }))
-    );
+  test('heuristic: security-sensitive small change -> full correctness+security tasks', async () => {
+    const { gateway, getCalls } = createMockGateway(async () => makeChatResponse(null));
     const agent = new TriageAgent(gateway as any);
 
     const result = await agent.analyze(
       makeContext({
         changedFiles: [
-          makeChangedFile({ path: 'src/auth/service.ts', additions: 20, deletions: 10 }),
-          makeChangedFile({ path: 'src/user/profile.ts', additions: 5, deletions: 5 }),
+          makeChangedFile({ path: 'src/auth/service.ts', additions: 12, deletions: 6 }),
+          makeChangedFile({ path: 'src/user/profile.ts', additions: 10, deletions: 4 }),
         ],
       })
     );
 
-    expect(result.complexity).toBe('standard');
-    expect(result.relevantDomains).toEqual(['correctness', 'security']);
+    expect(result.mode).toBe('full');
+    const domains = result.tasks.map((task) => task.domain);
+    expect(domains).toContain('correctness');
+    expect(domains).toContain('security');
     expect(getCalls()).toHaveLength(0);
   });
 
-  test('heuristic: large PR by file count (>20) -> complex + all domains (no LLM call)', async () => {
-    const { gateway, getCalls } = createMockGateway(async () =>
-      makeChatResponse(
-        JSON.stringify({ complexity: 'standard', relevant_domains: ['correctness'] })
-      )
-    );
+  test('heuristic: large PR by file count -> full mode with all domains', async () => {
+    const { gateway, getCalls } = createMockGateway(async () => makeChatResponse(null));
     const agent = new TriageAgent(gateway as any);
 
     const changedFiles = Array.from({ length: 21 }, (_, index) =>
@@ -150,39 +152,28 @@ describe('TriageAgent', () => {
 
     const result = await agent.analyze(makeContext({ changedFiles }));
 
+    expect(result.mode).toBe('full');
+    expect(result.reviewSize).toBe('large');
     expect(result.complexity).toBe('complex');
-    expect(result.relevantDomains).toEqual(ALL_DOMAINS);
+    const expectedDomains: FindingCategory[] = [
+      'correctness',
+      'maintainability',
+      'reliability',
+      'security',
+    ];
+    expect(result.tasks.map((task) => task.domain).sort()).toEqual(expectedDomains.sort());
     expect(getCalls()).toHaveLength(0);
   });
 
-  test('heuristic: large PR by total changes (>500) -> complex + all domains (no LLM call)', async () => {
-    const { gateway, getCalls } = createMockGateway(async () =>
-      makeChatResponse(
-        JSON.stringify({ complexity: 'standard', relevant_domains: ['correctness'] })
-      )
-    );
-    const agent = new TriageAgent(gateway as any);
-
-    const result = await agent.analyze(
-      makeContext({
-        changedFiles: [
-          makeChangedFile({ path: 'src/a.ts', additions: 250, deletions: 10 }),
-          makeChangedFile({ path: 'src/b.ts', additions: 240, deletions: 10 }),
-        ],
-      })
-    );
-
-    expect(result.complexity).toBe('complex');
-    expect(result.relevantDomains).toEqual(ALL_DOMAINS);
-    expect(getCalls()).toHaveLength(0);
-  });
-
-  test('LLM fallback: standard code change calls planner and returns parsed JSON result', async () => {
+  test('LLM fallback: inconclusive change uses planner and normalizes tasks', async () => {
     const { gateway, getCalls } = createMockGateway(async () =>
       makeChatResponse(
         JSON.stringify({
           complexity: 'standard',
+          review_size: 'medium',
+          mode: 'light',
           relevant_domains: ['security', 'maintainability'],
+          risk_tags: ['security-sensitive'],
           rationale: '跨文件业务逻辑调整',
         })
       )
@@ -192,11 +183,11 @@ describe('TriageAgent', () => {
     const result = await agent.analyze(
       makeContext({
         changedFiles: [
-          makeChangedFile({ path: 'src/service/order.ts', additions: 10, deletions: 6 }),
-          makeChangedFile({ path: 'src/controller/order.ts', additions: 12, deletions: 8 }),
-          makeChangedFile({ path: 'src/repo/order.ts', additions: 8, deletions: 6 }),
+          makeChangedFile({ path: 'src/service/order.ts', additions: 20, deletions: 10 }),
+          makeChangedFile({ path: 'src/controller/order.ts', additions: 18, deletions: 12 }),
+          makeChangedFile({ path: 'src/repo/order.ts', additions: 15, deletions: 12 }),
+          makeChangedFile({ path: 'src/model/order.ts', additions: 14, deletions: 13 }),
         ],
-        diff: 'diff --git a/src/service/order.ts b/src/service/order.ts\n+export function calc(){}',
       })
     );
 
@@ -206,12 +197,14 @@ describe('TriageAgent', () => {
     expect(calls[0].request.temperature).toBe(0);
     expect(calls[0].request.responseFormat).toBe('json');
 
-    expect(result.complexity).toBe('standard');
-    expect(result.relevantDomains).toEqual(['correctness', 'security', 'maintainability']);
+    expect(result.reviewSize).toBe('medium');
+    expect(result.mode).toBe('light');
+    expect(result.tasks.map((task) => task.domain)).toContain('correctness');
+    expect(result.tasks.map((task) => task.domain)).toContain('security');
     expect(result.rationale).toBe('跨文件业务逻辑调整');
   });
 
-  test('LLM fallback: planner throws -> fallback standard + all domains', async () => {
+  test('LLM fallback: planner throws -> default full review with all domains', async () => {
     const { gateway, getCalls } = createMockGateway(async () => {
       throw new Error('planner unavailable');
     });
@@ -220,16 +213,24 @@ describe('TriageAgent', () => {
     const result = await agent.analyze(
       makeContext({
         changedFiles: [
-          makeChangedFile({ path: 'src/service/foo.ts', additions: 10, deletions: 4 }),
-          makeChangedFile({ path: 'src/service/bar.ts', additions: 12, deletions: 6 }),
-          makeChangedFile({ path: 'src/service/baz.ts', additions: 8, deletions: 10 }),
+          makeChangedFile({ path: 'src/service/foo.ts', additions: 20, deletions: 12 }),
+          makeChangedFile({ path: 'src/service/bar.ts', additions: 18, deletions: 10 }),
+          makeChangedFile({ path: 'src/service/baz.ts', additions: 16, deletions: 8 }),
+          makeChangedFile({ path: 'src/service/qux.ts', additions: 12, deletions: 6 }),
+          makeChangedFile({ path: 'src/service/quux.ts', additions: 10, deletions: 4 }),
         ],
       })
     );
 
     expect(getCalls()).toHaveLength(1);
-    expect(result.complexity).toBe('standard');
-    expect(result.relevantDomains).toEqual(ALL_DOMAINS);
+    expect(result.mode).toBe('full');
+    const expectedDomains: FindingCategory[] = [
+      'correctness',
+      'maintainability',
+      'reliability',
+      'security',
+    ];
+    expect(result.tasks.map((task) => task.domain).sort()).toEqual(expectedDomains.sort());
     expect(result.rationale).toContain('LLM');
   });
 });
