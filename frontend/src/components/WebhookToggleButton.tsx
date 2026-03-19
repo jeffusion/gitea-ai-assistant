@@ -37,8 +37,8 @@ export function WebhookToggleButton({ repoName, status, hookId }: WebhookToggleB
       size="sm"
       className={
         status === 'active'
-          ? "border-rose-500/50 bg-transparent text-rose-500 hover:bg-rose-500/10 hover:text-rose-400 transition-colors"
-          : "bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-300 hover:shadow-[0_0_15px_rgba(45,212,191,0.5)] tech-glow"
+          ? "border-danger/50 bg-transparent text-danger hover:bg-danger/10 hover:text-danger transition-colors"
+          : "bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-300 tech-glow"
       }
       onClick={() => mutation.mutate()}
       disabled={mutation.isPending}

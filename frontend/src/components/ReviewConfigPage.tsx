@@ -203,19 +203,19 @@ export function ReviewConfigPage() {
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center mb-6">
-          <Skeleton className="h-10 w-48 bg-zinc-900/50" />
-          <Skeleton className="h-10 w-24 bg-zinc-900/50" />
+          <Skeleton className="h-10 w-48 bg-muted/60" />
+          <Skeleton className="h-10 w-24 bg-muted/60" />
         </div>
-        <Skeleton className="h-[200px] w-full rounded-xl bg-zinc-900/50 border border-white/5" />
-        <Skeleton className="h-[300px] w-full rounded-xl bg-zinc-900/50 border border-white/5" />
+        <Skeleton className="h-[200px] w-full rounded-xl bg-muted/60 border border-border/60" />
+        <Skeleton className="h-[300px] w-full rounded-xl bg-muted/60 border border-border/60" />
       </div>
     );
   }
 
   if (isError) {
     return (
-      <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-500 rounded-lg flex items-center gap-3 glass-panel">
-        <AlertCircle className="w-5 h-5 text-rose-500" />
+      <div className="theme-error-panel flex items-center gap-3">
+        <AlertCircle className="w-5 h-5 text-danger" />
         <div className="font-medium tracking-wide">加载配置失败: {error.message}</div>
       </div>
     );
@@ -240,17 +240,17 @@ export function ReviewConfigPage() {
         if (field.envKey !== CODEX_MODEL_FIELD) return undefined;
         // Replicate ConfigFieldInput layout with ModelCombobox as the input control
         const sourceBadge = field.source === 'db'
-          ? <Badge className="ml-2 bg-primary/20 text-primary border-primary/30 tech-glow hover:bg-primary/30 transition-colors">已配置</Badge>
-          : <Badge variant="outline" className="ml-2 border-zinc-600 text-zinc-400">默认值</Badge>;
+          ? <Badge className="ml-2 bg-primary/20 text-primary border-primary/30 tech-glow hover:bg-accent hover:text-foreground hover:border-border/70 transition-colors">已配置</Badge>
+          : <Badge variant="outline" className="ml-2 border-border text-muted-foreground">默认值</Badge>;
         return (
-          <div className="flex flex-col py-5 px-1 gap-3 hover:bg-zinc-900/30 transition-colors rounded-lg">
+          <div className="flex flex-col py-5 px-1 gap-3 hover:bg-accent/40 transition-colors rounded-lg">
             <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
               <div className="flex flex-col space-y-1.5 flex-1">
                 <div className="flex items-center">
-                  <label className="text-base font-semibold text-zinc-100">{field.label || field.envKey}</label>
+                  <label className="text-base font-semibold text-foreground">{field.label || field.envKey}</label>
                   {sourceBadge}
                 </div>
-                <div className="text-sm text-zinc-400 leading-relaxed">{field.description}</div>
+                <div className="text-sm text-muted-foreground leading-relaxed">{field.description}</div>
                 <div className="pt-1">
                   <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 inline-flex items-center">
                     {field.envKey}
@@ -272,15 +272,15 @@ export function ReviewConfigPage() {
     : undefined;
 
   return (
-    <div className="min-h-screen pb-12">
+    <div className="theme-page-frame">
       {/* Sticky action bar */}
-      <div className="sticky top-0 z-10 bg-zinc-950/80 backdrop-blur-xl border-b border-white/10 py-3 px-4 md:px-6 lg:px-8 shadow-2xl">
-        <div className="flex items-center justify-end gap-3 max-w-5xl mx-auto">
+      <div className="sticky top-0 z-10 theme-sticky-bar py-3 px-4 md:px-6 lg:px-8">
+        <div className="theme-page-actions">
           <Button
             variant="outline"
             onClick={handleResetAll}
             disabled={!hasOverrides || resetMutation.isPending}
-            className="border-white/10 text-zinc-400 hover:text-zinc-100 hover:bg-white/5 transition-colors"
+            className="theme-interactive-elevate border-border text-muted-foreground hover:text-foreground hover:bg-accent/40 transition-colors"
           >
             <RotateCcw className="w-4 h-4 mr-2" />
             全部重置
@@ -288,11 +288,11 @@ export function ReviewConfigPage() {
           <Button
             onClick={handleSave}
             disabled={!hasChanges || saveMutation.isPending}
-            className="min-w-[130px] bg-primary text-zinc-950 font-bold hover:bg-primary/90 tech-glow transition-all"
+            className="theme-interactive-elevate min-w-[130px] bg-primary text-primary-foreground font-bold hover:bg-primary/90 tech-glow transition-all"
           >
             {saveMutation.isPending ? (
               <span className="flex items-center gap-2">
-                <span className="size-4 animate-spin rounded-full border-2 border-zinc-950 border-t-transparent" /> 保存中...
+                <span className="size-4 animate-spin rounded-full border-2 border-primary-foreground/50 border-t-transparent" /> 保存中...
               </span>
             ) : (
               <>
@@ -304,21 +304,21 @@ export function ReviewConfigPage() {
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto space-y-8 mt-6 px-4 md:px-6 lg:px-8">
+      <div className="theme-page-content">
         {/* Engine Selector Card */}
-        <Card className="glass-panel border-white/10 shadow-xl overflow-hidden group">
-          <CardHeader className="border-b border-white/5 bg-zinc-950/30 pb-4">
+        <Card className="gap-0 py-0 theme-card-shell group">
+          <CardHeader className="theme-card-header pb-4">
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20 tech-glow group-hover:bg-primary/20 transition-all duration-300">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20 tech-glow group-hover:bg-accent transition-all duration-300">
                 <Layers className="h-5 w-5 text-primary" />
               </div>
               <div className="space-y-1">
-                <CardTitle className="text-xl font-bold text-zinc-100 tracking-tight">审查引擎</CardTitle>
-                <CardDescription className="text-zinc-400">选择代码审查引擎模式</CardDescription>
+                <CardTitle className="text-xl font-bold text-foreground tracking-tight">审查引擎</CardTitle>
+                <CardDescription className="text-muted-foreground">选择代码审查引擎模式</CardDescription>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="p-6 bg-zinc-950/20">
+          <CardContent className="theme-card-content">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {ENGINE_OPTIONS.map((opt) => (
                 <button
@@ -326,19 +326,19 @@ export function ReviewConfigPage() {
                   onClick={() => handleFieldChange(ENGINE_FIELD, opt.value)}
                   className={`relative flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-all duration-200 ${
                     engine === opt.value
-                      ? 'border-primary/50 bg-primary/10 shadow-[0_0_20px_rgba(20,184,166,0.15)]'
-                      : 'border-white/10 bg-zinc-900/30 hover:bg-zinc-900/50 hover:border-white/20'
+                      ? 'border-primary/50 bg-primary/10 theme-glow-primary'
+                      : 'border-border bg-muted/30 hover:bg-muted/50 hover:border-border'
                   }`}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-base font-semibold text-zinc-100">{opt.label}</span>
+                    <span className="text-base font-semibold text-foreground">{opt.label}</span>
                     {engine === opt.value && (
                       <Badge className="bg-primary/20 text-primary border-primary/30 text-xs">当前</Badge>
                     )}
                   </div>
-                  <span className="text-sm text-zinc-400">{opt.description}</span>
+                  <span className="text-sm text-muted-foreground">{opt.description}</span>
                   {engine === opt.value && (
-                    <div className="absolute top-0 right-0 w-3 h-3 m-2 rounded-full bg-primary shadow-[0_0_10px_rgba(20,184,166,0.6)]" />
+                    <div className="absolute top-0 right-0 w-3 h-3 m-2 rounded-full bg-primary theme-glow-primary" />
                   )}
                 </button>
               ))}

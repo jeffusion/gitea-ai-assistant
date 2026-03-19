@@ -19,8 +19,9 @@ function SelectValue({ ...props }: React.ComponentProps<typeof SelectPrimitive.V
 function SelectTrigger({
   className,
   children,
+  hideIndicator = false,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Trigger>) {
+}: React.ComponentProps<typeof SelectPrimitive.Trigger> & { hideIndicator?: boolean }) {
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
@@ -31,9 +32,11 @@ function SelectTrigger({
       {...props}
     >
       {children}
-      <SelectPrimitive.Icon asChild>
-        <ChevronDown className="h-4 w-4 opacity-50" />
-      </SelectPrimitive.Icon>
+      {!hideIndicator && (
+        <SelectPrimitive.Icon asChild>
+          <ChevronDown className="h-4 w-4 opacity-50" />
+        </SelectPrimitive.Icon>
+      )}
     </SelectPrimitive.Trigger>
   )
 }

@@ -8,7 +8,10 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "ui:regression": "bun run scripts/ui-regression.ts && vitest run src/components/llm/__tests__/ModelCombobox.test.tsx src/components/llm/__tests__/ProviderList.test.tsx src/components/llm/__tests__/RoleAssignment.test.tsx src/components/llm/__tests__/TestResultDialog.test.tsx",
+    "ui:visual": "playwright test -c playwright.config.ts",
+    "ui:visual:update": "playwright test -c playwright.config.ts --update-snapshots"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.7",
@@ -31,6 +34,7 @@
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@eslint/js": "^9.36.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

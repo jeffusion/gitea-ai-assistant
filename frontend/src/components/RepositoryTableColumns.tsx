@@ -8,7 +8,7 @@ export const columns: ColumnDef<Repository>[] = [
   {
     accessorKey: "name",
     header: "仓库名称",
-    cell: ({ row }) => <div className="font-medium text-zinc-100 text-sm">{row.getValue("name")}</div>,
+    cell: ({ row }) => <div className="font-medium text-foreground text-sm">{row.getValue("name")}</div>,
   },
   {
     accessorKey: "webhook_status",
@@ -17,8 +17,8 @@ export const columns: ColumnDef<Repository>[] = [
       const status = row.getValue("webhook_status") as Repository["webhook_status"]
       const isActive = status === 'active'
       return (
-        <div className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${isActive ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-transparent text-zinc-500 border-zinc-700'}`}>
-          {isActive && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" style={{ boxShadow: '0 0 8px 1px rgba(52, 211, 153, 0.6)' }}></span>}
+        <div className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${isActive ? 'bg-success/10 text-success border-success/30' : 'bg-transparent text-muted-foreground border-border theme-border-soft'}`}>
+          {isActive && <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse theme-glow-success"></span>}
           {isActive ? '已启用' : '未启用'}
         </div>
       )
@@ -26,7 +26,7 @@ export const columns: ColumnDef<Repository>[] = [
   },
   {
     id: "actions",
-    header: () => <div className="text-right text-zinc-400">操作</div>,
+    header: () => <div className="text-right text-muted-foreground">操作</div>,
     cell: ({ row }) => {
       const repo = row.original
       return (
