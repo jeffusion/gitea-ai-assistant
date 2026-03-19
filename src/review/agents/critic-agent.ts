@@ -1,7 +1,7 @@
 import config from '../../config';
 import type { LLMGateway } from '../../llm/gateway';
 import type { LLMMessage } from '../../llm/types';
-import { withGlobalPrompt } from '../../utils/global-prompt';
+import { withCoreGlobalPrompt } from '../../utils/global-prompt';
 import { logger } from '../../utils/logger';
 import { tokenCounter } from '../context/token-counter';
 import { Finding, ReviewContext } from '../types';
@@ -73,7 +73,7 @@ ${tokenCounter.clip(context.diff, 1000)}
       const messages: LLMMessage[] = [
         {
           role: 'system',
-          content: withGlobalPrompt(
+          content: withCoreGlobalPrompt(
             '你是严格的代码审查质量评估专家，以高标准评估findings的质量。',
             config.review.globalPrompt
           ),
@@ -166,7 +166,7 @@ ${tokenCounter.clip(context.diff, 700)}
       const messages: LLMMessage[] = [
         {
           role: 'system',
-          content: withGlobalPrompt('你是代码审查质量评估专家。', config.review.globalPrompt),
+          content: withCoreGlobalPrompt('你是代码审查质量评估专家。', config.review.globalPrompt),
         },
         { role: 'user', content: prompt },
       ];

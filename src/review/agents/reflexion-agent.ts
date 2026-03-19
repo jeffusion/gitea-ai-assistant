@@ -10,7 +10,7 @@ import { findingResponseSchema } from '../schema/finding-schema';
 import { ToolRegistry } from '../tools/registry';
 import { AgentResult, Finding, FindingCategory, ReviewContext, ReviewRun } from '../types';
 import { CriticAgent, CritiqueResult } from './critic-agent';
-import { SpecialistAgent } from './specialist-agent';
+import { SpecialistAgent, type SpecialistReviewOptions } from './specialist-agent';
 
 function buildFingerprint(category: string, path: string, line: number, title: string): string {
   return createHash('sha256')
@@ -37,7 +37,8 @@ export class ReflexionAgent extends SpecialistAgent {
   async reviewWithReflection(
     run: ReviewRun,
     context: ReviewContext,
-    maxReflectionRounds = 2
+    maxReflectionRounds = 2,
+    options?: SpecialistReviewOptions
   ): Promise<AgentResult> {
     let bestFindings: Omit<Finding, 'id' | 'runId' | 'published'>[] = [];
     let bestQualityScore = 0;
@@ -49,7 +50,7 @@ export class ReflexionAgent extends SpecialistAgent {
       });
 
       // 生成初步findings（首轮或基于上一轮refined结果）
-      const draft = await this.generateDraft(run, context, currentFindings, round);
+      const draft = await this.generateDraft(run, context, currentFindings, round, options);
 
       // 自我批评
       const critique = await this.criticAgent.critique(draft, context);
@@ -95,11 +96,12 @@ export class ReflexionAgent extends SpecialistAgent {
     run: ReviewRun,
     context: ReviewContext,
     previousFindings: Omit<Finding, 'id' | 'runId' | 'published'>[],
-    round: number
+    round: number,
+    options?: SpecialistReviewOptions
   ): Promise<Omit<Finding, 'id' | 'runId' | 'published'>[]> {
     // 第一轮：使用父类的review方法
     if (round === 0) {
-      const result = await super.review(run, context);
+      const result = await super.reviewWithOptions(run, context, options);
       return result.findings;
     }
 

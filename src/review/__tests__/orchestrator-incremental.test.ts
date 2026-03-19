@@ -4,7 +4,7 @@ import type { DiffExtractor } from '../context/diff-extractor';
 import type { LocalRepoManager, LocalRepoPaths } from '../context/local-repo-manager';
 import { ReviewOrchestrator } from '../orchestrator';
 import type { FileReviewStore } from '../store/file-review-store';
-import type { Finding, ReviewContext, ReviewRun } from '../types';
+import type { Finding, ReviewContext, ReviewRun, ReviewTask } from '../types';
 
 type Snapshot = { baseSha: string; headSha: string } | null;
 
@@ -81,7 +81,11 @@ function wireOrchestratorFastPath(orchestrator: ReviewOrchestrator) {
     triageAgent: {
       analyze: (context: ReviewContext) => Promise<{
         complexity: 'trivial' | 'standard' | 'complex';
-        relevantDomains: Array<'correctness' | 'security' | 'reliability' | 'maintainability'>;
+        reviewSize: 'small' | 'medium' | 'large';
+        mode: 'skip' | 'light' | 'full';
+        tasks: ReviewTask[];
+        riskTags: string[];
+        rationale: string;
       }>;
     };
     judgeAgent: {
@@ -98,7 +102,14 @@ function wireOrchestratorFastPath(orchestrator: ReviewOrchestrator) {
   };
 
   internal.triageAgent = {
-    analyze: mock(async () => ({ complexity: 'trivial' as const, relevantDomains: [] })),
+    analyze: mock(async () => ({
+      complexity: 'trivial' as const,
+      reviewSize: 'small' as const,
+      mode: 'skip' as const,
+      tasks: [],
+      riskTags: [],
+      rationale: 'test fast-path',
+    })),
   };
 
   internal.judgeAgent = {

@@ -1,6 +1,6 @@
 /**
  * Repository for model_role_assignments table.
- * Maps business roles (legacy, planner, specialist, judge, embedding)
+ * Maps business roles (planner, specialist, judge, embedding)
  * to specific provider + model combinations.
  */
 
@@ -10,7 +10,7 @@ import { getDatabase } from '../database';
 // Types
 // ---------------------------------------------------------------------------
 
-export type ModelRole = 'legacy' | 'planner' | 'specialist' | 'judge' | 'embedding';
+export type ModelRole = 'planner' | 'specialist' | 'judge' | 'embedding';
 
 export interface RoleAssignmentRow {
   role: ModelRole;

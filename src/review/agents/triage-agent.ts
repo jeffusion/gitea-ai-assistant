@@ -12,9 +12,17 @@
 import config from '../../config';
 import type { LLMGateway } from '../../llm/gateway';
 import type { LLMMessage } from '../../llm/types';
-import { withGlobalPrompt } from '../../utils/global-prompt';
+import { withCoreGlobalPrompt } from '../../utils/global-prompt';
 import { logger } from '../../utils/logger';
-import type { ChangedFile, FindingCategory, ReviewContext } from '../types';
+import type {
+  ChangedFile,
+  FindingCategory,
+  ReviewBudgetPolicy,
+  ReviewContext,
+  ReviewMode,
+  ReviewSize,
+  ReviewTask,
+} from '../types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -25,8 +33,10 @@ export type TriageComplexity = 'trivial' | 'standard' | 'complex';
 export interface TriageResult {
   /** How complex the change is — drives how many agents to dispatch. */
   complexity: TriageComplexity;
-  /** Which specialist domains are relevant for this change. */
-  relevantDomains: FindingCategory[];
+  reviewSize: ReviewSize;
+  mode: ReviewMode;
+  tasks: ReviewTask[];
+  riskTags: string[];
   /** Brief rationale from the planner model. */
   rationale: string;
 }
@@ -38,6 +48,277 @@ const ALL_DOMAINS: FindingCategory[] = [
   'reliability',
   'maintainability',
 ];
+
+const DOCUMENTATION_EXTENSIONS = new Set([
+  '.md',
+  '.txt',
+  '.rst',
+  '.adoc',
+  '.svg',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.ico',
+  '.webp',
+]);
+
+const LOCKFILE_PATTERNS = [
+  /\.lock$/i,
+  /^package-lock\.json$/i,
+  /^pnpm-lock\.yaml$/i,
+  /^yarn\.lock$/i,
+];
+
+const SECURITY_SENSITIVE_PATTERNS = [
+  /auth/i,
+  /login/i,
+  /password/i,
+  /secret/i,
+  /token/i,
+  /crypt/i,
+  /permission/i,
+  /role/i,
+  /acl/i,
+  /cors/i,
+  /csrf/i,
+  /xss/i,
+  /credential/i,
+  /oauth/i,
+  /jwt/i,
+  /session/i,
+  /\.env/i,
+  /dockerfile/i,
+  /k8s\//i,
+  /helm\//i,
+  /terraform\//i,
+  /\.github\/workflows\//i,
+  /deploy/i,
+  /migration/i,
+];
+
+const RELIABILITY_PATTERNS = [
+  /retry/i,
+  /timeout/i,
+  /circuit/i,
+  /queue/i,
+  /worker/i,
+  /concurr/i,
+  /transaction/i,
+  /lock/i,
+  /cache/i,
+  /db/i,
+  /repository/i,
+];
+
+const MAINTAINABILITY_PATTERNS = [
+  /interface/i,
+  /service/i,
+  /controller/i,
+  /api/i,
+  /schema/i,
+  /dto/i,
+];
+
+function getReviewBudgetPolicy(): ReviewBudgetPolicy {
+  return {
+    smallMaxFiles: config.review.smallMaxFiles,
+    smallMaxChangedLines: config.review.smallMaxChangedLines,
+    mediumMaxFiles: config.review.mediumMaxFiles,
+    mediumMaxChangedLines: config.review.mediumMaxChangedLines,
+    tokenBudgetSmall: config.review.tokenBudgetSmall,
+    tokenBudgetMedium: config.review.tokenBudgetMedium,
+    tokenBudgetLarge: config.review.tokenBudgetLarge,
+  };
+}
+
+function hasPattern(path: string, patterns: RegExp[]): boolean {
+  return patterns.some((pattern) => pattern.test(path));
+}
+
+function getFileExtension(path: string): string {
+  const idx = path.lastIndexOf('.');
+  return idx >= 0 ? path.slice(idx).toLowerCase() : '';
+}
+
+function classifyReviewSize(changedFiles: ChangedFile[], policy: ReviewBudgetPolicy): ReviewSize {
+  const fileCount = changedFiles.length;
+  const changedLines = changedFiles.reduce((sum, file) => sum + file.additions + file.deletions, 0);
+
+  if (fileCount <= policy.smallMaxFiles && changedLines <= policy.smallMaxChangedLines) {
+    return 'small';
+  }
+
+  if (fileCount <= policy.mediumMaxFiles && changedLines <= policy.mediumMaxChangedLines) {
+    return 'medium';
+  }
+
+  return 'large';
+}
+
+function getTokenBudget(reviewSize: ReviewSize, policy: ReviewBudgetPolicy): number {
+  if (reviewSize === 'small') {
+    return policy.tokenBudgetSmall;
+  }
+  if (reviewSize === 'medium') {
+    return policy.tokenBudgetMedium;
+  }
+  return policy.tokenBudgetLarge;
+}
+
+function toComplexity(mode: ReviewMode, reviewSize: ReviewSize): TriageComplexity {
+  if (mode === 'skip') {
+    return 'trivial';
+  }
+  if (reviewSize === 'small') {
+    return mode === 'full' ? 'standard' : 'trivial';
+  }
+  if (reviewSize === 'large') {
+    return 'complex';
+  }
+  return 'standard';
+}
+
+function collectRiskTags(changedFiles: ChangedFile[]): string[] {
+  const tags = new Set<string>();
+  for (const file of changedFiles) {
+    const filePath = file.path;
+    if (hasPattern(filePath, SECURITY_SENSITIVE_PATTERNS)) {
+      tags.add('security-sensitive');
+    }
+    if (hasPattern(filePath, RELIABILITY_PATTERNS)) {
+      tags.add('reliability-sensitive');
+    }
+    if (hasPattern(filePath, MAINTAINABILITY_PATTERNS)) {
+      tags.add('maintainability-hotspot');
+    }
+    if (/test|spec|__tests__/i.test(filePath)) {
+      tags.add('test-change');
+    }
+    if (
+      getFileExtension(filePath) === '.json' ||
+      getFileExtension(filePath) === '.yaml' ||
+      getFileExtension(filePath) === '.yml'
+    ) {
+      tags.add('runtime-config-change');
+    }
+  }
+  return [...tags];
+}
+
+function isSkipFriendlyChange(changedFiles: ChangedFile[], riskTags: string[]): boolean {
+  if (changedFiles.length === 0) {
+    return true;
+  }
+
+  if (riskTags.includes('security-sensitive') || riskTags.includes('runtime-config-change')) {
+    return false;
+  }
+
+  const allRenameOnly = changedFiles.every(
+    (file) => file.status === 'R' && file.additions + file.deletions === 0
+  );
+  if (allRenameOnly) {
+    return true;
+  }
+
+  return changedFiles.every((file) => {
+    const ext = getFileExtension(file.path);
+    if (LOCKFILE_PATTERNS.some((pattern) => pattern.test(file.path))) {
+      return true;
+    }
+    return DOCUMENTATION_EXTENSIONS.has(ext);
+  });
+}
+
+function buildDomainPaths(changedFiles: ChangedFile[], domain: FindingCategory): string[] {
+  const candidatePaths = changedFiles
+    .filter((file) => file.status !== 'D')
+    .map((file) => file.path);
+  if (candidatePaths.length === 0) {
+    return [];
+  }
+
+  if (domain === 'security') {
+    const scoped = candidatePaths.filter((filePath) =>
+      hasPattern(filePath, SECURITY_SENSITIVE_PATTERNS)
+    );
+    return scoped.length > 0 ? scoped : candidatePaths;
+  }
+
+  if (domain === 'reliability') {
+    const scoped = candidatePaths.filter((filePath) => hasPattern(filePath, RELIABILITY_PATTERNS));
+    return scoped.length > 0 ? scoped : candidatePaths;
+  }
+
+  if (domain === 'maintainability') {
+    const scoped = candidatePaths.filter((filePath) =>
+      hasPattern(filePath, MAINTAINABILITY_PATTERNS)
+    );
+    return scoped.length > 0 ? scoped : candidatePaths;
+  }
+
+  return candidatePaths;
+}
+
+function buildTasks(
+  domains: FindingCategory[],
+  changedFiles: ChangedFile[],
+  reviewSize: ReviewSize,
+  mode: ReviewMode,
+  riskTags: string[],
+  policy: ReviewBudgetPolicy
+): ReviewTask[] {
+  if (mode === 'skip') {
+    return [];
+  }
+
+  const tokenBudget = getTokenBudget(reviewSize, policy);
+  const maxIterations = mode === 'light' ? 1 : 2;
+
+  return domains.map((domain) => {
+    const scopedPaths = buildDomainPaths(changedFiles, domain);
+    return {
+      domain,
+      paths: scopedPaths,
+      riskTags,
+      mode,
+      tokenBudget,
+      maxIterations,
+      allowTools: mode === 'full',
+      allowReflection: mode === 'full' && (domain === 'correctness' || domain === 'security'),
+      allowDebate: mode === 'full' && domain !== 'maintainability',
+    };
+  });
+}
+
+function decideDomains(
+  changedFiles: ChangedFile[],
+  riskTags: string[],
+  reviewSize: ReviewSize
+): FindingCategory[] {
+  const domains: FindingCategory[] = ['correctness'];
+
+  const hasSecurityFiles = riskTags.includes('security-sensitive');
+  const hasReliabilityFiles = riskTags.includes('reliability-sensitive');
+  const hasMaintainabilityHotspot = riskTags.includes('maintainability-hotspot');
+
+  if (hasSecurityFiles) {
+    domains.push('security');
+  }
+  if (hasReliabilityFiles || reviewSize === 'large') {
+    domains.push('reliability');
+  }
+  if (hasMaintainabilityHotspot || changedFiles.length >= 4 || reviewSize === 'large') {
+    domains.push('maintainability');
+  }
+
+  if (reviewSize === 'large') {
+    return [...ALL_DOMAINS];
+  }
+
+  return [...new Set(domains)];
+}
 
 // ---------------------------------------------------------------------------
 // Triage Agent
@@ -59,7 +340,8 @@ export class TriageAgent {
     if (heuristicResult) {
       logger.info('Triage: 使用启发式规则快速分流', {
         complexity: heuristicResult.complexity,
-        domains: heuristicResult.relevantDomains.join(','),
+        tasks: heuristicResult.tasks.length,
+        mode: heuristicResult.mode,
         rationale: heuristicResult.rationale,
       });
       return heuristicResult;
@@ -73,8 +355,18 @@ export class TriageAgent {
         error: error instanceof Error ? error.message : String(error),
       });
       return {
-        complexity: 'standard',
-        relevantDomains: [...ALL_DOMAINS],
+        complexity: 'complex',
+        reviewSize: 'large',
+        mode: 'full',
+        tasks: buildTasks(
+          [...ALL_DOMAINS],
+          context.changedFiles,
+          'large',
+          'full',
+          collectRiskTags(context.changedFiles),
+          getReviewBudgetPolicy()
+        ),
+        riskTags: collectRiskTags(context.changedFiles),
         rationale: 'Triage LLM 调用失败，使用默认全量审查',
       };
     }
@@ -85,100 +377,73 @@ export class TriageAgent {
    * Returns null if heuristic is inconclusive (should use LLM).
    */
   private heuristicTriage(changedFiles: ChangedFile[]): TriageResult | null {
+    const policy = getReviewBudgetPolicy();
+
     if (changedFiles.length === 0) {
       return {
         complexity: 'trivial',
-        relevantDomains: ['correctness'],
+        reviewSize: 'small',
+        mode: 'skip',
+        tasks: [],
+        riskTags: [],
         rationale: '无变更文件',
       };
     }
 
-    const NON_CODE_EXTENSIONS = new Set([
-      '.md',
-      '.txt',
-      '.rst',
-      '.adoc', // docs
-      '.json',
-      '.yaml',
-      '.yml',
-      '.toml',
-      '.ini', // config (non-security)
-      '.css',
-      '.scss',
-      '.less',
-      '.svg', // styles/assets
-      '.png',
-      '.jpg',
-      '.jpeg',
-      '.gif',
-      '.ico',
-      '.webp', // images
-      '.lock', // lockfiles
-    ]);
+    const riskTags = collectRiskTags(changedFiles);
+    const reviewSize = classifyReviewSize(changedFiles, policy);
+    const totalChanges = changedFiles.reduce((sum, f) => sum + f.additions + f.deletions, 0);
 
-    const SECURITY_SENSITIVE_PATTERNS = [
-      /auth/i,
-      /login/i,
-      /password/i,
-      /secret/i,
-      /token/i,
-      /crypt/i,
-      /permission/i,
-      /role/i,
-      /acl/i,
-      /cors/i,
-      /csrf/i,
-      /xss/i,
-      /\.env/,
-      /credential/i,
-      /oauth/i,
-      /jwt/i,
-      /session/i,
-    ];
-
-    const allNonCode = changedFiles.every((f) => {
-      const ext = f.path.substring(f.path.lastIndexOf('.')).toLowerCase();
-      return NON_CODE_EXTENSIONS.has(ext);
-    });
-
-    if (allNonCode) {
+    if (isSkipFriendlyChange(changedFiles, riskTags)) {
       return {
         complexity: 'trivial',
-        relevantDomains: ['correctness'],
-        rationale: '所有变更文件均为非代码文件（文档/配置/资源）',
+        reviewSize,
+        mode: 'skip',
+        tasks: [],
+        riskTags,
+        rationale: '文档/资源/锁文件或纯重命名变更，启用 skip 模式',
       };
     }
 
-    // Very small change (≤3 lines total) in a single file → trivial
-    const totalChanges = changedFiles.reduce((sum, f) => sum + f.additions + f.deletions, 0);
     if (changedFiles.length === 1 && totalChanges <= 3) {
+      const domains = ['correctness'] as FindingCategory[];
       return {
         complexity: 'trivial',
-        relevantDomains: ['correctness'],
+        reviewSize: 'small',
+        mode: 'light',
+        tasks: buildTasks(domains, changedFiles, 'small', 'light', riskTags, policy),
+        riskTags,
         rationale: `单文件微量变更（${totalChanges} 行）`,
       };
     }
 
-    // Check for security-sensitive files
-    const hasSecurityFiles = changedFiles.some((f) =>
-      SECURITY_SENSITIVE_PATTERNS.some((p) => p.test(f.path))
-    );
-
-    // Large PR (many files or large changes) → complex
-    if (changedFiles.length > 20 || totalChanges > 500) {
+    if (reviewSize === 'large') {
+      const domains = [...ALL_DOMAINS];
       return {
         complexity: 'complex',
-        relevantDomains: [...ALL_DOMAINS],
-        rationale: `大规模变更（${changedFiles.length} 文件, ${totalChanges} 行）`,
+        reviewSize,
+        mode: 'full',
+        tasks: buildTasks(domains, changedFiles, reviewSize, 'full', riskTags, policy),
+        riskTags,
+        rationale: `大规模变更（${changedFiles.length} 文件, ${totalChanges} 行），全量任务审查`,
       };
     }
 
-    // Security-sensitive file detected → ensure security agent is included
-    if (hasSecurityFiles && changedFiles.length <= 5 && totalChanges <= 100) {
+    const domains = decideDomains(changedFiles, riskTags, reviewSize);
+    const hasSensitiveRisk =
+      riskTags.includes('security-sensitive') || riskTags.includes('runtime-config-change');
+    const mode: ReviewMode = hasSensitiveRisk || reviewSize === 'medium' ? 'full' : 'light';
+
+    if (hasSensitiveRisk || reviewSize === 'small') {
       return {
-        complexity: 'standard',
-        relevantDomains: ['correctness', 'security'],
-        rationale: '涉及安全相关文件，仅派发 correctness + security',
+        complexity: toComplexity(mode, reviewSize),
+        reviewSize,
+        mode,
+        tasks: buildTasks(domains, changedFiles, reviewSize, mode, riskTags, policy),
+        riskTags,
+        rationale: hasSensitiveRisk
+          ? '命中安全/运行时敏感风险，提升到 full 模式并限制到相关路径'
+          : '小型代码变更，使用 light 模式快速审查',
       };
     }
 
@@ -190,6 +455,8 @@ export class TriageAgent {
    * LLM-based triage using the 'planner' role.
    */
   private async llmTriage(context: ReviewContext): Promise<TriageResult> {
+    const policy = getReviewBudgetPolicy();
+    const riskTags = collectRiskTags(context.changedFiles);
     const fileSummary = context.changedFiles
       .map((f) => `${f.status} ${f.path} (+${f.additions} -${f.deletions})`)
       .join('\n');
@@ -197,7 +464,7 @@ export class TriageAgent {
     // Use a small slice of diff for context (just the first 2000 chars for speed)
     const diffPreview = context.diff.slice(0, 2000);
 
-    const prompt = `你是代码审查分流专家。分析以下变更并判断其复杂度和需要哪些审查领域。
+    const prompt = `你是代码审查分流专家。分析以下变更并判断其复杂度、审查模式和审查领域。
 
 变更文件列表：
 ${fileSummary}
@@ -206,23 +473,26 @@ Diff 预览（前2000字符）：
 ${diffPreview}
 
 判断标准：
-- **trivial**: 纯文档、注释、字符串修改、格式化、重命名等无逻辑变更 → 只需 correctness
-- **standard**: 单模块逻辑修改、普通功能开发 → 按实际涉及领域选择
-- **complex**: 多模块/跨层修改、架构变更、并发/安全关键路径 → 全部领域
+- **mode=skip**: 纯文档/资源/锁文件/无逻辑改动
+- **mode=light**: 小范围可执行代码改动，低风险，最小深度审查
+- **mode=full**: 安全/配置/跨模块/中大型改动，需要完整审查
 
 可选领域：correctness（逻辑正确性）, security（安全）, reliability（可靠性）, maintainability（可维护性）
 
 返回 JSON：
 {
   "complexity": "trivial" | "standard" | "complex",
+  "review_size": "small" | "medium" | "large",
+  "mode": "skip" | "light" | "full",
   "relevant_domains": ["correctness", ...],
+  "risk_tags": ["security-sensitive", ...],
   "rationale": "简要理由"
 }`;
 
     const messages: LLMMessage[] = [
       {
         role: 'system',
-        content: withGlobalPrompt(
+        content: withCoreGlobalPrompt(
           '你是代码变更分流专家，快速判断变更复杂度。返回结构化 JSON，不输出额外文字。',
           config.review.globalPrompt
         ),
@@ -248,26 +518,55 @@ ${diffPreview}
       ? (parsed.complexity as TriageComplexity)
       : 'standard';
 
-    const relevantDomains: FindingCategory[] = Array.isArray(parsed.relevant_domains)
-      ? (parsed.relevant_domains.filter((d: string) =>
-          ALL_DOMAINS.includes(d as FindingCategory)
-        ) as FindingCategory[])
-      : [...ALL_DOMAINS];
+    const reviewSize = (['small', 'medium', 'large'] as const).includes(parsed.review_size)
+      ? (parsed.review_size as ReviewSize)
+      : classifyReviewSize(context.changedFiles, policy);
+
+    const mode = (['skip', 'light', 'full'] as const).includes(parsed.mode)
+      ? (parsed.mode as ReviewMode)
+      : reviewSize === 'small'
+        ? 'light'
+        : 'full';
+
+    const relevantDomains: FindingCategory[] =
+      mode === 'skip'
+        ? []
+        : Array.isArray(parsed.relevant_domains)
+          ? (parsed.relevant_domains.filter((d: string) =>
+              ALL_DOMAINS.includes(d as FindingCategory)
+            ) as FindingCategory[])
+          : [...ALL_DOMAINS];
 
     // Ensure at least correctness is always included
-    if (!relevantDomains.includes('correctness')) {
+    if (mode !== 'skip' && !relevantDomains.includes('correctness')) {
       relevantDomains.unshift('correctness');
     }
 
+    const normalizedRiskTags = Array.isArray(parsed.risk_tags)
+      ? parsed.risk_tags.filter((tag: unknown) => typeof tag === 'string')
+      : riskTags;
+
     const result: TriageResult = {
       complexity,
-      relevantDomains,
+      reviewSize,
+      mode,
+      tasks: buildTasks(
+        relevantDomains,
+        context.changedFiles,
+        reviewSize,
+        mode,
+        normalizedRiskTags,
+        policy
+      ),
+      riskTags: normalizedRiskTags,
       rationale: parsed.rationale || '',
     };
 
     logger.info('Triage: LLM 分流完成', {
       complexity: result.complexity,
-      domains: result.relevantDomains.join(','),
+      reviewSize: result.reviewSize,
+      mode: result.mode,
+      tasks: result.tasks.length,
       rationale: result.rationale,
     });
 

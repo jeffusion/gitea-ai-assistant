@@ -25,10 +25,8 @@ export interface AppConfig {
     giteaAdminToken: string | undefined;
   };
   review: {
-    engine: string;
+    engine: 'agent' | 'codex';
     workdir: string;
-    customSummaryPrompt: string | undefined;
-    customLineCommentPrompt: string | undefined;
     globalPrompt: string | undefined;
     maxParallelRuns: number;
     maxFilesPerRun: number;
@@ -41,6 +39,13 @@ export interface AppConfig {
     llmRetryMaxAttempts: number;
     llmRetryBaseDelayMs: number;
     enableTriage: boolean;
+    smallMaxFiles: number;
+    smallMaxChangedLines: number;
+    mediumMaxFiles: number;
+    mediumMaxChangedLines: number;
+    tokenBudgetSmall: number;
+    tokenBudgetMedium: number;
+    tokenBudgetLarge: number;
     // Codex engine
     codexApiUrl: string;
     codexApiKey: string | undefined;
@@ -146,10 +151,8 @@ class ConfigManager {
         giteaAdminToken: values.GITEA_ADMIN_TOKEN,
       },
       review: {
-        engine: values.REVIEW_ENGINE ?? 'legacy',
+        engine: values.REVIEW_ENGINE === 'codex' ? 'codex' : 'agent',
         workdir: values.REVIEW_WORKDIR ?? '/tmp/gitea-assistant',
-        customSummaryPrompt: values.CUSTOM_SUMMARY_PROMPT,
-        customLineCommentPrompt: values.CUSTOM_LINE_COMMENT_PROMPT,
         globalPrompt: values.GLOBAL_PROMPT,
         maxParallelRuns: toNumber('REVIEW_MAX_PARALLEL_RUNS', 2),
         maxFilesPerRun: toNumber('REVIEW_MAX_FILES_PER_RUN', 200),
@@ -168,6 +171,13 @@ class ConfigManager {
         llmRetryMaxAttempts: toNumber('LLM_RETRY_MAX_ATTEMPTS', 3),
         llmRetryBaseDelayMs: toNumber('LLM_RETRY_BASE_DELAY_MS', 1000),
         enableTriage: toBoolean('ENABLE_TRIAGE', true),
+        smallMaxFiles: toNumber('REVIEW_SMALL_MAX_FILES', 3),
+        smallMaxChangedLines: toNumber('REVIEW_SMALL_MAX_CHANGED_LINES', 80),
+        mediumMaxFiles: toNumber('REVIEW_MEDIUM_MAX_FILES', 10),
+        mediumMaxChangedLines: toNumber('REVIEW_MEDIUM_MAX_CHANGED_LINES', 400),
+        tokenBudgetSmall: toNumber('REVIEW_TOKEN_BUDGET_SMALL', 12000),
+        tokenBudgetMedium: toNumber('REVIEW_TOKEN_BUDGET_MEDIUM', 45000),
+        tokenBudgetLarge: toNumber('REVIEW_TOKEN_BUDGET_LARGE', 120000),
         // Codex engine
         codexApiUrl: values.CODEX_API_URL ?? 'https://api.openai.com/v1',
         codexApiKey: values.CODEX_API_KEY,

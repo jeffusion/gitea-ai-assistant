@@ -1,4 +1,4 @@
-export type ReviewEngineMode = 'legacy' | 'agent' | 'codex';
+export type ReviewEngineMode = 'agent' | 'codex';
 
 export type ReviewEventType = 'pull_request' | 'commit_status';
 
@@ -7,6 +7,32 @@ export type ReviewRunStatus = 'queued' | 'in_progress' | 'succeeded' | 'failed' 
 export type FindingSeverity = 'high' | 'medium' | 'low';
 
 export type FindingCategory = 'correctness' | 'security' | 'reliability' | 'maintainability';
+
+export type ReviewMode = 'skip' | 'light' | 'full';
+
+export type ReviewSize = 'small' | 'medium' | 'large';
+
+export interface ReviewTask {
+  domain: FindingCategory;
+  paths: string[];
+  riskTags: string[];
+  mode: ReviewMode;
+  tokenBudget: number;
+  maxIterations: number;
+  allowTools: boolean;
+  allowReflection: boolean;
+  allowDebate: boolean;
+}
+
+export interface ReviewBudgetPolicy {
+  smallMaxFiles: number;
+  smallMaxChangedLines: number;
+  mediumMaxFiles: number;
+  mediumMaxChangedLines: number;
+  tokenBudgetSmall: number;
+  tokenBudgetMedium: number;
+  tokenBudgetLarge: number;
+}
 
 export interface ReviewRun {
   id: string;
@@ -108,8 +134,9 @@ export interface ChangedFile {
 
 export interface DiffLine {
   lineNumber: number;
+  oldLineNumber?: number;
   content: string;
-  type: 'add' | 'context';
+  type: 'add' | 'context' | 'delete';
 }
 
 export interface DiffFile {

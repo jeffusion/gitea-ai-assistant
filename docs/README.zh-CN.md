@@ -10,7 +10,7 @@
 
 - 🤖 **AI 代码审查** - 使用可插拔的 LLM 提供商自动审查 PR 和提交
 - 📝 **行级评论** - 针对具体代码变更的精确反馈
-- 🔄 **双引擎模式** - Legacy（简单）或 Agent（多代理）审查模式
+- 🔄 **任务化审查引擎** - Agent 分级审查（skip/light/full）+ 可选 Codex CLI 审查模式
 - 🔔 **飞书通知** - PR 事件通知集成
 - 🎛️ **管理后台** - 用于管理仓库 Webhook 和 LLM 提供商配置的 Web 界面
 - 🔐 **安全验证** - HMAC-SHA256 签名验证
@@ -34,8 +34,8 @@
 
 | 引擎 | 描述 | 适用场景 |
 |------|------|----------|
-| `legacy` | 单次 AI 审查，生成总结和行级评论 | 简单、快速的审查 |
-| `agent` | 多代理编排，支持专家、反思和辩论 | 深度、全面的分析 |
+| `agent` | 任务化分级审查（`skip` / `light` / `full`），按路径范围派发 specialist，并按需升级到反思/辩论 | 在控制 token 成本的前提下做深度审查 |
+| `codex` | 通过 Codex CLI 执行审查，独立配置 | 对接外部 Codex 审查流程 |
 
 ## 快速开始
 
@@ -136,7 +136,7 @@ LLM 提供商和模型通过**管理后台** Web 界面进行配置：
 
 1. 导航到 **LLM 配置** 页面
 2. 添加 LLM 提供商（OpenAI 兼容、OpenAI Responses API、Anthropic、Google Gemini）
-3. 为审查角色分配模型（legacy、planner、specialist、judge、embedding）
+3. 为审查角色分配模型（planner、specialist、judge、embedding）
 
 > API 密钥使用 AES-256-GCM 加密存储在本地 SQLite 数据库中。
 
@@ -151,12 +151,27 @@ LLM 提供商和模型通过**管理后台** Web 界面进行配置：
 
 | 配置项 | 描述 | 默认值 |
 |--------|------|--------|
-| 审查引擎 | 引擎模式（`legacy` 或 `agent`） | `legacy` |
+| 审查引擎 | 引擎模式（`agent` 或 `codex`） | `agent` |
+| 启用分流（Enable Triage） | 启用 planner 分流并输出任务化审查计划 | `true` |
+| Small 文件上限 | 判定 `small` 规模审查的文件数上限 | `3` |
+| Small 变更行上限 | 判定 `small` 规模审查的变更行数上限 | `80` |
+| Medium 文件上限 | 判定 `medium` 规模审查的文件数上限 | `10` |
+| Medium 变更行上限 | 判定 `medium` 规模审查的变更行数上限 | `400` |
+| Small Token 预算 | `small` 任务的 token 预算上限 | `12000` |
+| Medium Token 预算 | `medium` 任务的 token 预算上限 | `45000` |
+| Large Token 预算 | `large` 任务的 token 预算上限 | `120000` |
 | 工作目录 | 仓库克隆工作目录 | `/tmp/gitea-assistant` |
 | 最大并发数 | 最大并发审查任务数 | `2` |
 | 最大文件数 | 单次审查最大文件数 | `200` |
 | 自动发布置信度 | 自动发布最小置信度 | `0.8` |
 | 启用人工审批 | 发布前要求人工确认 | `true` |
+
+当前 Agent 审查执行模型：
+
+- `skip`：文档/资源/纯重命名等低风险改动可直接跳过 specialist。
+- `light`：低风险代码改动执行最小化、按路径范围限定的 specialist 审查。
+- `full`：敏感路径或中大型改动执行完整任务审查，并可按配置升级到 reflection/debate。
+- Triage 输出任务（`paths`、`riskTags`、`mode`、`tokenBudget`），Orchestrator 按任务范围派发，不再默认全量扇出。
 
 #### 记忆与学习（实验性）
 

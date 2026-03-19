@@ -288,7 +288,12 @@ export class DiffExtractor {
 
         const content = await readFile(filePath, 'utf-8');
         result[file.path] = content.slice(0, this.maxFileContentChars);
-      } catch {}
+      } catch (error) {
+        logger.debug('读取变更文件失败，已跳过', {
+          path: file.path,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     return result;
@@ -299,7 +304,8 @@ export class DiffExtractor {
     const lines = diffContent.split('\n');
 
     let currentFile: DiffFile | null = null;
-    let lineNumber = 0;
+    let oldLineNumber = 0;
+    let newLineNumber = 0;
     let inHunk = false;
     let skipCurrentFile = false;
 
@@ -333,9 +339,10 @@ export class DiffExtractor {
       }
 
       if (line.startsWith('@@')) {
-        const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-        if (match?.[1]) {
-          lineNumber = Number.parseInt(match[1], 10) - 1;
+        const match = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+        if (match?.[1] && match[2]) {
+          oldLineNumber = Number.parseInt(match[1], 10) - 1;
+          newLineNumber = Number.parseInt(match[2], 10) - 1;
           inHunk = true;
         }
         continue;
@@ -346,11 +353,30 @@ export class DiffExtractor {
       }
 
       if (line.startsWith('+')) {
-        lineNumber += 1;
-        currentFile.changes.push({ lineNumber, content: line.slice(1), type: 'add' });
+        newLineNumber += 1;
+        currentFile.changes.push({
+          lineNumber: newLineNumber,
+          oldLineNumber,
+          content: line.slice(1),
+          type: 'add',
+        });
       } else if (line.startsWith(' ')) {
-        lineNumber += 1;
-        currentFile.changes.push({ lineNumber, content: line.slice(1), type: 'context' });
+        oldLineNumber += 1;
+        newLineNumber += 1;
+        currentFile.changes.push({
+          lineNumber: newLineNumber,
+          oldLineNumber,
+          content: line.slice(1),
+          type: 'context',
+        });
+      } else if (line.startsWith('-')) {
+        oldLineNumber += 1;
+        currentFile.changes.push({
+          lineNumber: Math.max(1, newLineNumber + 1),
+          oldLineNumber,
+          content: line.slice(1),
+          type: 'delete',
+        });
       }
     }
 

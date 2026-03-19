@@ -4,12 +4,19 @@ import type { LLMGateway } from '../../llm/gateway';
 import type { LLMMessage, LLMToolCall } from '../../llm/types';
 import { withGlobalPrompt } from '../../utils/global-prompt';
 import { logger } from '../../utils/logger';
+import { tokenCounter } from '../context/token-counter';
 import type { LearningSystem } from '../learning/learning-system';
 import { findingResponseSchema } from '../schema/finding-schema';
 import { ToolRegistry } from '../tools/registry';
 import type { ToolExecutionContext, ToolResult } from '../tools/types';
-import { AgentResult, Finding, FindingCategory, ReviewContext, ReviewRun } from '../types';
-import { tokenCounter } from '../context/token-counter';
+import {
+  AgentResult,
+  Finding,
+  FindingCategory,
+  ReviewContext,
+  ReviewMode,
+  ReviewRun,
+} from '../types';
 
 function buildFingerprint(category: string, path: string, line: number, title: string): string {
   return createHash('sha256')
@@ -18,11 +25,39 @@ function buildFingerprint(category: string, path: string, line: number, title: s
     .slice(0, 24);
 }
 
-function toCompactContext(context: ReviewContext): string {
-  // Token-based budget: 25k tokens for context, leaving room for system prompt + few-shot + response
-  const MAX_CONTEXT_TOKENS = 25_000;
+interface CompactContextOptions {
+  scopePaths?: string[];
+  maxContextTokens?: number;
+}
 
-  const files = context.changedFiles.map((file) => ({
+export interface SpecialistReviewOptions {
+  scopePaths?: string[];
+  allowTools?: boolean;
+  maxIterations?: number;
+  mode?: ReviewMode;
+  maxContextTokens?: number;
+}
+
+function toCompactContext(context: ReviewContext, options?: CompactContextOptions): string {
+  const MAX_CONTEXT_TOKENS = options?.maxContextTokens ?? 25_000;
+
+  const scopedPaths = options?.scopePaths ? new Set(options.scopePaths) : null;
+
+  const scopedChangedFiles = scopedPaths
+    ? context.changedFiles.filter((file) => scopedPaths.has(file.path))
+    : context.changedFiles;
+
+  const scopedParsedDiff = scopedPaths
+    ? context.parsedDiff.filter((file) => scopedPaths.has(file.path))
+    : context.parsedDiff;
+
+  const scopedFileContents = scopedPaths
+    ? Object.fromEntries(
+        Object.entries(context.fileContents).filter(([filePath]) => scopedPaths.has(filePath))
+      )
+    : context.fileContents;
+
+  const files = scopedChangedFiles.map((file) => ({
     path: file.path,
     status: file.status,
     additions: file.additions,
@@ -35,19 +70,19 @@ function toCompactContext(context: ReviewContext): string {
   // 3. fileContents（最大，按需截断或移除部分文件）
 
   let maxChangesPerFile = 200;
-  let maxFileContentsEntries = Object.keys(context.fileContents).length;
+  let maxFileContentsEntries = Object.keys(scopedFileContents).length;
 
   const tryBuild = (changesLimit: number, contentEntriesLimit: number): string => {
-    const snippets = context.parsedDiff.map((file) => ({
+    const snippets = scopedParsedDiff.map((file) => ({
       path: file.path,
       changes: file.changes.slice(0, changesLimit),
     }));
 
     const limitedContents: Record<string, string> = {};
-    const contentKeys = Object.keys(context.fileContents);
+    const contentKeys = Object.keys(scopedFileContents);
     for (let i = 0; i < Math.min(contentEntriesLimit, contentKeys.length); i++) {
       const key = contentKeys[i];
-      limitedContents[key] = context.fileContents[key];
+      limitedContents[key] = scopedFileContents[key];
     }
 
     return JSON.stringify(
@@ -100,27 +135,49 @@ export class SpecialistAgent {
   ) {}
 
   async review(run: ReviewRun, context: ReviewContext): Promise<AgentResult> {
+    return this.reviewWithOptions(run, context);
+  }
+
+  async reviewWithOptions(
+    run: ReviewRun,
+    context: ReviewContext,
+    options?: SpecialistReviewOptions
+  ): Promise<AgentResult> {
     if (!context.diff.trim()) {
       return { agentName: this.agentName, findings: [] };
     }
 
-    // 如果没有工具注册表，使用传统单次调用模式
-    if (!this.toolRegistry || this.toolRegistry.getAll().length === 0) {
-      return this.reviewLegacy(run, context);
+    if (options?.mode === 'skip') {
+      return { agentName: this.agentName, findings: [] };
+    }
+
+    if (
+      !this.toolRegistry ||
+      this.toolRegistry.getAll().length === 0 ||
+      options?.allowTools === false
+    ) {
+      return this.reviewSinglePass(run, context, options);
     }
 
     // ReAct循环模式
-    return this.reviewWithReAct(run, context);
+    return this.reviewWithReAct(run, context, options);
   }
 
-  private async reviewLegacy(run: ReviewRun, context: ReviewContext): Promise<AgentResult> {
+  private async reviewSinglePass(
+    run: ReviewRun,
+    context: ReviewContext,
+    options?: SpecialistReviewOptions
+  ): Promise<AgentResult> {
     const prompt = `你是${this.agentName}，只关注${this.focusPrompt}。
 输出必须是JSON对象格式:
 {"findings": [{"severity": "high"|"medium"|"low", "confidence": 0-1, "path": "文件路径", "line": 正整数, "title": "标题", "detail": "详情", "evidence": "证据", "suggestion": "建议"}]}
 每个 finding 的所有字段都是必填的。仅报告有明确证据的问题；无问题时返回空数组。
 
 审查上下文如下:
-${toCompactContext(context)}`;
+${toCompactContext(context, {
+  scopePaths: options?.scopePaths,
+  maxContextTokens: options?.maxContextTokens,
+})}`;
 
     try {
       const messages: LLMMessage[] = [
@@ -166,9 +223,20 @@ ${toCompactContext(context)}`;
     }
   }
 
-  private async reviewWithReAct(run: ReviewRun, context: ReviewContext): Promise<AgentResult> {
-    const maxIterations = 5;
+  private async reviewWithReAct(
+    run: ReviewRun,
+    context: ReviewContext,
+    options?: SpecialistReviewOptions
+  ): Promise<AgentResult> {
+    const maxIterations = Math.max(
+      1,
+      options?.maxIterations ?? (options?.mode === 'light' ? 1 : 2)
+    );
     const findingsMap = new Map<string, Omit<Finding, 'id' | 'runId' | 'published'>>();
+    const compactContext = toCompactContext(context, {
+      scopePaths: options?.scopePaths,
+      maxContextTokens: options?.maxContextTokens,
+    });
     const messages: LLMMessage[] = [
       {
         role: 'system',
@@ -248,7 +316,7 @@ ${this.toolRegistry!.getAll()
     // 添加当前审查任务
     messages.push({
       role: 'user',
-      content: `审查以下代码变更：\n${toCompactContext(context)}`,
+      content: `审查以下代码变更：\n${compactContext}`,
     });
 
     try {

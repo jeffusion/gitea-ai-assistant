@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { mock } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { JudgeAgent } from '../agents/judge-agent';
+import type { TriageResult } from '../agents/triage-agent';
+import type { DiffExtractor } from '../context/diff-extractor';
+import type { LocalRepoManager } from '../context/local-repo-manager';
+import { ReviewOrchestrator } from '../orchestrator';
 import { applyPublishPolicy } from '../policy/publish-policy';
 import { FileReviewStore } from '../store/file-review-store';
-import type { Finding, PullRequestReviewPayload } from '../types';
+import type { Finding, PullRequestReviewPayload, ReviewContext, ReviewRun } from '../types';
 
 type PartialFinding = Omit<Finding, 'id' | 'runId' | 'published'>;
 
@@ -41,6 +46,47 @@ function makeAgentFindings(
     evidence: `Evidence ${i}`,
     suggestion: `Fix suggestion ${i}`,
   }));
+}
+
+function makeReviewContext(overrides: Partial<ReviewContext> = {}): ReviewContext {
+  return {
+    workspacePath: '/tmp/workspace',
+    mirrorPath: '/tmp/mirror',
+    diff: 'diff --git a/src/core.ts b/src/core.ts\n+export const a = 1;',
+    changedFiles: [{ path: 'src/core.ts', status: 'M', additions: 1, deletions: 0 }],
+    parsedDiff: [
+      {
+        path: 'src/core.ts',
+        changes: [{ lineNumber: 1, oldLineNumber: 1, content: 'export const a = 1;', type: 'add' }],
+      },
+    ],
+    fileContents: { 'src/core.ts': 'export const a = 1;' },
+    ...overrides,
+  };
+}
+
+function createOrchestratorDeps(context: ReviewContext) {
+  const localRepoManager = {
+    prepareWorkspace: mock(async () => ({
+      mirrorPath: '/tmp/mirror',
+      workspacePath: '/tmp/workspace',
+    })),
+    resolveReviewedRef: mock(async () => null),
+    saveReviewedRef: mock(async () => undefined),
+    cleanupWorkspace: mock(async () => undefined),
+  };
+
+  const diffExtractor = {
+    getSandbox: mock(() => ({
+      execute: async () => ({ stdout: '', stderr: '', exitCode: 0 }),
+    })),
+    buildContext: mock(async () => context),
+  };
+
+  return {
+    localRepoManager,
+    diffExtractor,
+  };
 }
 
 /**
@@ -368,5 +414,205 @@ describe('Integration: Store → Judge → Policy pipeline', () => {
     expect(details!.findings.length).toBe(1);
     expect(details!.findings[0].published).toBe(true);
     expect(details!.findings[0].fingerprint).toBe('persist-fp-1');
+  });
+});
+
+describe('Integration: orchestrator staged routing pipeline', () => {
+  let tempDir: string;
+  let store: FileReviewStore;
+
+  beforeEach(async () => {
+    mock.restore();
+    tempDir = await mkdtemp(path.join(tmpdir(), 'orchestrator-integration-'));
+    store = new FileReviewStore(tempDir);
+    await store.init();
+  });
+
+  afterEach(async () => {
+    mock.restore();
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  test('skip mode bypasses specialists end-to-end', async () => {
+    const payload = makePRPayload({ idempotencyKey: 'stage-skip' });
+    const { run } = await store.createOrReuseRun(payload);
+    const acquired = await store.acquireNextQueuedRun();
+    expect(acquired).not.toBeNull();
+
+    const context = makeReviewContext({
+      changedFiles: [{ path: 'README.md', status: 'M', additions: 2, deletions: 0 }],
+      parsedDiff: [
+        {
+          path: 'README.md',
+          changes: [{ lineNumber: 10, oldLineNumber: 10, content: 'new docs', type: 'add' }],
+        },
+      ],
+      fileContents: { 'README.md': 'new docs' },
+      diff: 'diff --git a/README.md b/README.md\n+new docs',
+    });
+    const { localRepoManager, diffExtractor } = createOrchestratorDeps(context);
+
+    const orchestrator = new ReviewOrchestrator(
+      store,
+      localRepoManager as unknown as LocalRepoManager,
+      diffExtractor as unknown as DiffExtractor
+    );
+
+    const internal = orchestrator as unknown as {
+      triageAgent: { analyze: (ctx: ReviewContext) => Promise<TriageResult> };
+      correctnessAgent: {
+        reviewWithOptions: (
+          runArg: ReviewRun,
+          ctx: ReviewContext,
+          options?: unknown
+        ) => Promise<unknown>;
+      };
+      publishSummary: (runArg: ReviewRun, summary: string, gatedCount: number) => Promise<void>;
+      publishLineComments: (
+        runArg: ReviewRun,
+        comments: Array<{ path: string; line: number; comment: string }>
+      ) => Promise<boolean>;
+    };
+
+    internal.triageAgent = {
+      analyze: mock(
+        async (): Promise<TriageResult> => ({
+          complexity: 'trivial',
+          reviewSize: 'small',
+          mode: 'skip',
+          tasks: [],
+          riskTags: [],
+          rationale: 'docs-only',
+        })
+      ),
+    };
+
+    const correctnessSpy = mock(async () => ({ agentName: 'Correctness Agent', findings: [] }));
+    internal.correctnessAgent.reviewWithOptions = correctnessSpy;
+    internal.publishSummary = mock(async () => undefined);
+    internal.publishLineComments = mock(async () => false);
+
+    await orchestrator.execute(acquired!);
+
+    expect(correctnessSpy).not.toHaveBeenCalled();
+
+    const details = await store.getRunDetails(run.id);
+    expect(details).not.toBeNull();
+    expect(details!.findings).toHaveLength(0);
+  });
+
+  test('full task mode passes scoped options and publishes finding', async () => {
+    const payload = makePRPayload({ idempotencyKey: 'stage-full' });
+    const { run } = await store.createOrReuseRun(payload);
+    const acquired = await store.acquireNextQueuedRun();
+    expect(acquired).not.toBeNull();
+
+    const context = makeReviewContext();
+    const { localRepoManager, diffExtractor } = createOrchestratorDeps(context);
+
+    const orchestrator = new ReviewOrchestrator(
+      store,
+      localRepoManager as unknown as LocalRepoManager,
+      diffExtractor as unknown as DiffExtractor
+    );
+
+    const internal = orchestrator as unknown as {
+      triageAgent: { analyze: (ctx: ReviewContext) => Promise<TriageResult> };
+      correctnessAgent: {
+        reviewWithOptions: (
+          runArg: ReviewRun,
+          ctx: ReviewContext,
+          options?: {
+            scopePaths?: string[];
+            allowTools?: boolean;
+            maxIterations?: number;
+            mode?: 'skip' | 'light' | 'full';
+            maxContextTokens?: number;
+          }
+        ) => Promise<{
+          agentName: string;
+          findings: Array<Omit<Finding, 'id' | 'runId' | 'published'>>;
+        }>;
+      };
+      publishSummary: (runArg: ReviewRun, summary: string, gatedCount: number) => Promise<void>;
+      publishLineComments: (
+        runArg: ReviewRun,
+        comments: Array<{ path: string; line: number; comment: string }>
+      ) => Promise<boolean>;
+    };
+
+    internal.triageAgent = {
+      analyze: mock(
+        async (): Promise<TriageResult> => ({
+          complexity: 'standard',
+          reviewSize: 'small',
+          mode: 'full',
+          riskTags: ['security-sensitive'],
+          rationale: 'auth file changed',
+          tasks: [
+            {
+              domain: 'correctness',
+              paths: ['src/core.ts'],
+              riskTags: ['security-sensitive'],
+              mode: 'full',
+              tokenBudget: 12000,
+              maxIterations: 2,
+              allowTools: false,
+              allowReflection: false,
+              allowDebate: false,
+            },
+          ],
+        })
+      ),
+    };
+
+    const correctnessSpy = mock(
+      async (
+        _runArg: ReviewRun,
+        _ctx: ReviewContext,
+        _options?: {
+          scopePaths?: string[];
+          allowTools?: boolean;
+          maxIterations?: number;
+          mode?: 'skip' | 'light' | 'full';
+          maxContextTokens?: number;
+        }
+      ) => ({
+        agentName: 'Correctness Agent',
+        findings: [
+          {
+            fingerprint: 'stage-full-fp-1',
+            category: 'correctness' as const,
+            severity: 'high' as const,
+            confidence: 0.95,
+            path: 'src/core.ts',
+            line: 1,
+            title: 'critical issue',
+            detail: 'detail',
+            evidence: 'evidence',
+            suggestion: 'fix',
+          },
+        ],
+      })
+    );
+    internal.correctnessAgent.reviewWithOptions = correctnessSpy;
+    internal.publishSummary = mock(async () => undefined);
+    internal.publishLineComments = mock(async () => true);
+
+    await orchestrator.execute(acquired!);
+
+    expect(correctnessSpy).toHaveBeenCalledTimes(1);
+    const callArgs = correctnessSpy.mock.calls[0];
+    const options = callArgs?.[2];
+    expect(options?.scopePaths).toEqual(['src/core.ts']);
+    expect(options?.allowTools).toBe(false);
+    expect(options?.maxIterations).toBe(2);
+    expect(options?.mode).toBe('full');
+
+    const details = await store.getRunDetails(run.id);
+    expect(details).not.toBeNull();
+    expect(details!.findings).toHaveLength(1);
+    expect(details!.findings[0].published).toBe(true);
+    expect(details!.findings[0].path).toBe('src/core.ts');
   });
 });

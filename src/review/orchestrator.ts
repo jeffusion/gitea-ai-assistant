@@ -17,7 +17,7 @@ import { createCodeSearchTool } from './tools/code-search-tool';
 import { createFileReadTool } from './tools/file-read-tool';
 import { createFunctionReferenceSearchTool } from './tools/function-reference-search-tool';
 import { ToolRegistry } from './tools/registry';
-import { Finding, ReviewRun } from './types';
+import { Finding, FindingCategory, ReviewRun, ReviewTask } from './types';
 
 interface LineCommentInput {
   path: string;
@@ -266,28 +266,84 @@ export class ReviewOrchestrator {
       const enableReflection = config.review.enableReflection ?? false;
       const maxReflectionRounds = config.review.maxReflectionRounds ?? 2;
 
-      // Select agents based on triage result
-      const agentsToRun = triage
-        ? triage.relevantDomains.map((domain) => this.agentMap[domain]).filter(Boolean)
-        : [this.correctnessAgent, this.securityAgent, this.reliabilityAgent, this.maintainabilityAgent];
+      const defaultDomains: FindingCategory[] = [
+        'correctness',
+        'security',
+        'reliability',
+        'maintainability',
+      ];
 
-      // For trivial changes, skip reflection even if globally enabled
-      const useReflection = triage?.complexity === 'trivial' ? false : enableReflection;
+      const defaultTasks: ReviewTask[] = defaultDomains.map((domain) => ({
+        domain,
+        paths: context.changedFiles.map((f) => f.path),
+        riskTags: [],
+        mode: 'full',
+        tokenBudget: config.review.tokenBudgetLarge,
+        maxIterations: 2,
+        allowTools: true,
+        allowReflection: true,
+        allowDebate: true,
+      }));
+
+      const triageTasks = triage?.tasks ?? defaultTasks;
+      const tasksByDomain = new Map<ReviewTask['domain'], ReviewTask>();
+      for (const task of triageTasks) {
+        const existing = tasksByDomain.get(task.domain);
+        if (!existing) {
+          tasksByDomain.set(task.domain, {
+            ...task,
+            paths: [...new Set(task.paths)],
+          });
+          continue;
+        }
+
+        tasksByDomain.set(task.domain, {
+          ...existing,
+          paths: [...new Set([...existing.paths, ...task.paths])],
+          riskTags: [...new Set([...existing.riskTags, ...task.riskTags])],
+          maxIterations: Math.max(existing.maxIterations, task.maxIterations),
+          tokenBudget: Math.max(existing.tokenBudget, task.tokenBudget),
+          allowTools: existing.allowTools || task.allowTools,
+          allowReflection: existing.allowReflection || task.allowReflection,
+          allowDebate: existing.allowDebate || task.allowDebate,
+          mode: existing.mode === 'full' || task.mode === 'full' ? 'full' : 'light',
+        });
+      }
+
+      const domainTasks = [...tasksByDomain.values()];
 
       logger.info('Specialist 派发决策', {
         runId: run.id,
         triageComplexity: triage?.complexity ?? 'disabled',
-        agentCount: agentsToRun.length,
-        domains: triage?.relevantDomains ?? ['correctness', 'security', 'reliability', 'maintainability'],
-        reflection: useReflection,
+        reviewMode: triage?.mode ?? 'full',
+        taskCount: triageTasks.length,
+        domainCount: domainTasks.length,
+        domains: domainTasks.map((task) => task.domain),
       });
 
       const agentResults = await Promise.all(
-        agentsToRun.map((agent) =>
-          useReflection
-            ? agent.reviewWithReflection(run, context, maxReflectionRounds)
-            : agent.review(run, context)
-        )
+        domainTasks.map(async (task) => {
+          const agent = this.agentMap[task.domain];
+          const reviewOptions = {
+            scopePaths: task.paths,
+            allowTools: task.allowTools,
+            maxIterations: task.maxIterations,
+            mode: task.mode,
+            maxContextTokens: Math.max(1500, Math.floor(task.tokenBudget * 0.7)),
+          } as const;
+
+          const useReflection =
+            enableReflection &&
+            task.allowReflection &&
+            task.mode !== 'light' &&
+            triage?.complexity !== 'trivial';
+
+          if (useReflection) {
+            return agent.reviewWithReflection(run, context, maxReflectionRounds, reviewOptions);
+          }
+
+          return agent.reviewWithOptions(run, context, reviewOptions);
+        })
       );
 
       await this.store.addStep({
@@ -305,7 +361,12 @@ export class ReviewOrchestrator {
       const enableDebate = config.review.enableDebate ?? false;
       const debateThreshold = config.review.debateThreshold ?? 'high';
 
-      if (enableDebate && allFindings.length > 0 && triage?.complexity !== 'trivial') {
+      if (
+        enableDebate &&
+        allFindings.length > 0 &&
+        triage?.mode === 'full' &&
+        triage?.complexity !== 'trivial'
+      ) {
         const debateStart = Date.now();
         await this.store.addStep({
           runId: run.id,
@@ -327,14 +388,31 @@ export class ReviewOrchestrator {
           threshold: debateThreshold,
         });
 
+        const allowDebateDomains = new Set(
+          domainTasks.filter((task) => task.allowDebate).map((task) => task.domain)
+        );
+
         const debatedFindings: typeof allFindings = [];
         for (const finding of debatableFindings) {
-          const debatedFinding = await this.debateOrchestrator.conductDebate(finding, [
-            this.correctnessAgent,
-            this.securityAgent,
-            this.reliabilityAgent,
-            this.maintainabilityAgent,
-          ]);
+          if (!allowDebateDomains.has(finding.category)) {
+            debatedFindings.push(finding);
+            continue;
+          }
+
+          const debateAgents = [this.agentMap[finding.category]];
+
+          if (finding.category !== 'correctness' && allowDebateDomains.has('correctness')) {
+            debateAgents.push(this.correctnessAgent);
+          }
+          if (finding.category !== 'security' && allowDebateDomains.has('security')) {
+            debateAgents.push(this.securityAgent);
+          }
+
+          const uniqueDebateAgents = [...new Set(debateAgents)];
+          const debatedFinding = await this.debateOrchestrator.conductDebate(
+            finding,
+            uniqueDebateAgents
+          );
           debatedFindings.push(debatedFinding);
         }
 

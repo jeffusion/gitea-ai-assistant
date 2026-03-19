@@ -1,25 +1,12 @@
-// @ts-expect-error bun:test is provided by Bun at runtime
-declare module 'bun:test' {
-  export const describe: any;
-  export const test: any;
-  export const it: any;
-  export const expect: any;
-  export const beforeEach: any;
-  export const afterEach: any;
-  export const beforeAll: any;
-  export const afterAll: any;
-}
-
-// @ts-expect-error bun:test is provided by Bun at runtime
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { configManager } from '../config-manager';
 import { initMasterKey } from '../../crypto/secrets';
 import { closeDatabase, initDatabase } from '../../db/database';
 import { settingsRepo } from '../../db/repositories/settings-repo';
+import { configManager } from '../config-manager';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -39,7 +26,9 @@ describe('ConfigManager (DB backend)', () => {
   beforeEach(() => {
     dbPath = makeTmpDb();
     process.env.DATABASE_PATH = dbPath;
-    process.env.ENCRYPTION_KEY = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('hex');
+    process.env.ENCRYPTION_KEY = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString(
+      'hex'
+    );
     initMasterKey();
     initDatabase();
   });
@@ -47,30 +36,42 @@ describe('ConfigManager (DB backend)', () => {
   afterEach(() => {
     closeDatabase();
     if (savedDbPath === undefined) {
-      delete process.env.DATABASE_PATH;
+      Reflect.deleteProperty(process.env, 'DATABASE_PATH');
     } else {
       process.env.DATABASE_PATH = savedDbPath;
     }
     if (savedEncryptionKey === undefined) {
-      delete process.env.ENCRYPTION_KEY;
+      Reflect.deleteProperty(process.env, 'ENCRYPTION_KEY');
     } else {
       process.env.ENCRYPTION_KEY = savedEncryptionKey;
     }
-    try { if (existsSync(dbPath)) unlinkSync(dbPath); } catch { /* ok */ }
-    try { if (existsSync(`${dbPath}-wal`)) unlinkSync(`${dbPath}-wal`); } catch { /* ok */ }
-    try { if (existsSync(`${dbPath}-shm`)) unlinkSync(`${dbPath}-shm`); } catch { /* ok */ }
+    try {
+      if (existsSync(dbPath)) unlinkSync(dbPath);
+    } catch {
+      /* ok */
+    }
+    try {
+      if (existsSync(`${dbPath}-wal`)) unlinkSync(`${dbPath}-wal`);
+    } catch {
+      /* ok */
+    }
+    try {
+      if (existsSync(`${dbPath}-shm`)) unlinkSync(`${dbPath}-shm`);
+    } catch {
+      /* ok */
+    }
   });
 
   // ─── 1. getCurrent() defaults ─────────────────────────────────────────────
 
   describe('getCurrent() defaults', () => {
     test('returns default engine when DB is empty', () => {
-      expect(configManager.getCurrent().review.engine).toBe('legacy');
+      expect(configManager.getCurrent().review.engine).toBe('agent');
     });
 
     test('reads port from process.env.PORT, defaults to 5174', () => {
       const orig = process.env.PORT;
-      delete process.env.PORT;
+      Reflect.deleteProperty(process.env, 'PORT');
       expect(configManager.getCurrent().app.port).toBe(5174);
       if (orig !== undefined) process.env.PORT = orig;
     });
@@ -85,7 +86,17 @@ describe('ConfigManager (DB backend)', () => {
       expect(cfg.feishu.webhookSecret).toBeUndefined();
       expect(cfg.admin.giteaAdminToken).toBeUndefined();
       expect(cfg.review.qdrantUrl).toBeUndefined();
-      expect(cfg.review.customSummaryPrompt).toBeUndefined();
+    });
+
+    test('returns review size thresholds and token budget defaults', () => {
+      const cfg = configManager.getCurrent();
+      expect(cfg.review.smallMaxFiles).toBe(3);
+      expect(cfg.review.smallMaxChangedLines).toBe(80);
+      expect(cfg.review.mediumMaxFiles).toBe(10);
+      expect(cfg.review.mediumMaxChangedLines).toBe(400);
+      expect(cfg.review.tokenBudgetSmall).toBe(12000);
+      expect(cfg.review.tokenBudgetMedium).toBe(45000);
+      expect(cfg.review.tokenBudgetLarge).toBe(120000);
     });
   });
 
@@ -100,7 +111,7 @@ describe('ConfigManager (DB backend)', () => {
     test('setOverrides with empty string deletes the key (resets to default)', async () => {
       await configManager.setOverrides({ REVIEW_ENGINE: 'agent' });
       await configManager.setOverrides({ REVIEW_ENGINE: '' });
-      expect(configManager.getCurrent().review.engine).toBe('legacy');
+      expect(configManager.getCurrent().review.engine).toBe('agent');
     });
 
     test('getSource returns "db" when value is stored', async () => {
@@ -119,7 +130,7 @@ describe('ConfigManager (DB backend)', () => {
 
     test('unknown keys are silently ignored', async () => {
       await configManager.setOverrides({ UNKNOWN_KEY_XYZ: 'value' });
-      expect(configManager.getCurrent().review.engine).toBe('legacy');
+      expect(configManager.getCurrent().review.engine).toBe('agent');
     });
   });
 
@@ -129,13 +140,13 @@ describe('ConfigManager (DB backend)', () => {
     test('resetKeys deletes key from DB, value reverts to default', async () => {
       await configManager.setOverrides({ REVIEW_ENGINE: 'agent' });
       await configManager.resetKeys(['REVIEW_ENGINE']);
-      expect(configManager.getCurrent().review.engine).toBe('legacy');
+      expect(configManager.getCurrent().review.engine).toBe('agent');
       expect(configManager.getSource('REVIEW_ENGINE')).toBe('default');
     });
 
     test('resetKeys on non-existent key does not throw', async () => {
       await configManager.resetKeys(['REVIEW_ENGINE']);
-      expect(configManager.getCurrent().review.engine).toBe('legacy');
+      expect(configManager.getCurrent().review.engine).toBe('agent');
     });
   });
 
@@ -196,6 +207,16 @@ describe('ConfigManager (DB backend)', () => {
     test('number field is parsed correctly', async () => {
       await configManager.setOverrides({ REVIEW_MAX_PARALLEL_RUNS: '4' });
       expect(configManager.getCurrent().review.maxParallelRuns).toBe(4);
+    });
+
+    test('review budget fields are parsed correctly', async () => {
+      await configManager.setOverrides({
+        REVIEW_SMALL_MAX_FILES: '5',
+        REVIEW_TOKEN_BUDGET_SMALL: '22222',
+      });
+
+      expect(configManager.getCurrent().review.smallMaxFiles).toBe(5);
+      expect(configManager.getCurrent().review.tokenBudgetSmall).toBe(22222);
     });
 
     test('comma-separated REVIEW_ALLOWED_COMMANDS parsed to array', async () => {

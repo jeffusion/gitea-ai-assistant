@@ -52,7 +52,6 @@ export const migration001Init: Migration = {
     db.exec(`
       CREATE TABLE model_role_assignments (
         role          TEXT PRIMARY KEY CHECK (role IN (
-                        'legacy',
                         'planner',
                         'specialist',
                         'judge',

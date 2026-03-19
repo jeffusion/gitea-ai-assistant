@@ -3,14 +3,12 @@ import { Context } from 'hono';
 import { map } from 'lodash-es';
 import config from '../config';
 import { codexEngine } from '../review/codex/codex-engine';
-import { reviewEngine } from '../review/engine';
-import { aiReviewService } from '../services/ai-review';
-import { feishuService } from '../services/feishu';
-import { PullRequestDetails, PullRequestFile, giteaService } from '../services/gitea';
-import { logger } from '../utils/logger';
 import { LocalRepoManager } from '../review/context/local-repo-manager';
 import { SandboxExec } from '../review/context/sandbox-exec';
-
+import { reviewEngine } from '../review/engine';
+import { feishuService } from '../services/feishu';
+import { PullRequestDetails, giteaService } from '../services/gitea';
+import { logger } from '../utils/logger';
 
 // Gitea webhook事件类型
 enum GiteaEventType {
@@ -24,7 +22,6 @@ enum GiteaEventType {
  * 验证Webhook请求签名
  */
 function verifyWebhookSignature(body: string, signature: string): boolean {
-
   if (!config.app.webhookSecret) {
     logger.warn('未配置Webhook密钥，跳过签名验证');
     return false;
@@ -158,54 +155,42 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
     }
   }
 
-  if (config.review.engine === 'agent' || config.review.engine === 'codex') {
-    // Fork PR策略：始终clone base repo（保证有baseSha），headCloneUrl作为额外remote（保证有headSha）
-    const baseCloneUrl = resolveCloneUrl(repo);
-    const headSha = pullRequest.head?.sha;
-    const baseSha = pullRequest.base?.sha;
-    if (!baseCloneUrl || !headSha || !baseSha) {
-      return c.json({ error: '缺少审查所需字段(clone_url/base sha/head sha)' }, 400);
-    }
-
-    // 检测fork PR：head.repo存在且与base repo不同
-    const headCloneUrl = pullRequest.head?.repo
-      ? resolveCloneUrl(pullRequest.head.repo)
-      : undefined;
-    const isForkPR = headCloneUrl && headCloneUrl !== baseCloneUrl;
-
-    // 包含baseSha以支持retarget场景：相同headSha但baseSha变化时需要重新审查
-    const idempotencyKey = `${owner}/${repoName}#${prNumber}:${baseSha}...${headSha}`;
-    const engineInstance = config.review.engine === 'codex' ? codexEngine : reviewEngine;
-    const { run, reused } = await engineInstance.enqueuePullRequest({
-      eventType: 'pull_request',
-      idempotencyKey,
-      owner,
-      repo: repoName,
-      cloneUrl: baseCloneUrl,
-      headCloneUrl: isForkPR ? headCloneUrl : undefined,
-      prNumber,
-      baseSha,
-      headSha,
-    });
-
-    const engineLabel = config.review.engine === 'codex' ? 'Codex' : 'Agent';
-    return c.json(
-      {
-        status: reused ? 'deduplicated' : 'accepted',
-        message: reused ? '审查任务已存在，已去重' : `${engineLabel}代码审查任务已入队`,
-        runId: run.id,
-      },
-      202
-    );
+  // Fork PR策略：始终clone base repo（保证有baseSha），headCloneUrl作为额外remote（保证有headSha）
+  const baseCloneUrl = resolveCloneUrl(repo);
+  const headSha = pullRequest.head?.sha;
+  const baseSha = pullRequest.base?.sha;
+  if (!baseCloneUrl || !headSha || !baseSha) {
+    return c.json({ error: '缺少审查所需字段(clone_url/base sha/head sha)' }, 400);
   }
 
-  // Legacy模式：开始异步审查流程
-  reviewPullRequest(owner, repoName, prNumber).catch((error) => {
-    logger.error(`审查PR ${owner}/${repoName}#${prNumber} 失败:`, error);
+  // 检测fork PR：head.repo存在且与base repo不同
+  const headCloneUrl = pullRequest.head?.repo ? resolveCloneUrl(pullRequest.head.repo) : undefined;
+  const isForkPR = headCloneUrl && headCloneUrl !== baseCloneUrl;
+
+  // 包含baseSha以支持retarget场景：相同headSha但baseSha变化时需要重新审查
+  const idempotencyKey = `${owner}/${repoName}#${prNumber}:${baseSha}...${headSha}`;
+  const engineInstance = config.review.engine === 'codex' ? codexEngine : reviewEngine;
+  const { run, reused } = await engineInstance.enqueuePullRequest({
+    eventType: 'pull_request',
+    idempotencyKey,
+    owner,
+    repo: repoName,
+    cloneUrl: baseCloneUrl,
+    headCloneUrl: isForkPR ? headCloneUrl : undefined,
+    prNumber,
+    baseSha,
+    headSha,
   });
 
-  // 立即返回以不阻塞Webhook
-  return c.json({ status: 'accepted', message: '代码审查请求已接受' }, 202);
+  const engineLabel = config.review.engine === 'codex' ? 'Codex' : 'Agent';
+  return c.json(
+    {
+      status: reused ? 'deduplicated' : 'accepted',
+      message: reused ? '审查任务已存在，已去重' : `${engineLabel}代码审查任务已入队`,
+      runId: run.id,
+    },
+    202
+  );
 }
 
 /**
@@ -221,7 +206,12 @@ async function handlePullRequestClosed(c: Context, body: any): Promise<Response>
   const owner = repo.owner.login;
   const repoName = repo.name;
 
-  logger.info('PR 已关闭，开始清理审查快照', { owner, repo: repoName, prNumber, merged: !!pullRequest.merged });
+  logger.info('PR 已关闭，开始清理审查快照', {
+    owner,
+    repo: repoName,
+    prNumber,
+    merged: !!pullRequest.merged,
+  });
 
   // 异步清理，不阻塞 webhook 响应
   (async () => {
@@ -320,54 +310,33 @@ async function handleCommitStatusEvent(c: Context, body: any): Promise<Response>
     removed: commitInfo.removed.length,
   });
 
-  // Agent/Codex模式优先处理：从本地仓库派生diff，不依赖webhook文件列表
-  if (config.review.engine === 'agent' || config.review.engine === 'codex') {
-    const cloneUrl = resolveCloneUrl(body.repository);
-    if (!cloneUrl) {
-      return c.json({ error: '缺少审查所需字段(clone_url)' }, 400);
-    }
-
-    const idempotencyKey = `${owner}/${repoName}@${commitSha}`;
-    const engineInstance = config.review.engine === 'codex' ? codexEngine : reviewEngine;
-    const { run, reused } = await engineInstance.enqueueCommit({
-      eventType: 'commit_status',
-      idempotencyKey,
-      owner,
-      repo: repoName,
-      cloneUrl,
-      commitSha,
-      commitMessage: commitInfo.message,
-      relatedPrNumber: relatedPR?.number,
-    });
-
-    const engineLabel = config.review.engine === 'codex' ? 'Codex' : 'Agent';
-    return c.json(
-      {
-        status: reused ? 'deduplicated' : 'accepted',
-        message: reused ? '审查任务已存在，已去重' : `${engineLabel}提交审查任务已入队`,
-        runId: run.id,
-      },
-      202
-    );
+  const cloneUrl = resolveCloneUrl(body.repository);
+  if (!cloneUrl) {
+    return c.json({ error: '缺少审查所需字段(clone_url)' }, 400);
   }
 
-  // Legacy模式：需要webhook文件列表
-  if (
-    commitInfo.added.length === 0 &&
-    commitInfo.modified.length === 0 &&
-    commitInfo.removed.length === 0
-  ) {
-    logger.warn('提交没有文件变更信息，忽略审查', { commitSha });
-    return c.json({ status: 'ignored', message: '提交没有文件变更信息' }, 200);
-  }
-
-  // 开始异步审查流程，传入关联的PR信息
-  reviewCommit(owner, repoName, commitSha, commitInfo, relatedPR).catch((error) => {
-    logger.error(`审查提交 ${owner}/${repoName}@${commitSha} 失败:`, error);
+  const idempotencyKey = `${owner}/${repoName}@${commitSha}`;
+  const engineInstance = config.review.engine === 'codex' ? codexEngine : reviewEngine;
+  const { run, reused } = await engineInstance.enqueueCommit({
+    eventType: 'commit_status',
+    idempotencyKey,
+    owner,
+    repo: repoName,
+    cloneUrl,
+    commitSha,
+    commitMessage: commitInfo.message,
+    relatedPrNumber: relatedPR?.number,
   });
 
-  // 立即返回以不阻塞Webhook
-  return c.json({ status: 'accepted', message: '提交代码审查请求已接受' }, 202);
+  const engineLabel = config.review.engine === 'codex' ? 'Codex' : 'Agent';
+  return c.json(
+    {
+      status: reused ? 'deduplicated' : 'accepted',
+      message: reused ? '审查任务已存在，已去重' : `${engineLabel}提交审查任务已入队`,
+      runId: run.id,
+    },
+    202
+  );
 }
 
 /**
@@ -419,183 +388,6 @@ async function handleIssueEvent(c: Context, body: any): Promise<Response> {
   }
 
   return c.json({ status: 'success', message: '工单事件处理完成' }, 200);
-}
-
-/**
- * 审查Pull Request的代码
- */
-async function reviewPullRequest(owner: string, repo: string, prNumber: number): Promise<void> {
-  try {
-    logger.info(`开始审查PR ${owner}/${repo}#${prNumber}`);
-
-    // 从Gitea获取PR详情和差异
-    const [prDetails, diffContent] = await Promise.all([
-      giteaService.getPullRequestDetails(owner, repo, prNumber),
-      giteaService.getPullRequestDiff(owner, repo, prNumber),
-    ]);
-
-    // 提取commit SHA
-    const commitId = prDetails.head.sha;
-
-    // 使用增强的AI代码审查服务
-    const reviewResult = await aiReviewService.reviewCode(
-      owner,
-      repo,
-      prNumber,
-      diffContent,
-      commitId
-    );
-
-    logger.info('代码审查结果', {
-      summary: `${reviewResult.summary.substring(0, 100)}...`,
-      commentCount: reviewResult.lineComments.length,
-    });
-
-    // 添加总结评论
-    await giteaService.addPullRequestComment(
-      owner,
-      repo,
-      prNumber,
-      `## AI代码审查结果\n\n${reviewResult.summary}`
-    );
-
-    // 添加行级评论
-    if (reviewResult.lineComments.length > 0) {
-      await giteaService.addLineComments(
-        owner,
-        repo,
-        prNumber,
-        commitId,
-        reviewResult.lineComments
-      );
-    }
-
-    logger.info(`完成PR ${owner}/${repo}#${prNumber} 的代码审查`);
-  } catch (error) {
-    logger.error('审查PR失败:', error);
-    throw error;
-  }
-}
-
-/**
- * 审查提交的代码变更
- */
-async function reviewCommit(
-  owner: string,
-  repo: string,
-  commitSha: string,
-  commitInfo: {
-    sha: string;
-    message: string;
-    added: string[];
-    modified: string[];
-    removed: string[];
-  },
-  relatedPR?: PullRequestDetails | null
-): Promise<void> {
-  try {
-    logger.info(`开始审查提交 ${owner}/${repo}@${commitSha}`);
-    logger.info('提交信息', {
-      message:
-        commitInfo.message.substring(0, 100) + (commitInfo.message.length > 100 ? '...' : ''),
-      added: commitInfo.added.length,
-      modified: commitInfo.modified.length,
-      removed: commitInfo.removed.length,
-    });
-
-
-    // 创建自定义文件列表，因为Gitea API不直接提供
-    const webhookFiles: PullRequestFile[] = [
-      ...commitInfo.added.map((filename) => ({
-        filename,
-        status: 'added',
-        additions: 0, // 不知道具体行数
-        deletions: 0,
-        changes: 0,
-      })),
-      ...commitInfo.modified.map((filename) => ({
-        filename,
-        status: 'modified',
-        additions: 0,
-        deletions: 0,
-        changes: 0,
-      })),
-      ...commitInfo.removed.map((filename) => ({
-        filename,
-        status: 'removed',
-        additions: 0,
-        deletions: 0,
-        changes: 0,
-      })),
-    ];
-
-    // 使用AI审查服务分析提交，并传入webhook提供的文件列表
-    const reviewResult = await aiReviewService.reviewCommit(owner, repo, commitSha, webhookFiles);
-
-    logger.info('提交代码审查结果', {
-      summary: `${reviewResult.summary.substring(0, 100)}...`,
-      commentCount: reviewResult.lineComments.length,
-    });
-
-    // 添加总结评论到提交
-    try {
-      await giteaService.addCommitComment(
-        owner,
-        repo,
-        commitSha,
-        `## AI代码审查结果\n\n${reviewResult.summary}`
-      );
-    } catch (error) {
-      logger.error('添加提交评论失败:', error);
-      // 继续处理，尝试添加到PR
-    }
-
-    // 尝试使用传入的PR信息，或者查找相关的PR
-    try {
-      // 如果已经有关联PR，直接使用
-      if (relatedPR?.number) {
-        logger.info(`使用已知关联的PR #${relatedPR.number}`);
-
-        // 添加行级评论
-        if (reviewResult.lineComments.length > 0) {
-          await giteaService.addLineComments(
-            owner,
-            repo,
-            relatedPR.number,
-            commitSha,
-            reviewResult.lineComments
-          );
-        }
-      } else {
-        // 否则尝试查找
-        logger.info('尝试查找与提交关联的PR');
-        const response = await giteaService.getRelatedPullRequest(owner, repo, commitSha);
-        if (response?.number) {
-          logger.info(`找到与提交关联的PR #${response.number}`);
-
-          // 添加行级评论
-          if (reviewResult.lineComments.length > 0) {
-            await giteaService.addLineComments(
-              owner,
-              repo,
-              response.number,
-              commitSha,
-              reviewResult.lineComments
-            );
-          }
-        } else {
-          logger.info('未找到与提交关联的PR，无法添加行级评论');
-        }
-      }
-    } catch (error) {
-      logger.warn('处理PR关联失败，将跳过行级评论', error);
-    }
-
-    logger.info(`完成提交 ${owner}/${repo}@${commitSha} 的代码审查`);
-  } catch (error) {
-    logger.error('审查提交失败:', error);
-    throw error;
-  }
 }
 
 /**

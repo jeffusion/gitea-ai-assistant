@@ -1,13 +1,3 @@
-// @ts-expect-error bun:test is provided by Bun at runtime
-declare module 'bun:test' {
-  export const describe: any;
-  export const test: any;
-  export const expect: any;
-  export const beforeEach: any;
-  export const afterEach: any;
-}
-
-// @ts-expect-error bun:test is provided by Bun at runtime
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
@@ -40,7 +30,9 @@ describe('LLMGateway', () => {
     mkdirSync(tmpDir, { recursive: true });
     dbPath = join(tmpDir, 'test.db');
     process.env.DATABASE_PATH = dbPath;
-    process.env.ENCRYPTION_KEY = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('hex');
+    process.env.ENCRYPTION_KEY = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString(
+      'hex'
+    );
 
     initMasterKey();
     initDatabase();
@@ -56,12 +48,12 @@ describe('LLMGateway', () => {
   afterEach(() => {
     closeDatabase();
     if (savedDbPath === undefined) {
-      delete process.env.DATABASE_PATH;
+      Reflect.deleteProperty(process.env, 'DATABASE_PATH');
     } else {
       process.env.DATABASE_PATH = savedDbPath;
     }
     if (savedEncryptionKey === undefined) {
-      delete process.env.ENCRYPTION_KEY;
+      Reflect.deleteProperty(process.env, 'ENCRYPTION_KEY');
     } else {
       process.env.ENCRYPTION_KEY = savedEncryptionKey;
     }
@@ -87,22 +79,22 @@ describe('LLMGateway', () => {
   describe('chatForRole() — error handling', () => {
     test('throws LLMNoProviderError when role is not assigned', async () => {
       try {
-        await gateway.chatForRole('legacy', {
+        await gateway.chatForRole('planner', {
           messages: [{ role: 'user', content: 'hello' }],
         });
         expect(true).toBe(false); // Should not reach
       } catch (e: any) {
         expect(e.name).toBe('LLMNoProviderError');
-        expect(e.role).toBe('legacy');
+        expect(e.role).toBe('planner');
       }
     });
 
     test('throws LLMError when provider is disabled', async () => {
       providerRepo.update(providerId, { isEnabled: false });
-      modelRoleRepo.set('legacy', providerId, 'gpt-4o-mini');
+      modelRoleRepo.set('planner', providerId, 'gpt-4o-mini');
 
       try {
-        await gateway.chatForRole('legacy', {
+        await gateway.chatForRole('planner', {
           messages: [{ role: 'user', content: 'hello' }],
         });
         expect(true).toBe(false);
@@ -114,10 +106,10 @@ describe('LLMGateway', () => {
 
     test('throws LLMAuthError when no API key configured', async () => {
       secretRepo.delete(providerId);
-      modelRoleRepo.set('legacy', providerId, 'gpt-4o-mini');
+      modelRoleRepo.set('planner', providerId, 'gpt-4o-mini');
 
       try {
-        await gateway.chatForRole('legacy', {
+        await gateway.chatForRole('planner', {
           messages: [{ role: 'user', content: 'hello' }],
         });
         expect(true).toBe(false);
@@ -128,9 +120,9 @@ describe('LLMGateway', () => {
     });
 
     test('throws LLMError when provider not found after role assignment manually deleted', async () => {
-      modelRoleRepo.set('legacy', providerId, 'gpt-4o-mini');
+      modelRoleRepo.set('planner', providerId, 'gpt-4o-mini');
       // Must remove assignments before deleting provider (no CASCADE on model_role_assignments)
-      modelRoleRepo.delete('legacy');
+      modelRoleRepo.delete('planner');
       secretRepo.delete(providerId);
       providerRepo.delete(providerId);
 
@@ -138,7 +130,7 @@ describe('LLMGateway', () => {
       // (simulating stale data)
       try {
         // No assignment exists now, so this throws LLMNoProviderError
-        await gateway.chatForRole('legacy', {
+        await gateway.chatForRole('planner', {
           messages: [{ role: 'user', content: 'hello' }],
         });
         expect(true).toBe(false);
