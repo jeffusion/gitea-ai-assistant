@@ -53,13 +53,16 @@ cd gitea-ai-assistant
 bun install
 ```
 
+> 在仓库根目录执行 `bun install` 会通过 `postinstall` 自动安装 `frontend` 依赖。
+> 若你的环境跳过生命周期脚本，请额外执行一次 `bun run bootstrap`。
+
 ### 配置说明
 
 创建 `.env` 文件，仅填写基础设施级别的配置：
 
 ```bash
 # 服务端口
-PORT=3000
+PORT=5174
 
 # 必填：API Key 加密存储密钥（运行 openssl rand -hex 32 生成）
 ENCRYPTION_KEY=
@@ -68,7 +71,7 @@ ENCRYPTION_KEY=
 # DATABASE_PATH=./data/assistant.db
 ```
 
-> **所有其他配置**（Gitea 连接、Webhook 密钥、管理员密码、审查引擎、飞书、记忆系统等）均通过 **Web 管理后台** 在 `http://your-server:3000` 进行配置。首次启动时，所有设置会自动以安全的默认值进行初始化。
+> **所有其他配置**（Gitea 连接、Webhook 密钥、管理员密码、审查引擎、飞书、记忆系统等）均通过 **Web 管理后台** 在 `http://your-server:5174` 进行配置。首次启动时，所有设置会自动以安全的默认值进行初始化。
 
 完整配置项请参阅 [配置参考](#配置参考)。
 
@@ -83,14 +86,14 @@ bun run start  # 生产模式
 
 **方式一：管理后台（推荐）**
 
-1. 在浏览器中访问 `http://your-server:3000`
+1. 在浏览器中访问 `http://your-server:5174`
 2. 使用管理员密码登录（默认：`password`，请在后台及时修改）
 3. 点击仓库对应的「启用」按钮自动配置 Webhook
 
 **方式二：手动配置**
 
 在 Gitea 仓库设置中添加 Webhook：
-- **URL**: `http://your-server:3000/webhook/gitea`
+- **URL**: `http://your-server:5174/webhook/gitea`
 - **内容类型**: `application/json`
 - **密钥**: 与管理后台中配置的 Webhook 密钥相同
 - **触发事件**: 「Pull Request」和「Status」
@@ -187,7 +190,7 @@ LLM 提供商和模型通过**管理后台** Web 界面进行配置：
 
 ```bash
 docker build -t gitea-assistant .
-docker run -d -p 3000:3000 -v ./data:/app/data -e PORT=3000 gitea-assistant
+docker run -d -p 5174:5174 -v ./data:/app/data -e PORT=5174 gitea-assistant
 ```
 
 ### Docker Compose

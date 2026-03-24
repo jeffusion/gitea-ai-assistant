@@ -57,6 +57,6 @@ COPY --from=frontend-builder /app/frontend/dist ./public
 # Codex CLI binary (statically linked musl build)
 COPY --from=codex-downloader /usr/local/bin/codex /usr/local/bin/codex
 
-EXPOSE 3000
+EXPOSE 5174
 
 CMD ["bun", "run", "start"]

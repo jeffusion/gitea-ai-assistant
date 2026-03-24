@@ -53,13 +53,16 @@ cd gitea-ai-assistant
 bun install
 ```
 
+> `bun install` at repository root now triggers frontend dependency installation automatically via `postinstall`.
+> If your environment skips lifecycle scripts, run `bun run bootstrap` once.
+
 ### Configuration
 
 Create a `.env` file with only infrastructure-level settings:
 
 ```bash
 # Server port
-PORT=3000
+PORT=5174
 
 # REQUIRED: encryption key for API key storage (generate with: openssl rand -hex 32)
 ENCRYPTION_KEY=
@@ -68,7 +71,7 @@ ENCRYPTION_KEY=
 # DATABASE_PATH=./data/assistant.db
 ```
 
-> **All other configuration** (Gitea connection, webhook secret, admin password, review engine, Feishu, memory settings, etc.) is managed through the **Admin Dashboard Web UI** at `http://your-server:3000`. On first boot, all settings are seeded with secure defaults automatically.
+> **All other configuration** (Gitea connection, webhook secret, admin password, review engine, Feishu, memory settings, etc.) is managed through the **Admin Dashboard Web UI** at `http://your-server:5174`. On first boot, all settings are seeded with secure defaults automatically.
 
 See [Configuration Reference](#configuration-reference) for all options.
 
@@ -83,14 +86,14 @@ bun run start  # Production mode
 
 **Option 1: Admin Dashboard (Recommended)**
 
-1. Access `http://your-server:3000`
+1. Access `http://your-server:5174`
 2. Log in with the admin password (default: `password` — change it in the dashboard)
 3. Click "Enable" on repositories to auto-configure webhooks
 
 **Option 2: Manual Configuration**
 
 In Gitea repository settings, add a webhook:
-- **URL**: `http://your-server:3000/webhook/gitea`
+- **URL**: `http://your-server:5174/webhook/gitea`
 - **Content Type**: `application/json`
 - **Secret**: Same as the Webhook Secret configured in the dashboard
 - **Events**: "Pull Request" and "Status"
@@ -187,7 +190,7 @@ Agent review execution model (current):
 
 ```bash
 docker build -t gitea-assistant .
-docker run -d -p 3000:3000 -v ./data:/app/data -e PORT=3000 gitea-assistant
+docker run -d -p 5174:5174 -v ./data:/app/data -e PORT=5174 gitea-assistant
 ```
 
 ### Docker Compose

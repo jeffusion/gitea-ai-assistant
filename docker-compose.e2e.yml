@@ -46,19 +46,11 @@ services:
       - NODE_ENV=production
       - GITEA_API_URL=http://gitea:3000/api/v1
       - GITEA_ACCESS_TOKEN=${E2E_GITEA_TOKEN:-placeholder}
-      - PORT=3000
+      - PORT=5174
     ports:
-      - "3334:3000"
+      - "3334:5174"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 5s
-    ports:
-      - "3334:3000"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:5174/api/health"]
       interval: 5s
       timeout: 3s
       retries: 10

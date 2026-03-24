@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/name: gitea-assistant
     app.kubernetes.io/part-of: gitea-assistant
 data:
-  PORT: "3000"
+  PORT: "5174"
   # All settings (Gitea connection, webhook secret, admin password, review engine,
   # Feishu, memory, etc.) are managed through the Admin Dashboard Web UI.
   # They are auto-seeded with secure defaults on first boot.
@@ -38,7 +38,7 @@ spec:
           image: ghcr.io/jeffusion/gitea-ai-assistant:latest
           ports:
             - name: http
-              containerPort: 3000
+              containerPort: 5174
               protocol: TCP
           envFrom:
             - configMapRef:
@@ -92,6 +92,6 @@ spec:
     app.kubernetes.io/name: gitea-assistant
   ports:
     - name: http
-      port: 3000
+      port: 5174
       targetPort: http
       protocol: TCP

@@ -823,7 +823,7 @@ Day 6.5:  旧代码清理完毕，文档更新，Ready for review
 # .env.example（仅保留启动参数）
 
 # 应用启动参数（不可通过 UI 设置）
-PORT=3000
+PORT=5174
 WEBHOOK_SECRET=your_webhook_secret
 DATABASE_PATH=./data/assistant.db    # SQLite 文件路径
 

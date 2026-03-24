@@ -11,6 +11,6 @@ RUN bun install --no-frozen-lockfile
 COPY src ./src
 COPY tsconfig.json .
 
-EXPOSE 3000
+EXPOSE 5174
 
 CMD ["bun", "run", "start"]
