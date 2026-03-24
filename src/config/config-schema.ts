@@ -7,7 +7,7 @@
 // Types
 // ---------------------------------------------------------------------------
 
-export type ConfigGroup = 'gitea' | 'feishu' | 'security' | 'review' | 'memory';
+export type ConfigGroup = 'gitea' | 'notification' | 'security' | 'review' | 'memory';
 
 export type ConfigFieldType = 'string' | 'number' | 'boolean' | 'url' | 'text' | 'enum';
 
@@ -43,9 +43,9 @@ export const CONFIG_GROUPS: ConfigGroupMeta[] = [
     icon: 'link',
   },
   {
-    key: 'feishu',
-    label: '飞书通知',
-    description: '飞书 Webhook 通知配置',
+    key: 'notification',
+    label: '通知服务',
+    description: '飞书、企业微信等通知渠道配置',
     icon: 'bell',
   },
   {
@@ -110,22 +110,48 @@ export const CONFIG_FIELDS: ConfigFieldMeta[] = [
     sensitive: false,
   },
 
-  // ── 飞书 ────────────────────────────────────────────────────────────────
+  {
+    envKey: 'FEISHU_ENABLED',
+    group: 'notification',
+    label: '启用飞书通知',
+    description: '是否启用飞书通知',
+    type: 'boolean',
+    sensitive: false,
+    defaultValue: true,
+  },
   {
     envKey: 'FEISHU_WEBHOOK_URL',
-    group: 'feishu',
-    label: 'Webhook 地址',
+    group: 'notification',
+    label: '飞书 Webhook 地址',
     description: '飞书机器人 Webhook URL',
     type: 'url',
     sensitive: false,
   },
   {
     envKey: 'FEISHU_WEBHOOK_SECRET',
-    group: 'feishu',
-    label: 'Webhook 签名密钥',
+    group: 'notification',
+    label: '飞书 Webhook 密钥',
     description: '飞书 Webhook 签名密钥（可选）',
     type: 'string',
     sensitive: true,
+  },
+
+  {
+    envKey: 'WECOM_ENABLED',
+    group: 'notification',
+    label: '启用企业微信通知',
+    description: '是否启用企业微信通知',
+    type: 'boolean',
+    sensitive: false,
+    defaultValue: false,
+  },
+  {
+    envKey: 'WECOM_WEBHOOK_URL',
+    group: 'notification',
+    label: '企业微信 Webhook 地址',
+    description: '企业微信机器人 Webhook URL',
+    type: 'url',
+    sensitive: false,
   },
 
   {

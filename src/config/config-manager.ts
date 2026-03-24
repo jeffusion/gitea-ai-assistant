@@ -11,9 +11,16 @@ export interface AppConfig {
     apiUrl: string;
     accessToken: string;
   };
-  feishu: {
-    webhookUrl: string | undefined;
-    webhookSecret: string | undefined;
+  notification: {
+    feishu: {
+      enabled: boolean;
+      webhookUrl: string | undefined;
+      webhookSecret: string | undefined;
+    };
+    wecom: {
+      enabled: boolean;
+      webhookUrl: string | undefined;
+    };
   };
   app: {
     port: number;
@@ -46,13 +53,11 @@ export interface AppConfig {
     tokenBudgetSmall: number;
     tokenBudgetMedium: number;
     tokenBudgetLarge: number;
-    // Codex engine
     codexApiUrl: string;
     codexApiKey: string | undefined;
     codexModel: string;
     codexTimeoutMs: number;
     codexReviewPrompt: string | undefined;
-    // Memory (shared)
     qdrantUrl: string | undefined;
     enableMemory: boolean;
     fewShotExamplesCount: number;
@@ -137,9 +142,16 @@ class ConfigManager {
         apiUrl: values.GITEA_API_URL ?? 'http://localhost:5174/api/v1',
         accessToken: values.GITEA_ACCESS_TOKEN ?? 'test_token',
       },
-      feishu: {
-        webhookUrl: values.FEISHU_WEBHOOK_URL,
-        webhookSecret: values.FEISHU_WEBHOOK_SECRET,
+      notification: {
+        feishu: {
+          enabled: toBoolean('FEISHU_ENABLED', true),
+          webhookUrl: values.FEISHU_WEBHOOK_URL,
+          webhookSecret: values.FEISHU_WEBHOOK_SECRET,
+        },
+        wecom: {
+          enabled: toBoolean('WECOM_ENABLED', false),
+          webhookUrl: values.WECOM_WEBHOOK_URL,
+        },
       },
       app: {
         port,
@@ -178,13 +190,11 @@ class ConfigManager {
         tokenBudgetSmall: toNumber('REVIEW_TOKEN_BUDGET_SMALL', 12000),
         tokenBudgetMedium: toNumber('REVIEW_TOKEN_BUDGET_MEDIUM', 45000),
         tokenBudgetLarge: toNumber('REVIEW_TOKEN_BUDGET_LARGE', 120000),
-        // Codex engine
         codexApiUrl: values.CODEX_API_URL ?? 'https://api.openai.com/v1',
         codexApiKey: values.CODEX_API_KEY,
         codexModel: values.CODEX_MODEL ?? 'o3',
         codexTimeoutMs: toNumber('CODEX_TIMEOUT_MS', 300000),
         codexReviewPrompt: values.CODEX_REVIEW_PROMPT,
-        // Memory
         qdrantUrl: values.QDRANT_URL,
         enableMemory: toBoolean('ENABLE_MEMORY', false),
         fewShotExamplesCount: toNumber('FEW_SHOT_EXAMPLES_COUNT', 10),
