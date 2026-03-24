@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { LogOut, Bot, FolderGit2, Sliders, Menu, X, PanelLeftClose, PanelLeftOpen, FileSearch, Sun, Moon, Palette } from 'lucide-react';
+import { LogOut, Bot, FolderGit2, Sliders, Bell, Menu, X, PanelLeftClose, PanelLeftOpen, FileSearch, Sun, Moon, Palette } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { isColorPalette, useColorPalette } from '@/hooks/useColorPalette';
@@ -9,6 +9,7 @@ import { isColorPalette, useColorPalette } from '@/hooks/useColorPalette';
 const navItems = [
   { path: '/repos', label: '仓库管理', icon: FolderGit2 },
   { path: '/config', label: '系统配置', icon: Sliders },
+  { path: '/notifications', label: '通知管理', icon: Bell },
   { path: '/review-config', label: '审查配置', icon: FileSearch },
 ] as const;
 
@@ -31,6 +32,7 @@ export default function DashboardPage() {
 
   const currentTitle = navItems.find(item => location.pathname.startsWith(item.path))?.label || 'Dashboard';
   const isConfigPage = location.pathname.startsWith('/config');
+  const isNotificationPage = location.pathname.startsWith('/notifications');
   const isReviewConfigPage = location.pathname.startsWith('/review-config');
 
   return (
@@ -205,7 +207,7 @@ export default function DashboardPage() {
         <main className="flex-1 overflow-y-auto relative">
           <div className="absolute inset-0 bg-background/95 backdrop-blur-[1px] -z-10"></div>
           <div className="absolute inset-0 bg-grid-pattern opacity-[0.025] -z-10"></div>
-          <div className={`w-full animate-in fade-in slide-in-from-bottom-4 duration-500 ${(isConfigPage || isReviewConfigPage) ? '' : 'p-4 md:p-6 lg:p-8'}`}>
+          <div className={`w-full animate-in fade-in slide-in-from-bottom-4 duration-500 ${(isConfigPage || isNotificationPage || isReviewConfigPage) ? '' : 'p-4 md:p-6 lg:p-8'}`}>
             <Outlet />
           </div>
         </main>

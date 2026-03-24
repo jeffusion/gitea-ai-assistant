@@ -31,18 +31,38 @@ const configResponse = {
       ],
     },
     {
-      key: 'feishu',
-      label: '飞书通知',
-      description: '配置飞书 webhook 通知。',
+      key: 'notification',
+      label: '通知服务',
+      description: '配置飞书与企业微信通知。',
       icon: 'bell',
       fields: [
         {
+          envKey: 'FEISHU_ENABLED',
+          label: '启用飞书通知',
+          description: '是否启用飞书通知',
+          type: 'boolean',
+          sensitive: false,
+          value: true,
+          hasValue: true,
+          source: 'db',
+        },
+        {
           envKey: 'FEISHU_WEBHOOK_URL',
           label: '飞书 Webhook URL',
-          description: '用于发送审查通知',
+          description: '用于发送飞书通知',
           type: 'url',
           sensitive: false,
           value: 'https://open.feishu.cn/mock/webhook',
+          hasValue: true,
+          source: 'db',
+        },
+        {
+          envKey: 'WECOM_ENABLED',
+          label: '启用企业微信通知',
+          description: '是否启用企业微信通知',
+          type: 'boolean',
+          sensitive: false,
+          value: false,
           hasValue: true,
           source: 'db',
         },
@@ -237,6 +257,23 @@ const modelSuggestions = {
   gemini: ['gemini-2.5-pro'],
 };
 
+const notificationTestHistory = [
+  {
+    id: 'test-1',
+    provider: 'feishu',
+    status: 'success',
+    message: 'feishu 测试通知已发送',
+    timestamp: '2026-03-24T09:00:00.000Z',
+  },
+  {
+    id: 'test-2',
+    provider: 'wecom',
+    status: 'error',
+    message: 'wecom 未启用或未配置',
+    timestamp: '2026-03-24T08:50:00.000Z',
+  },
+];
+
 const json = async (route: Route, body: unknown, status = 200) => {
   await route.fulfill({
     status,
@@ -277,6 +314,14 @@ export async function installVisualApiMocks(page: Page) {
 
     if (method === 'POST' && path.endsWith('/admin/api/config/reset')) {
       return route.fulfill({ status: 204, body: '' });
+    }
+
+    if (method === 'POST' && path.endsWith('/admin/api/config/notification/test')) {
+      return json(route, { success: true, message: 'test sent' });
+    }
+
+    if (method === 'GET' && path.endsWith('/admin/api/config/notification/test/history')) {
+      return json(route, { data: notificationTestHistory });
     }
 
     if (method === 'GET' && path.endsWith('/admin/api/llm/model-suggestions')) {

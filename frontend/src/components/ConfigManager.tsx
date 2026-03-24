@@ -9,7 +9,7 @@ import { Save, AlertCircle, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
 /** Groups shown on the system config page (excludes review & memory — moved to ReviewConfigPage). */
-const SYSTEM_GROUPS = new Set(['gitea', 'feishu', 'security']);
+const SYSTEM_GROUPS = new Set(['gitea', 'security']);
 
 export function ConfigManager() {
   const queryClient = useQueryClient();

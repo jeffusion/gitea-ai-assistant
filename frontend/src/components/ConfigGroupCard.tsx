@@ -25,6 +25,7 @@ interface ConfigGroupCardProps {
   onFieldChange: (envKey: string, value: any) => void;
   onReset: (keys: string[]) => void;
   isResetting: boolean;
+  headerActions?: React.ReactNode;
   /** Optional custom renderer for individual fields. Return `undefined` to use default ConfigFieldInput. */
   renderField?: (field: ConfigFieldDto, value: any, onChange: (val: any) => void) => React.ReactNode | undefined;
 }
@@ -35,6 +36,7 @@ export function ConfigGroupCard({
   onFieldChange,
   onReset,
   isResetting,
+  headerActions,
   renderField,
 }: ConfigGroupCardProps) {
   const hasOverride = group.fields.some((f) => f.source === 'db');
@@ -69,17 +71,22 @@ export function ConfigGroupCard({
             </CardDescription>
           </div>
         </div>
-        {hasOverride && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleReset}
-            disabled={isResetting}
-            className="theme-interactive-elevate border-danger/30 text-danger hover:bg-danger/10 hover:text-danger hover:border-danger/50 transition-colors"
-          >
-            <RotateCcw className="w-4 h-4 mr-2" />
-            重置组配置
-          </Button>
+        {(headerActions || hasOverride) && (
+          <div className="flex items-center gap-2">
+            {headerActions}
+            {hasOverride && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReset}
+                disabled={isResetting}
+                className="theme-interactive-elevate border-danger/30 text-danger hover:bg-danger/10 hover:text-danger hover:border-danger/50 transition-colors"
+              >
+                <RotateCcw className="w-4 h-4 mr-2" />
+                重置组配置
+              </Button>
+            )}
+          </div>
         )}
       </CardHeader>
       <CardContent className="theme-card-content divide-y divide-border/50">

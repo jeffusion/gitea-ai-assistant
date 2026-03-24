@@ -4,6 +4,7 @@ import { LoginPage } from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import { RepositoryManager } from './components/RepositoryManager';
 import { ConfigManager } from './components/ConfigManager';
+import { NotificationConfigPage } from './components/NotificationConfigPage';
 import { ReviewConfigPage } from './components/ReviewConfigPage';
 import { Toaster } from "@/components/ui/sonner"
 import { useTheme } from 'next-themes'
@@ -51,6 +52,7 @@ function AppContent() {
           <Route index element={<Navigate to="/repos" replace />} />
           <Route path="repos" element={<RepositoryManager />} />
           <Route path="config" element={<ConfigManager />} />
+          <Route path="notifications" element={<NotificationConfigPage />} />
           <Route path="review-config" element={<ReviewConfigPage />} />
           <Route path="*" element={<Navigate to="/repos" replace />} />
         </Route>
