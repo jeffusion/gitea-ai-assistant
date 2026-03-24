@@ -1,3 +1,16 @@
+# [1.2.0](https://github.com/jeffusion/gitea-ai-assistant/compare/v1.1.1...v1.2.0) (2026-03-24)
+
+
+### Bug Fixes
+
+* **lint:** apply biome cleanup for notification modules ([7aec1e4](https://github.com/jeffusion/gitea-ai-assistant/commit/7aec1e452a04d3dbf935837e9b8e96107466c487))
+
+
+### Features
+
+* **frontend:** add dedicated notification management menu and test panel ([9964614](https://github.com/jeffusion/gitea-ai-assistant/commit/9964614b5ebb7972e2b35f3fc673f626372f6552))
+* **notification:** replace feishu-only flow with pluggable providers ([e40dadd](https://github.com/jeffusion/gitea-ai-assistant/commit/e40daddf0dd168c19251cdb84a3b6b136814f553))
+
 ## [1.1.1](https://github.com/jeffusion/gitea-ai-assistant/compare/v1.1.0...v1.1.1) (2026-03-24)
 
 
