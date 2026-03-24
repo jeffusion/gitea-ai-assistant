@@ -38,6 +38,8 @@
   "main": "./dist/index.js",
   "typings": "./dist/index.d.ts",
   "scripts": {
+    "bootstrap": "bun install && (cd frontend && bun install)",
+    "postinstall": "if [ -d frontend ]; then (cd frontend && bun install); fi",
     "dev": "concurrently -k -p [{name}] -n backend,frontend -c blue,green \"bun run dev:backend\" \"bun run dev:frontend\"",
     "dev:backend": "bun run --watch src/index.ts",
     "dev:frontend": "cd frontend && bun run dev",
