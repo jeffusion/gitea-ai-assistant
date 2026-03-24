@@ -6,9 +6,9 @@ import { codexEngine } from '../review/codex/codex-engine';
 import { LocalRepoManager } from '../review/context/local-repo-manager';
 import { SandboxExec } from '../review/context/sandbox-exec';
 import { reviewEngine } from '../review/engine';
+import { PullRequestDetails, giteaService } from '../services/gitea';
 import { getNotificationManager } from '../services/notification-manager';
 import type { NotificationContext } from '../services/notification/types';
-import { PullRequestDetails, giteaService } from '../services/gitea';
 import { logger } from '../utils/logger';
 
 // Gitea webhook事件类型
