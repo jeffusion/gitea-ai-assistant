@@ -6,7 +6,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repository
@@ -15,7 +15,7 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.10
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -34,6 +34,12 @@ jobs:
 
       - name: Install Playwright Chromium
         run: cd frontend && bunx playwright install --with-deps chromium
+
+      - name: Print visual stack versions
+        run: cd frontend && bun --version && bunx playwright --version && bunx playwright install --list
+
+      - name: Install deterministic CJK fonts for visual snapshots
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk fonts-noto-color-emoji fonts-liberation
 
       - name: Run visual regression
         run: bun run ui:visual
