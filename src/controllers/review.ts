@@ -6,7 +6,8 @@ import { codexEngine } from '../review/codex/codex-engine';
 import { LocalRepoManager } from '../review/context/local-repo-manager';
 import { SandboxExec } from '../review/context/sandbox-exec';
 import { reviewEngine } from '../review/engine';
-import { feishuService } from '../services/feishu';
+import { getNotificationManager } from '../services/notification-manager';
+import type { NotificationContext } from '../services/notification/types';
 import { PullRequestDetails, giteaService } from '../services/gitea';
 import { logger } from '../utils/logger';
 
@@ -117,42 +118,47 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
 
   logger.info('收到PR事件', { owner, repo: repoName, prNumber, action: body.action });
 
-  // 处理PR审阅者通知（仅在飞书启用时）
-  if (feishuService.isEnabled()) {
-    try {
-      // 获取PR的审阅者列表
-      const reviewerUsernames = map(
-        pullRequest.requested_reviewers,
-        (reviewer) => reviewer.full_name || reviewer.login
-      );
+  // 处理PR审阅者通知（支持多平台）
+  try {
+    const reviewerUsernames = map(
+      pullRequest.requested_reviewers,
+      (reviewer) => reviewer.full_name || reviewer.login
+    );
 
-      // 记录审阅者信息
-      if (reviewerUsernames.length > 0) {
-        logger.info('PR有指定审阅者', {
-          prNumber,
-          reviewers: reviewerUsernames.join(','),
-        });
-      }
-
-      // 处理PR创建事件，如果有审阅者，则通知
-      if (body.action === 'opened' && reviewerUsernames.length > 0) {
-        await feishuService.sendPrCreatedNotification(prTitle, prUrl, reviewerUsernames);
-      }
-
-      // 处理审阅者指派事件
-      if (body.action === 'review_requested' && body.requested_reviewer) {
-        const newReviewerUsername =
-          body.requested_reviewer.full_name || body.requested_reviewer.login;
-        if (newReviewerUsername) {
-          await feishuService.sendPrReviewerAssignedNotification(prTitle, prUrl, [
-            newReviewerUsername,
-          ]);
-        }
-      }
-    } catch (error) {
-      logger.error('处理PR审阅者通知失败:', error);
-      // 继续执行代码审查流程，不因通知失败而中断
+    if (reviewerUsernames.length > 0) {
+      logger.info('PR有指定审阅者', {
+        prNumber,
+        reviewers: reviewerUsernames.join(','),
+      });
     }
+
+    const notificationManager = getNotificationManager();
+    const context: NotificationContext = {
+      prTitle,
+      prUrl,
+      prNumber,
+      reviewers: reviewerUsernames,
+      repository: repoName,
+      owner,
+      actor: body.sender?.login,
+    };
+
+    // 处理PR创建事件
+    if (body.action === 'opened' && reviewerUsernames.length > 0) {
+      await notificationManager.notifyPrCreated(context);
+    }
+
+    // 处理审阅者指派事件
+    if (body.action === 'review_requested' && body.requested_reviewer) {
+      const newReviewerUsername =
+        body.requested_reviewer.full_name || body.requested_reviewer.login;
+      if (newReviewerUsername) {
+        context.assignees = [newReviewerUsername];
+        await notificationManager.notifyPrReviewerAssigned(context);
+      }
+    }
+  } catch (error) {
+    logger.error('处理PR审阅者通知失败:', error);
   }
 
   // Fork PR策略：始终clone base repo（保证有baseSha），headCloneUrl作为额外remote（保证有headSha）
@@ -365,26 +371,28 @@ async function handleIssueEvent(c: Context, body: any): Promise<Response> {
     assigneeUsernames: assigneeUsernames.join(','),
   });
 
-  if (!feishuService.isEnabled()) {
-    return c.json({ status: 'ignored', message: '飞书通知未启用，工单事件已跳过' }, 200);
-  }
-
   try {
-    // 处理工单创建事件
+    const notificationManager = getNotificationManager();
+    const context: NotificationContext = {
+      issueTitle,
+      issueUrl,
+      issueNumber: issue.number,
+      creator: creatorUsername,
+      assignees: assigneeUsernames,
+      repository: repository.name,
+      owner: repository.owner?.login,
+      actor: body.sender?.login,
+    };
+
     if (action === 'opened' && assigneeUsernames.length > 0) {
-      await feishuService.sendIssueCreatedNotification(issueTitle, issueUrl, assigneeUsernames);
-    }
-    // 处理工单关闭事件
-    else if (action === 'closed' && creatorUsername) {
-      await feishuService.sendIssueClosedNotification(issueTitle, issueUrl, creatorUsername);
-    }
-    // 处理工单指派事件
-    else if (action === 'assigned' && assigneeUsernames.length > 0) {
-      await feishuService.sendIssueAssignedNotification(issueTitle, issueUrl, assigneeUsernames);
+      await notificationManager.notifyIssueCreated(context);
+    } else if (action === 'closed') {
+      await notificationManager.notifyIssueClosed(context);
+    } else if (action === 'assigned' && assigneeUsernames.length > 0) {
+      await notificationManager.notifyIssueAssigned(context);
     }
   } catch (error) {
-    logger.error('处理工单事件失败:', error);
-    return c.json({ error: '处理工单事件失败' }, 500);
+    logger.error('新通知系统处理工单事件失败:', error);
   }
 
   return c.json({ status: 'success', message: '工单事件处理完成' }, 200);

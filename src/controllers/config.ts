@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { configManager } from '../config/config-manager';
 import { CONFIG_FIELDS, CONFIG_GROUPS, type ConfigFieldMeta } from '../config/config-schema';
+import { getNotificationManager } from '../services/notification-manager';
+import type { NotificationProvider } from '../services/notification/types';
 import { logger } from '../utils/logger';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -19,6 +21,36 @@ const INTEGER_FIELDS = new Set([
 
 /** Fast lookup from envKey → field metadata. */
 const FIELDS_MAP = new Map<string, ConfigFieldMeta>(CONFIG_FIELDS.map((f) => [f.envKey, f]));
+const TESTABLE_PROVIDERS = new Set<NotificationProvider>(['feishu', 'wecom']);
+const NOTIFICATION_TEST_HISTORY_LIMIT = 30;
+
+type NotificationTestRecord = {
+  id: string;
+  provider: string;
+  status: 'success' | 'error';
+  message: string;
+  timestamp: string;
+};
+
+const notificationTestHistory: NotificationTestRecord[] = [];
+
+function appendNotificationTestRecord(
+  provider: string,
+  status: 'success' | 'error',
+  message: string
+): void {
+  notificationTestHistory.unshift({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    provider,
+    status,
+    message,
+    timestamp: new Date().toISOString(),
+  });
+
+  if (notificationTestHistory.length > NOTIFICATION_TEST_HISTORY_LIMIT) {
+    notificationTestHistory.splice(NOTIFICATION_TEST_HISTORY_LIMIT);
+  }
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -202,4 +234,57 @@ configRouter.post('/reset', async (c) => {
     logger.error('重置配置失败:', error);
     return c.json({ message: '保存配置失败', error: errMsg }, 500);
   }
+});
+
+configRouter.post('/notification/test', async (c) => {
+  try {
+    let body: Record<string, unknown>;
+    try {
+      const parsed = await c.req.json();
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        appendNotificationTestRecord('unknown', 'error', '请求体必须是 JSON 对象');
+        return c.json({ message: '发送测试通知失败', error: '请求体必须是 JSON 对象' }, 400);
+      }
+      body = parsed;
+    } catch {
+      appendNotificationTestRecord('unknown', 'error', '请求体必须是 JSON 对象');
+      return c.json({ message: '发送测试通知失败', error: '请求体必须是 JSON 对象' }, 400);
+    }
+
+    const provider = typeof body.provider === 'string' ? body.provider : '';
+
+    if (!TESTABLE_PROVIDERS.has(provider as NotificationProvider)) {
+      appendNotificationTestRecord(
+        provider || 'unknown',
+        'error',
+        'provider 必须是 feishu 或 wecom'
+      );
+      return c.json({ message: '发送测试通知失败', error: 'provider 必须是 feishu 或 wecom' }, 400);
+    }
+
+    const notificationManager = getNotificationManager();
+    const providerName = provider as NotificationProvider;
+
+    if (!notificationManager.hasService(providerName)) {
+      appendNotificationTestRecord(providerName, 'error', `${providerName} 未启用或未配置`);
+      return c.json({ message: '发送测试通知失败', error: `${providerName} 未启用或未配置` }, 400);
+    }
+
+    await notificationManager.sendTestMessage(providerName);
+    appendNotificationTestRecord(providerName, 'success', `${providerName} 测试通知已发送`);
+
+    return c.json({
+      success: true,
+      message: `${providerName} 测试通知已发送`,
+    });
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    appendNotificationTestRecord('unknown', 'error', errMsg);
+    logger.error('发送测试通知失败:', error);
+    return c.json({ message: '发送测试通知失败', error: errMsg }, 500);
+  }
+});
+
+configRouter.get('/notification/test/history', (c) => {
+  return c.json({ data: notificationTestHistory });
 });

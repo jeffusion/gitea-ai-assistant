@@ -82,8 +82,9 @@ describe('ConfigManager (DB backend)', () => {
 
     test('optional fields with no default return undefined', () => {
       const cfg = configManager.getCurrent();
-      expect(cfg.feishu.webhookUrl).toBeUndefined();
-      expect(cfg.feishu.webhookSecret).toBeUndefined();
+      expect(cfg.notification.feishu.webhookUrl).toBeUndefined();
+      expect(cfg.notification.feishu.webhookSecret).toBeUndefined();
+      expect(cfg.notification.wecom.webhookUrl).toBeUndefined();
       expect(cfg.admin.giteaAdminToken).toBeUndefined();
       expect(cfg.review.qdrantUrl).toBeUndefined();
     });
