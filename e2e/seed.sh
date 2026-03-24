@@ -162,7 +162,7 @@ curl -sf -X POST "${GITEA_URL}/api/v1/repos/${ADMIN_USER}/${REPO_NAME}/hooks" \
     \"active\": true,
     \"events\": [\"pull_request\"],
     \"config\": {
-      \"url\": \"http://assistant:3000/webhook/gitea\",
+      \"url\": \"http://assistant:5174/webhook/gitea\",
       \"content_type\": \"json\",
       \"secret\": \"${WEBHOOK_SECRET}\"
     }

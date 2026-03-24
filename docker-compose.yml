@@ -8,7 +8,7 @@ services:
 
     container_name: gitea-assistant
     ports:
-      - "3000:3000"
+      - "5174:5174"
     volumes:
       - assistant_data:/app/data
     env_file:
@@ -19,7 +19,7 @@ services:
     restart: unless-stopped
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:5174/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
