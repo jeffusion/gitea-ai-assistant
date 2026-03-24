@@ -14,8 +14,16 @@ const STABILIZE_STYLE = `
 
 export async function stabilizeVisualState(page: Page) {
   await page.addStyleTag({ content: STABILIZE_STYLE });
+  await page.waitForLoadState('networkidle');
   await page.evaluate(() => {
     window.scrollTo(0, 0);
+  });
+  await page.evaluate(async () => {
+    if (document.fonts) {
+      await document.fonts.ready;
+    }
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   });
 }
 

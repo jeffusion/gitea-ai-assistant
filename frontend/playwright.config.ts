@@ -1,4 +1,4 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig } from '@playwright/test';
 
 const port = Number(process.env.PW_PORT ?? 4173);
 const baseURL = process.env.PW_BASE_URL ?? `http://127.0.0.1:${port}`;
@@ -13,7 +13,7 @@ export default defineConfig({
       animations: 'disabled',
       caret: 'hide',
       scale: 'css',
-      maxDiffPixels: 30,
+      maxDiffPixelRatio: 0.012,
       stylePath: './tests/visual/fixtures/screenshot.css',
     },
   },
@@ -23,11 +23,24 @@ export default defineConfig({
   ],
   fullyParallel: false,
   use: {
-    ...devices['Desktop Chrome'],
     baseURL,
+    deviceScaleFactor: 1,
+    hasTouch: false,
+    isMobile: false,
     locale: 'zh-CN',
     timezoneId: 'Asia/Shanghai',
     viewport: { width: 1440, height: 900 },
+    launchOptions: {
+      args: [
+        '--disable-gpu',
+        '--disable-dev-shm-usage',
+        '--disable-lcd-text',
+        '--disable-font-subpixel-positioning',
+        '--font-render-hinting=none',
+        '--force-color-profile=srgb',
+        '--hide-scrollbars',
+      ],
+    },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
