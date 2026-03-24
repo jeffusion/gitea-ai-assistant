@@ -28,6 +28,7 @@
     "@types/lodash-es": "^4.17.12",
     "@types/node": "^22.13.10",
     "concurrently": "^9.2.1",
+    "husky": "^9.1.7",
     "semantic-release": "^24.2.9",
     "typescript": "^5.8.2"
   },
@@ -47,7 +48,8 @@
     "start": "bun run src/index.ts",
     "start:prod": "bun run dist/index.js",
     "lint": "biome check src/",
-    "test": "bun test"
+    "test": "bun test",
+    "prepare": "husky"
   },
   "keywords": [
     "code-review",
