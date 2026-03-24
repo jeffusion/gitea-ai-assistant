@@ -1,5 +1,5 @@
-import type { LLMMessage } from '../../llm/types';
 import config from '../../config';
+import type { LLMMessage } from '../../llm/types';
 import { logger } from '../../utils/logger';
 import { VectorMemoryStore } from '../memory/vector-store';
 import { FileReviewStore } from '../store/file-review-store';

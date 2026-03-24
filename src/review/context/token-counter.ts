@@ -243,7 +243,11 @@ export class TokenCounter {
       });
     }, CATALOG_TTL_MS);
     // Don't prevent process exit
-    if (this.refreshTimer && typeof this.refreshTimer === 'object' && 'unref' in this.refreshTimer) {
+    if (
+      this.refreshTimer &&
+      typeof this.refreshTimer === 'object' &&
+      'unref' in this.refreshTimer
+    ) {
       (this.refreshTimer as NodeJS.Timeout).unref();
     }
   }

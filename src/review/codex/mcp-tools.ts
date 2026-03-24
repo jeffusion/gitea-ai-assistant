@@ -166,14 +166,21 @@ export class McpToolExecutor {
     if (!prNumber) {
       prNumber = ctx.relatedPrNumber;
       if (!prNumber && ctx.commitSha) {
-        const related = await giteaService.getRelatedPullRequest(ctx.owner, ctx.repo, ctx.commitSha);
+        const related = await giteaService.getRelatedPullRequest(
+          ctx.owner,
+          ctx.repo,
+          ctx.commitSha
+        );
         prNumber = related?.number;
       }
     }
 
     if (prNumber) {
       await giteaService.addPullRequestComment(ctx.owner, ctx.repo, prNumber, body);
-      logger.info('Codex MCP: \u5df2\u53d1\u5e03 PR \u5ba1\u67e5\u603b\u7ed3', { runId: ctx.runId, prNumber });
+      logger.info('Codex MCP: \u5df2\u53d1\u5e03 PR \u5ba1\u67e5\u603b\u7ed3', {
+        runId: ctx.runId,
+        prNumber,
+      });
     } else if (ctx.commitSha) {
       await giteaService.addCommitComment(ctx.owner, ctx.repo, ctx.commitSha, body);
       logger.info('Codex MCP: \u5df2\u53d1\u5e03 Commit \u5ba1\u67e5\u603b\u7ed3', {
@@ -182,7 +189,12 @@ export class McpToolExecutor {
       });
     } else {
       return {
-        content: [{ type: 'text', text: '\u65e0\u6cd5\u53d1\u5e03\uff1a\u7f3a\u5c11 PR number \u6216 commit SHA' }],
+        content: [
+          {
+            type: 'text',
+            text: '\u65e0\u6cd5\u53d1\u5e03\uff1a\u7f3a\u5c11 PR number \u6216 commit SHA',
+          },
+        ],
         isError: true,
       };
     }

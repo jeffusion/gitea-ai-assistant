@@ -218,12 +218,12 @@ export class CodexRunner {
       `name = "OpenAI"`,
       `base_url = "${apiUrl}"`,
       `env_key = "OPENAI_API_KEY"`,
-      `requires_openai_auth = false`,
+      'requires_openai_auth = false',
       '',
       '[mcp_servers.gitea-review]',
       `url = "http://127.0.0.1:${port}/mcp/gitea-review"`,
       `http_headers = { "X-Review-Run-Id" = "${runId}" }`,
-      `required = true`,
+      'required = true',
       '',
     ];
 
@@ -276,9 +276,7 @@ export class CodexRunner {
       sections.push(`## 项目级审查要求\n\n${projectPrompt}`);
     }
 
-    sections.push(
-      '当要求冲突时，优先级为：项目级审查要求 > 全局审查要求 > 审查原则。'
-    );
+    sections.push('当要求冲突时，优先级为：项目级审查要求 > 全局审查要求 > 审查原则。');
 
     const contextLines: string[] = ['## 当前审查目标'];
 
@@ -288,7 +286,7 @@ export class CodexRunner {
       if (run.baseSha) contextLines.push(`- Base SHA：${run.baseSha}`);
       if (run.headSha) contextLines.push(`- Head SHA：${run.headSha}`);
       if (lastReviewedHead) {
-        contextLines.push(`- 增量审查模式：仅审查上次审查后的新变更`);
+        contextLines.push('- 增量审查模式：仅审查上次审查后的新变更');
         contextLines.push(`- 上次审查 SHA：${lastReviewedHead}`);
         contextLines.push(`- 请使用 \`git diff ${lastReviewedHead}..${run.headSha}\` 获取增量差异`);
       } else {
@@ -314,7 +312,11 @@ export class CodexRunner {
   /**
    * 执行 codex exec 子进程（自定义 prompt + MCP 工具）
    */
-  private async runCodexProcess(workspacePath: string, run: ReviewRun, lastReviewedHead?: string): Promise<void> {
+  private async runCodexProcess(
+    workspacePath: string,
+    run: ReviewRun,
+    lastReviewedHead?: string
+  ): Promise<void> {
     const timeoutMs = config.review.codexTimeoutMs;
     const codexHome = path.join(workspacePath, '.codex');
 

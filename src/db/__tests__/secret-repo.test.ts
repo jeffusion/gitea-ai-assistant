@@ -37,7 +37,9 @@ describe('secret-repo', () => {
     mkdirSync(tmpDir, { recursive: true });
     dbPath = join(tmpDir, 'test.db');
     process.env.DATABASE_PATH = dbPath;
-    process.env.ENCRYPTION_KEY = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('hex');
+    process.env.ENCRYPTION_KEY = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString(
+      'hex'
+    );
 
     initMasterKey();
     initDatabase();
@@ -49,12 +51,12 @@ describe('secret-repo', () => {
   afterEach(() => {
     closeDatabase();
     if (savedDbPath === undefined) {
-      delete process.env.DATABASE_PATH;
+      Reflect.deleteProperty(process.env, 'DATABASE_PATH');
     } else {
       process.env.DATABASE_PATH = savedDbPath;
     }
     if (savedEncryptionKey === undefined) {
-      delete process.env.ENCRYPTION_KEY;
+      Reflect.deleteProperty(process.env, 'ENCRYPTION_KEY');
     } else {
       process.env.ENCRYPTION_KEY = savedEncryptionKey;
     }

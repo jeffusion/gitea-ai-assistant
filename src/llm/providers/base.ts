@@ -32,7 +32,6 @@ export interface LLMProvider {
 
   /** Optional: embedding interface (only for providers that support it). */
   embed?(texts: string[]): Promise<number[][]>;
-
 }
 
 // ---------------------------------------------------------------------------

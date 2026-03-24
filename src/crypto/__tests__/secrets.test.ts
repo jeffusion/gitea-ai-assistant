@@ -29,12 +29,12 @@ describe('secrets — AES-256-GCM encryption', () => {
 
   beforeEach(() => {
     savedEncryptionKey = process.env.ENCRYPTION_KEY;
-    delete process.env.ENCRYPTION_KEY;
+    Reflect.deleteProperty(process.env, 'ENCRYPTION_KEY');
   });
 
   afterEach(() => {
     if (savedEncryptionKey === undefined) {
-      delete process.env.ENCRYPTION_KEY;
+      Reflect.deleteProperty(process.env, 'ENCRYPTION_KEY');
     } else {
       process.env.ENCRYPTION_KEY = savedEncryptionKey;
     }
@@ -53,7 +53,7 @@ describe('secrets — AES-256-GCM encryption', () => {
     });
 
     test('throws if ENCRYPTION_KEY is not set', async () => {
-      delete process.env.ENCRYPTION_KEY;
+      Reflect.deleteProperty(process.env, 'ENCRYPTION_KEY');
 
       const secrets = await importFresh();
       expect(() => secrets.initMasterKey()).toThrow('ENCRYPTION_KEY env var is required');

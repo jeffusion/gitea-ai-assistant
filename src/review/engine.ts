@@ -42,7 +42,10 @@ class ReviewEngine {
   }
 
   /** Fresh DiffExtractor that reads current config values. */
-  private createDiffExtractor(sandboxExec: SandboxExec, localRepoManager: LocalRepoManager): DiffExtractor {
+  private createDiffExtractor(
+    sandboxExec: SandboxExec,
+    localRepoManager: LocalRepoManager
+  ): DiffExtractor {
     return new DiffExtractor(
       sandboxExec,
       localRepoManager,
@@ -66,13 +69,10 @@ class ReviewEngine {
     }
 
     // Configure LLM Gateway resilience from current config
-    llmGateway.updateResilienceConfig(
-      config.review.llmMaxConcurrentCalls,
-      {
-        maxAttempts: config.review.llmRetryMaxAttempts,
-        baseDelayMs: config.review.llmRetryBaseDelayMs,
-      }
-    );
+    llmGateway.updateResilienceConfig(config.review.llmMaxConcurrentCalls, {
+      maxAttempts: config.review.llmRetryMaxAttempts,
+      baseDelayMs: config.review.llmRetryBaseDelayMs,
+    });
 
     // Preload dynamic model catalog from models.dev (non-blocking)
     tokenCounter.refreshCatalog().catch((error) => {
