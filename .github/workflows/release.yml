@@ -40,7 +40,8 @@ jobs:
         run: bun test
 
       - name: Run semantic-release
-        run: bunx semantic-release
+        id: semantic
+        uses: codfish/semantic-release-action@v5
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
@@ -49,26 +50,54 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
+        if: steps.semantic.outputs.new-release-published == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version from package.json
-        id: package-version
+      - name: Derive Docker tags from semantic-release
+        if: steps.semantic.outputs.new-release-published == 'true'
+        id: docker-tags
         run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Detected version: $VERSION"
+          VERSION="${{ steps.semantic.outputs.release-version }}"
+
+          if [ -z "$VERSION" ]; then
+            echo "semantic-release did not provide release-version" >&2
+            exit 1
+          fi
+
+          if [[ "$VERSION" == *"-"* ]]; then
+            TAGS="ghcr.io/${{ github.repository_owner }}/gitea-ai-assistant:${VERSION}"
+          else
+            MAJOR="${VERSION%%.*}"
+            REST="${VERSION#*.}"
+            MINOR="${REST%%.*}"
+
+            TAGS=$(printf '%s\n' \
+              "ghcr.io/${{ github.repository_owner }}/gitea-ai-assistant:latest" \
+              "ghcr.io/${{ github.repository_owner }}/gitea-ai-assistant:${MAJOR}" \
+              "ghcr.io/${{ github.repository_owner }}/gitea-ai-assistant:${MAJOR}.${MINOR}" \
+              "ghcr.io/${{ github.repository_owner }}/gitea-ai-assistant:${VERSION}")
+          fi
+
+          {
+            echo "tags<<EOF"
+            echo "$TAGS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Release version: ${VERSION}"
+          echo "Docker tags to push:"
+          echo "$TAGS"
 
       - name: Build and push Docker image
+        if: steps.semantic.outputs.new-release-published == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/gitea-ai-assistant:latest
-            ghcr.io/${{ github.repository_owner }}/gitea-ai-assistant:${{ steps.package-version.outputs.version }}
+          tags: ${{ steps.docker-tags.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
