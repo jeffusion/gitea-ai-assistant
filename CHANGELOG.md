@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/jeffusion/gitea-ai-assistant/compare/v1.2.0...v1.2.1) (2026-03-24)
+
+
+### Bug Fixes
+
+* **ci:** source Docker tags from semantic-release version ([f84c0ab](https://github.com/jeffusion/gitea-ai-assistant/commit/f84c0ab7770b73032b331c82cf8f87f1e8b281ff))
+
 # [1.2.0](https://github.com/jeffusion/gitea-ai-assistant/compare/v1.1.1...v1.2.0) (2026-03-24)
 
 
