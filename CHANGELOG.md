@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/jeffusion/gitea-ai-assistant/compare/v1.1.0...v1.1.1) (2026-03-24)
+
+
+### Bug Fixes
+
+* **build:** guard husky prepare for production installs ([5aeff75](https://github.com/jeffusion/gitea-ai-assistant/commit/5aeff7585b465fa9479c538b67b99978d12455b1))
+
 # [1.1.0](https://github.com/Jeffusion/gitea-ai-assistant/compare/v1.0.0...v1.1.0) (2026-03-24)
 
 
