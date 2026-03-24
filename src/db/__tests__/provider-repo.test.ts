@@ -32,7 +32,7 @@ describe('provider-repo', () => {
   afterEach(() => {
     closeDatabase();
     if (savedDbPath === undefined) {
-      delete process.env.DATABASE_PATH;
+      Reflect.deleteProperty(process.env, 'DATABASE_PATH');
     } else {
       process.env.DATABASE_PATH = savedDbPath;
     }
@@ -212,7 +212,7 @@ describe('provider-repo', () => {
     });
 
     test('deleting provider does not affect other providers', () => {
-      const p1 = providerRepo.create({ ...sampleInput, name: 'Keep' });
+      providerRepo.create({ ...sampleInput, name: 'Keep' });
       const p2 = providerRepo.create({ ...sampleInput, name: 'Delete' });
 
       providerRepo.delete(p2.id);

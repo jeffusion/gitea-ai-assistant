@@ -50,7 +50,6 @@ class CodexEngine {
       return;
     }
 
-
     await this.store.init();
     const recovered = await this.store.recoverInterruptedRuns();
     if (recovered > 0) {

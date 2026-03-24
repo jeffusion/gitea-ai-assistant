@@ -118,8 +118,8 @@ describe('LLMSemaphore', () => {
     expect(sem.activeCount).toBe(2);
     expect(sem.pendingCount).toBe(0);
 
-    const p3 = sem.acquire().then(() => sequence.push('acquire3'));
-    const p4 = sem.acquire().then(() => sequence.push('acquire4'));
+    sem.acquire().then(() => sequence.push('acquire3'));
+    sem.acquire().then(() => sequence.push('acquire4'));
     const p5 = sem.acquire().then(() => sequence.push('acquire5'));
 
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -344,7 +344,7 @@ describe('retryWithBackoff', () => {
     try {
       await retryWithBackoff(fn, { maxAttempts: 2 });
       expect(true).toBe(false);
-    } catch (e: any) {
+    } catch {
       expect(callCount).toBe(2);
     }
   });
@@ -509,7 +509,7 @@ describe('withResilience', () => {
         },
         { maxAttempts: 3, baseDelayMs: 10, jitter: false }
       );
-    } catch (e: any) {
+    } catch {
       expect(callCount).toBe(3);
     }
   });

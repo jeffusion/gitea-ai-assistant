@@ -40,10 +40,7 @@ export class LLMGateway {
   private semaphore: LLMSemaphore;
   private retryOptions: Partial<RetryOptions>;
 
-  constructor(
-    maxConcurrent = 4,
-    retryOptions?: Partial<RetryOptions>
-  ) {
+  constructor(maxConcurrent = 4, retryOptions?: Partial<RetryOptions>) {
     this.semaphore = new LLMSemaphore(maxConcurrent);
     this.retryOptions = retryOptions ?? {};
   }
@@ -105,7 +102,10 @@ export class LLMGateway {
       () => {
         const provider = this.getOrCreateProvider(assignment.provider_id);
         if (!provider.embed) {
-          throw new LLMError(`Provider '${provider.type}' does not support embeddings`, provider.type);
+          throw new LLMError(
+            `Provider '${provider.type}' does not support embeddings`,
+            provider.type
+          );
         }
         return provider.embed(texts);
       },

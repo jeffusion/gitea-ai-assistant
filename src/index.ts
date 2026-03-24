@@ -9,10 +9,10 @@ import { llmConfigRouter } from './controllers/llm-config';
 import { handleGiteaWebhook } from './controllers/review';
 import { initMasterKey } from './crypto/secrets';
 import { initDatabase } from './db/database';
+import { cleanupScheduler } from './review/cleanup-scheduler';
 import { codexEngine } from './review/codex/codex-engine';
 import { mcpRouter } from './review/codex/mcp-handler';
 import { reviewEngine } from './review/engine';
-import { cleanupScheduler } from './review/cleanup-scheduler';
 
 initMasterKey();
 initDatabase();

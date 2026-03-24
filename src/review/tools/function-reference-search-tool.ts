@@ -78,11 +78,7 @@ export function createFunctionReferenceSearchTool(sandbox: SandboxExec): Tool {
 
       for (const task of tasks) {
         const pattern = task.patterns.join('|');
-        const args = [
-          '--json',
-          '--max-count',
-          String(max_results || 30),
-        ];
+        const args = ['--json', '--max-count', String(max_results || 30)];
 
         if (file_types && file_types.length > 0) {
           args.push('--type-add', `custom:*.{${file_types.join(',')}}`);
