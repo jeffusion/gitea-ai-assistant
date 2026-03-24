@@ -49,7 +49,7 @@
     "start:prod": "bun run dist/index.js",
     "lint": "biome check src/",
     "test": "bun test",
-    "prepare": "husky"
+    "prepare": "command -v husky >/dev/null 2>&1 && husky || true"
   },
   "keywords": [
     "code-review",
