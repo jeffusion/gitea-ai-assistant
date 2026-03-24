@@ -41,17 +41,11 @@ export abstract class BaseNotificationService implements INotificationService {
     await this.sendMessage(message);
   }
 
-  protected abstract buildIssueCreatedMessage(
-    context: NotificationContext
-  ): NotificationMessage;
+  protected abstract buildIssueCreatedMessage(context: NotificationContext): NotificationMessage;
 
-  protected abstract buildIssueClosedMessage(
-    context: NotificationContext
-  ): NotificationMessage;
+  protected abstract buildIssueClosedMessage(context: NotificationContext): NotificationMessage;
 
-  protected abstract buildIssueAssignedMessage(
-    context: NotificationContext
-  ): NotificationMessage;
+  protected abstract buildIssueAssignedMessage(context: NotificationContext): NotificationMessage;
 
   protected abstract buildPrCreatedMessage(context: NotificationContext): NotificationMessage;
 

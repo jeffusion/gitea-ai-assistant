@@ -1,10 +1,6 @@
-import * as crypto from 'crypto';
+import * as crypto from 'node:crypto';
 import { BaseNotificationService } from '../base-notification-service.js';
-import type {
-  NotificationContext,
-  NotificationMessage,
-  NotificationServiceConfig,
-} from '../types.js';
+import type { NotificationContext, NotificationMessage } from '../types.js';
 
 type FeishuApiResponse = {
   code?: number;
@@ -20,10 +16,6 @@ function parseFeishuResponse(raw: unknown): FeishuApiResponse {
 
 export class FeishuNotificationService extends BaseNotificationService {
   readonly provider = 'feishu' as const;
-
-  constructor(config: NotificationServiceConfig) {
-    super(config);
-  }
 
   async sendMessage(message: NotificationMessage): Promise<void> {
     if (!this.config.webhookUrl) {

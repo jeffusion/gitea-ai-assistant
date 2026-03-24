@@ -1,5 +1,5 @@
-import { configManager } from './config-manager.js';
 import type { NotificationServiceConfig } from '../services/notification/types.js';
+import { configManager } from './config-manager.js';
 
 type AppConfig = import('./config-manager.js').AppConfig;
 

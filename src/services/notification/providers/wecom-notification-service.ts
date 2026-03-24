@@ -1,9 +1,5 @@
 import { BaseNotificationService } from '../base-notification-service.js';
-import type {
-  NotificationContext,
-  NotificationMessage,
-  NotificationServiceConfig,
-} from '../types.js';
+import type { NotificationContext, NotificationMessage } from '../types.js';
 
 type WeComApiResponse = {
   errcode?: number;
@@ -12,10 +8,6 @@ type WeComApiResponse = {
 
 export class WeComNotificationService extends BaseNotificationService {
   readonly provider = 'wecom' as const;
-
-  constructor(config: NotificationServiceConfig) {
-    super(config);
-  }
 
   async sendMessage(message: NotificationMessage): Promise<void> {
     if (!this.config.webhookUrl) {
