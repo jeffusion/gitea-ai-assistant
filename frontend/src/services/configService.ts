@@ -30,6 +30,21 @@ export interface ConfigResponse {
   groups: ConfigGroupDto[];
 }
 
+export type NotificationTestProvider = 'feishu' | 'wecom';
+export type NotificationTestStatus = 'success' | 'error';
+
+export interface NotificationTestRecordDto {
+  id: string;
+  provider: string;
+  status: NotificationTestStatus;
+  message: string;
+  timestamp: string;
+}
+
+export interface NotificationTestHistoryResponse {
+  data: NotificationTestRecordDto[];
+}
+
 export const fetchConfig = async (): Promise<ConfigResponse> => {
   const response = await api.get<ConfigResponse>('/config');
   return response.data;
@@ -41,4 +56,13 @@ export const updateConfig = async (configData: Record<string, string>): Promise<
 
 export const resetConfig = async (keys: string[]): Promise<void> => {
   await api.post('/config/reset', { keys });
+};
+
+export const testNotification = async (provider: NotificationTestProvider): Promise<void> => {
+  await api.post('/config/notification/test', { provider });
+};
+
+export const fetchNotificationTestHistory = async (): Promise<NotificationTestRecordDto[]> => {
+  const response = await api.get<NotificationTestHistoryResponse>('/config/notification/test/history');
+  return response.data.data;
 };
