@@ -1,11 +1,11 @@
+import { logger } from '../../utils/logger.js';
+import { createNotificationServices } from './notification-factory.js';
 import type {
   INotificationService,
   NotificationContext,
   NotificationMessage,
   NotificationProvider,
 } from './types.js';
-import { NotificationFactory } from './notification-factory.js';
-import { logger } from '../../utils/logger.js';
 
 export class NotificationManager {
   private services: INotificationService[] = [];
@@ -100,6 +100,6 @@ export class NotificationManager {
 export function createNotificationManager(
   configs: import('./types.js').NotificationServiceConfig[]
 ): NotificationManager {
-  const services = NotificationFactory.createServices(configs);
+  const services = createNotificationServices(configs);
   return new NotificationManager(services);
 }
