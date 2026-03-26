@@ -7,7 +7,7 @@ export const migration003RepositoryReviewPrompts: Migration = {
 
   up(db: Database): void {
     db.exec(`
-      CREATE TABLE repository_review_prompts (
+      CREATE TABLE IF NOT EXISTS repository_review_prompts (
         full_name      TEXT PRIMARY KEY,
         project_prompt TEXT NOT NULL,
         updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
@@ -15,7 +15,7 @@ export const migration003RepositoryReviewPrompts: Migration = {
     `);
 
     db.exec(
-      'CREATE INDEX idx_repository_review_prompts_updated_at ON repository_review_prompts(updated_at)'
+      'CREATE INDEX IF NOT EXISTS idx_repository_review_prompts_updated_at ON repository_review_prompts(updated_at)'
     );
   },
 };
