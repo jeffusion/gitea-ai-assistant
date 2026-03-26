@@ -1,58 +1,90 @@
-// 简单的日志实用工具
+import pino from 'pino';
 
-/**
- * 日志级别
- */
 export enum LogLevel {
-  DEBUG = 'DEBUG',
-  INFO = 'INFO',
-  WARN = 'WARN',
-  ERROR = 'ERROR',
+  DEBUG = 'debug',
+  INFO = 'info',
+  WARN = 'warn',
+  ERROR = 'error',
 }
 
-/**
- * 格式化时间
- */
-function formatTime(): string {
-  return new Date().toISOString();
-}
+type LogMeta = Record<string, unknown>;
+type ErrorWithCode = Error & { code?: unknown };
 
-/**
- * 格式化日志消息
- */
-function formatMessage(level: LogLevel, message: string, meta?: any): string {
-  const timestamp = formatTime();
-
-  let formattedMessage = `[${timestamp}] [${level}] ${message}`;
-
-  if (meta) {
-    try {
-      formattedMessage += ` - ${JSON.stringify(meta)}`;
-    } catch (_error) {
-      formattedMessage += ` - ${meta}`;
-    }
+function resolveLogLevel(rawLevel: string | undefined): LogLevel {
+  if (!rawLevel) {
+    return LogLevel.INFO;
   }
 
-  return formattedMessage;
+  const normalized = rawLevel.toLowerCase();
+  if (normalized === LogLevel.DEBUG) return LogLevel.DEBUG;
+  if (normalized === LogLevel.INFO) return LogLevel.INFO;
+  if (normalized === LogLevel.WARN) return LogLevel.WARN;
+  if (normalized === LogLevel.ERROR) return LogLevel.ERROR;
+  return LogLevel.INFO;
 }
 
-/**
- * 日志实用工具
- */
+function toLogMeta(meta: unknown): LogMeta | undefined {
+  if (meta === undefined) {
+    return undefined;
+  }
+
+  if (meta instanceof Error) {
+    const maybeCode = (meta as ErrorWithCode).code;
+    const code =
+      typeof maybeCode === 'string' || typeof maybeCode === 'number' ? maybeCode : undefined;
+
+    return {
+      error: {
+        name: meta.name,
+        message: meta.message,
+        stack: meta.stack,
+        ...(code !== undefined ? { code } : {}),
+      },
+    };
+  }
+
+  if (typeof meta === 'object' && meta !== null) {
+    return meta as LogMeta;
+  }
+
+  return { meta };
+}
+
+const baseLogger = pino({
+  level: resolveLogLevel(process.env.LOG_LEVEL),
+  base: null,
+  timestamp: pino.stdTimeFunctions.isoTime,
+  formatters: {
+    level(label) {
+      return { level: label.toUpperCase() };
+    },
+  },
+});
+
+function writeLog(level: LogLevel, message: string, meta?: unknown): void {
+  const logMeta = toLogMeta(meta);
+  if (logMeta) {
+    baseLogger[level](logMeta, message);
+    return;
+  }
+
+  baseLogger[level](message);
+}
+
 export const logger = {
-  debug(message: string, meta?: any) {
-    console.debug(formatMessage(LogLevel.DEBUG, message, meta));
+  debug(message: string, meta?: unknown): void {
+    writeLog(LogLevel.DEBUG, message, meta);
   },
 
-  info(message: string, meta?: any) {
-    console.info(formatMessage(LogLevel.INFO, message, meta));
+  info(message: string, meta?: unknown): void {
+    writeLog(LogLevel.INFO, message, meta);
   },
 
-  warn(message: string, meta?: any) {
-    console.warn(formatMessage(LogLevel.WARN, message, meta));
+  warn(message: string, meta?: unknown): void {
+    writeLog(LogLevel.WARN, message, meta);
   },
 
-  error(message: string, meta?: any) {
-    console.error(formatMessage(LogLevel.ERROR, message, meta));
+  error(message: string, meta?: unknown): void {
+    writeLog(LogLevel.ERROR, message, meta);
   },
 };
