@@ -10,6 +10,7 @@ metadata:
     app.kubernetes.io/part-of: gitea-assistant
 data:
   PORT: "5174"
+  LOG_LEVEL: "error"
   # All settings (Gitea connection, webhook secret, admin password, review engine,
   # Feishu, memory, etc.) are managed through the Admin Dashboard Web UI.
   # They are auto-seeded with secure defaults on first boot.

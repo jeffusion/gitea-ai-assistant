@@ -13,6 +13,8 @@ services:
       - assistant_data:/app/data
     env_file:
       - .env
+    environment:
+      LOG_LEVEL: error
     depends_on:
       qdrant:
         condition: service_healthy
