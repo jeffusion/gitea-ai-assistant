@@ -2,8 +2,18 @@ import type { Page, Route } from '@playwright/test';
 
 const repositories = {
   data: [
-    { name: 'demo-repo-1', webhook_status: 'active', hook_id: 101 },
-    { name: 'demo-repo-2', webhook_status: 'inactive', hook_id: null },
+    {
+      name: 'demo-repo-1',
+      webhook_status: 'active',
+      hook_id: 101,
+      project_review_prompt: '重点检查 API 错误处理与鉴权边界。',
+    },
+    {
+      name: 'demo-repo-2',
+      webhook_status: 'inactive',
+      hook_id: null,
+      project_review_prompt: null,
+    },
   ],
   totalCount: 2,
   page: 1,
@@ -296,12 +306,25 @@ export async function installVisualApiMocks(page: Page) {
       return json(route, repositories);
     }
 
-    if (method === 'POST' && /\/admin\/api\/repositories\/[^/]+\/webhook$/.test(path)) {
+    if (method === 'POST' && /\/admin\/api\/repositories\/[^/]+(?:\/[^/]+)?\/webhook$/.test(path)) {
       return json(route, { hook_id: 101, webhook_status: 'active' });
     }
 
-    if (method === 'DELETE' && /\/admin\/api\/repositories\/[^/]+\/webhook\/\d+$/.test(path)) {
+    if (
+      method === 'DELETE' &&
+      /\/admin\/api\/repositories\/[^/]+(?:\/[^/]+)?\/webhook\/\d+$/.test(path)
+    ) {
       return route.fulfill({ status: 204, body: '' });
+    }
+
+    if (
+      method === 'PUT' &&
+      /\/admin\/api\/repositories\/[^/]+(?:\/[^/]+)?\/project-prompt$/.test(path)
+    ) {
+      return json(route, {
+        success: true,
+        project_review_prompt: 'updated prompt',
+      });
     }
 
     if (method === 'GET' && path.endsWith('/admin/api/config')) {

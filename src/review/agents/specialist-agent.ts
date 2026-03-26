@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import config from '../../config';
 import type { LLMGateway } from '../../llm/gateway';
 import type { LLMMessage, LLMToolCall } from '../../llm/types';
-import { withGlobalPrompt } from '../../utils/global-prompt';
+import { mergeReviewPrompts, withGlobalPrompt } from '../../utils/global-prompt';
 import { logger } from '../../utils/logger';
 import { tokenCounter } from '../context/token-counter';
 import type { LearningSystem } from '../learning/learning-system';
@@ -36,6 +36,7 @@ export interface SpecialistReviewOptions {
   maxIterations?: number;
   mode?: ReviewMode;
   maxContextTokens?: number;
+  projectPrompt?: string;
 }
 
 function toCompactContext(context: ReviewContext, options?: CompactContextOptions): string {
@@ -185,7 +186,7 @@ ${toCompactContext(context, {
           role: 'system',
           content: withGlobalPrompt(
             '你是严格的代码审查专家。返回结构化JSON，不输出额外文字。confidence取值范围0到1。line必须是正整数且引用新增行。',
-            config.review.globalPrompt
+            mergeReviewPrompts(config.review.globalPrompt, options?.projectPrompt)
           ),
         },
         { role: 'user', content: prompt },
@@ -271,7 +272,7 @@ ${this.toolRegistry!.getAll()
   "need_more_investigation": false
 }
 每个 finding 对象的所有字段都是必填的。无问题时返回空数组 {"findings": [], "need_more_investigation": false}。`,
-          config.review.globalPrompt
+          mergeReviewPrompts(config.review.globalPrompt, options?.projectPrompt)
         ),
       },
     ];

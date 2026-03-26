@@ -11,6 +11,7 @@ import { dirname, resolve } from 'node:path';
 
 import { migration001Init } from './migrations/001_init';
 import { migration002RemoveLegacyReviewMode } from './migrations/002_remove_legacy_review_mode';
+import { migration003RepositoryReviewPrompts } from './migrations/003_repository_review_prompts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,7 +27,11 @@ export interface Migration {
 // Migration registry (ordered by version)
 // ---------------------------------------------------------------------------
 
-const MIGRATIONS: Migration[] = [migration001Init, migration002RemoveLegacyReviewMode];
+const MIGRATIONS: Migration[] = [
+  migration001Init,
+  migration002RemoveLegacyReviewMode,
+  migration003RepositoryReviewPrompts,
+];
 
 // ---------------------------------------------------------------------------
 // Database singleton

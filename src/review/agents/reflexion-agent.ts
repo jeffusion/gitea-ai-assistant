@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import config from '../../config';
 import type { LLMGateway } from '../../llm/gateway';
 import type { LLMMessage } from '../../llm/types';
-import { withGlobalPrompt } from '../../utils/global-prompt';
+import { mergeReviewPrompts, withGlobalPrompt } from '../../utils/global-prompt';
 import { logger } from '../../utils/logger';
 import { tokenCounter } from '../context/token-counter';
 import { LearningSystem } from '../learning/learning-system';
@@ -43,6 +43,7 @@ export class ReflexionAgent extends SpecialistAgent {
     let bestFindings: Omit<Finding, 'id' | 'runId' | 'published'>[] = [];
     let bestQualityScore = 0;
     let currentFindings: Omit<Finding, 'id' | 'runId' | 'published'>[] = [];
+    const projectPrompt = options?.projectPrompt;
 
     for (let round = 0; round < maxReflectionRounds; round++) {
       logger.info(`${this.agentName} Reflection Round ${round + 1}/${maxReflectionRounds}`, {
@@ -53,7 +54,7 @@ export class ReflexionAgent extends SpecialistAgent {
       const draft = await this.generateDraft(run, context, currentFindings, round, options);
 
       // 自我批评
-      const critique = await this.criticAgent.critique(draft, context);
+      const critique = await this.criticAgent.critique(draft, context, projectPrompt);
 
       logger.info(`${this.agentName} Critique结果`, {
         runId: run.id,
@@ -82,7 +83,7 @@ export class ReflexionAgent extends SpecialistAgent {
 
       // 如果还有改进空间，继续优化（refine后需要在下一轮重新评估）
       if (round < maxReflectionRounds - 1) {
-        currentFindings = await this.refine(draft, critique, context, run);
+        currentFindings = await this.refine(draft, critique, context, run, projectPrompt);
       }
     }
 
@@ -113,7 +114,8 @@ export class ReflexionAgent extends SpecialistAgent {
     draft: Omit<Finding, 'id' | 'runId' | 'published'>[],
     critique: CritiqueResult,
     context: ReviewContext,
-    run: ReviewRun
+    run: ReviewRun,
+    projectPrompt?: string
   ): Promise<Omit<Finding, 'id' | 'runId' | 'published'>[]> {
     const prompt = `你是${this.agentName}。根据以下批评意见，改进审查结果。
 
@@ -150,7 +152,7 @@ ${tokenCounter.clip(context.diff, 1000)}
           role: 'system',
           content: withGlobalPrompt(
             `你是${this.agentName}，根据批评反馈改进审查结果。`,
-            config.review.globalPrompt
+            mergeReviewPrompts(config.review.globalPrompt, projectPrompt)
           ),
         },
         { role: 'user', content: prompt },

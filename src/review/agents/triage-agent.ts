@@ -12,7 +12,7 @@
 import config from '../../config';
 import type { LLMGateway } from '../../llm/gateway';
 import type { LLMMessage } from '../../llm/types';
-import { withCoreGlobalPrompt } from '../../utils/global-prompt';
+import { mergeReviewPrompts, withCoreGlobalPrompt } from '../../utils/global-prompt';
 import { logger } from '../../utils/logger';
 import type {
   ChangedFile,
@@ -39,6 +39,10 @@ export interface TriageResult {
   riskTags: string[];
   /** Brief rationale from the planner model. */
   rationale: string;
+}
+
+export interface TriageOptions {
+  projectPrompt?: string;
 }
 
 /** All valid finding categories. */
@@ -334,7 +338,7 @@ export class TriageAgent {
    * If the planner role is not configured or the call fails,
    * falls back to a heuristic-based triage.
    */
-  async analyze(context: ReviewContext): Promise<TriageResult> {
+  async analyze(context: ReviewContext, options?: TriageOptions): Promise<TriageResult> {
     // First try heuristic-based fast path (no LLM call needed for obvious cases)
     const heuristicResult = this.heuristicTriage(context.changedFiles);
     if (heuristicResult) {
@@ -349,7 +353,7 @@ export class TriageAgent {
 
     // Fall back to LLM-based triage
     try {
-      return await this.llmTriage(context);
+      return await this.llmTriage(context, options);
     } catch (error) {
       logger.warn('Triage: LLM 调用失败，回退到启发式全量派发', {
         error: error instanceof Error ? error.message : String(error),
@@ -454,7 +458,7 @@ export class TriageAgent {
   /**
    * LLM-based triage using the 'planner' role.
    */
-  private async llmTriage(context: ReviewContext): Promise<TriageResult> {
+  private async llmTriage(context: ReviewContext, options?: TriageOptions): Promise<TriageResult> {
     const policy = getReviewBudgetPolicy();
     const riskTags = collectRiskTags(context.changedFiles);
     const fileSummary = context.changedFiles
@@ -494,7 +498,7 @@ ${diffPreview}
         role: 'system',
         content: withCoreGlobalPrompt(
           '你是代码变更分流专家，快速判断变更复杂度。返回结构化 JSON，不输出额外文字。',
-          config.review.globalPrompt
+          mergeReviewPrompts(config.review.globalPrompt, options?.projectPrompt)
         ),
       },
       { role: 'user', content: prompt },

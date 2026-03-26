@@ -17,17 +17,17 @@ function DataTableSkeleton() {
       <Table>
         <TableHeader className="bg-muted/60 border-b border-border/50">
           <TableRow className="border-border/50">
-            <TableHead className="w-[40%]"><Skeleton className="h-5 w-24 bg-muted" /></TableHead>
-            <TableHead className="w-[30%]"><Skeleton className="h-5 w-24 bg-muted" /></TableHead>
-            <TableHead className="w-[30%] text-right"><Skeleton className="h-5 w-16 ml-auto bg-muted" /></TableHead>
+            <TableHead className="w-[50%]"><Skeleton className="h-5 w-24 bg-muted" /></TableHead>
+            <TableHead className="w-[25%]"><Skeleton className="h-5 w-16 bg-muted" /></TableHead>
+            <TableHead className="w-[25%] text-right"><Skeleton className="h-5 w-16 ml-auto bg-muted" /></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {Array.from({ length: 10 }).map((_, i) => (
             <TableRow key={i} className="border-border/50">
               <TableCell><Skeleton className="h-5 w-3/4 bg-muted/70" /></TableCell>
-              <TableCell><Skeleton className="h-6 w-20 bg-muted/70 rounded-full" /></TableCell>
-              <TableCell className="text-right"><Skeleton className="h-8 w-16 ml-auto bg-muted/70" /></TableCell>
+              <TableCell><Skeleton className="h-5 w-20 bg-muted/70" /></TableCell>
+              <TableCell className="text-right"><Skeleton className="h-8 w-24 ml-auto bg-muted/70" /></TableCell>
             </TableRow>
           ))}
         </TableBody>

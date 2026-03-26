@@ -1,7 +1,7 @@
 import config from '../../config';
 import type { LLMGateway } from '../../llm/gateway';
 import type { LLMMessage } from '../../llm/types';
-import { withCoreGlobalPrompt } from '../../utils/global-prompt';
+import { mergeReviewPrompts, withCoreGlobalPrompt } from '../../utils/global-prompt';
 import { logger } from '../../utils/logger';
 import { tokenCounter } from '../context/token-counter';
 import { Finding, ReviewContext } from '../types';
@@ -25,7 +25,8 @@ export class CriticAgent {
 
   async critique(
     findings: Omit<Finding, 'id' | 'runId' | 'published'>[],
-    context: ReviewContext
+    context: ReviewContext,
+    projectPrompt?: string
   ): Promise<CritiqueResult> {
     if (findings.length === 0) {
       return {
@@ -75,7 +76,7 @@ ${tokenCounter.clip(context.diff, 1000)}
           role: 'system',
           content: withCoreGlobalPrompt(
             '你是严格的代码审查质量评估专家，以高标准评估findings的质量。',
-            config.review.globalPrompt
+            mergeReviewPrompts(config.review.globalPrompt, projectPrompt)
           ),
         },
         { role: 'user', content: prompt },
@@ -132,7 +133,8 @@ ${tokenCounter.clip(context.diff, 1000)}
 
   async evaluateSingleFinding(
     finding: Omit<Finding, 'id' | 'runId' | 'published'>,
-    context: ReviewContext
+    context: ReviewContext,
+    projectPrompt?: string
   ): Promise<{
     isValid: boolean;
     confidence: number;
@@ -166,7 +168,10 @@ ${tokenCounter.clip(context.diff, 700)}
       const messages: LLMMessage[] = [
         {
           role: 'system',
-          content: withCoreGlobalPrompt('你是代码审查质量评估专家。', config.review.globalPrompt),
+          content: withCoreGlobalPrompt(
+            '你是代码审查质量评估专家。',
+            mergeReviewPrompts(config.review.globalPrompt, projectPrompt)
+          ),
         },
         { role: 'user', content: prompt },
       ];
