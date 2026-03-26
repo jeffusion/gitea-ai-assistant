@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { closeDatabase, initDatabase } from '../database';
+import { closeDatabase, getDatabase, initDatabase } from '../database';
 import { repositoryReviewPromptRepo } from '../repositories/repository-review-prompt-repo';
 
 describe('repository-review-prompt-repo', () => {
@@ -63,5 +63,31 @@ describe('repository-review-prompt-repo', () => {
       'acme/a': 'prompt-a',
       'acme/b': 'prompt-b',
     });
+  });
+
+  test('self-heals missing prompt table and keeps repository listing readable', () => {
+    const db = getDatabase();
+    db.exec('DROP TABLE repository_review_prompts');
+
+    const map = repositoryReviewPromptRepo.listProjectPrompts(['acme/a']);
+    expect(map).toEqual({});
+
+    repositoryReviewPromptRepo.setProjectPrompt('acme', 'a', 'prompt-a');
+    expect(repositoryReviewPromptRepo.getProjectPrompt('acme', 'a')).toBe('prompt-a');
+  });
+
+  test('self-heals missing prompt table for direct prompt write path', () => {
+    const db = getDatabase();
+    db.exec('DROP TABLE repository_review_prompts');
+
+    const row = repositoryReviewPromptRepo.setProjectPrompt(
+      'acme',
+      'direct-write',
+      'prompt-direct'
+    );
+    expect(row.project_prompt).toBe('prompt-direct');
+    expect(repositoryReviewPromptRepo.getProjectPrompt('acme', 'direct-write')).toBe(
+      'prompt-direct'
+    );
   });
 });
