@@ -9,6 +9,7 @@ import { logger } from '../utils/logger';
 
 const publicRoutes = new Hono();
 const protectedRoutes = new Hono();
+const isRepoListDebugEnabled = process.env.REPO_LIST_DEBUG_LOGS === 'true';
 
 // --- Public Routes ---
 
@@ -47,27 +48,33 @@ protectedRoutes.get('/repositories', async (c) => {
   };
 
   try {
-    logger.debug('开始获取仓库列表', requestContext);
+    if (isRepoListDebugEnabled) {
+      logger.debug('开始获取仓库列表', requestContext);
+    }
 
     const { repos, totalCount } = await giteaService.listAllRepositories(page, limit, query);
-    logger.debug('仓库搜索接口返回成功', {
-      ...requestContext,
-      reposCount: repos.length,
-      totalCount,
-      sampleRepos: repos
-        .slice(0, 3)
-        .map((repo) => (typeof repo.full_name === 'string' ? repo.full_name : null)),
-    });
+    if (isRepoListDebugEnabled) {
+      logger.debug('仓库搜索接口返回成功', {
+        ...requestContext,
+        reposCount: repos.length,
+        totalCount,
+        sampleRepos: repos
+          .slice(0, 3)
+          .map((repo) => (typeof repo.full_name === 'string' ? repo.full_name : null)),
+      });
+    }
 
     const webhookUrl = c.req.url.replace(/\/admin\/api\/repositories.*$/, '/webhook/gitea');
     const fullNames = repos
       .map((repo) => (typeof repo.full_name === 'string' ? repo.full_name : null))
       .filter((name): name is string => name !== null);
-    logger.debug('准备批量读取项目级提示词', {
-      ...requestContext,
-      fullNamesCount: fullNames.length,
-      fullNamesSample: fullNames.slice(0, 5),
-    });
+    if (isRepoListDebugEnabled) {
+      logger.debug('准备批量读取项目级提示词', {
+        ...requestContext,
+        fullNamesCount: fullNames.length,
+        fullNamesSample: fullNames.slice(0, 5),
+      });
+    }
 
     let promptMap: Record<string, string>;
     try {
