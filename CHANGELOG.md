@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/jeffusion/gitea-ai-assistant/compare/v1.2.1...v1.3.0) (2026-03-26)
+
+
+### Features
+
+* **repo:** add project-level review prompt with UI redesign ([d5deb75](https://github.com/jeffusion/gitea-ai-assistant/commit/d5deb752317508aa47470a20fec4d11a5d2b66b7))
+
 ## [1.2.1](https://github.com/jeffusion/gitea-ai-assistant/compare/v1.2.0...v1.2.1) (2026-03-24)
 
 
