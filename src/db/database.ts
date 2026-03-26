@@ -33,6 +33,8 @@ const MIGRATIONS: Migration[] = [
   migration003RepositoryReviewPrompts,
 ];
 
+const REPOSITORY_REVIEW_PROMPTS_TABLE = 'repository_review_prompts';
+
 // ---------------------------------------------------------------------------
 // Database singleton
 // ---------------------------------------------------------------------------
@@ -72,9 +74,37 @@ export function initDatabase(): Database {
 
   // Run migrations
   runMigrations(db);
+  ensureRepositoryReviewPromptsSchema(db);
 
   console.log(`📦 Database initialized at ${dbPath}`);
   return db;
+}
+
+function doesTableExist(database: Database, tableName: string): boolean {
+  const row = database
+    .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(tableName) as { name?: string } | null;
+  return row?.name === tableName;
+}
+
+export function ensureRepositoryReviewPromptsSchema(database: Database = getDatabase()): void {
+  if (doesTableExist(database, REPOSITORY_REVIEW_PROMPTS_TABLE)) {
+    return;
+  }
+
+  console.warn(
+    `⚠️ Detected inconsistent DB state: table '${REPOSITORY_REVIEW_PROMPTS_TABLE}' is missing. Rebuilding schema.`
+  );
+
+  database.transaction(() => {
+    migration003RepositoryReviewPrompts.up(database);
+
+    if (doesTableExist(database, '_migrations')) {
+      database
+        .query('INSERT OR IGNORE INTO _migrations (version, name) VALUES (?, ?)')
+        .run(migration003RepositoryReviewPrompts.version, migration003RepositoryReviewPrompts.name);
+    }
+  })();
 }
 
 /**
