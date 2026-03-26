@@ -4,6 +4,7 @@ import config from '../config';
 import { repositoryReviewPromptRepo } from '../db/repositories/repository-review-prompt-repo';
 import { reviewEngine } from '../review/engine';
 import { giteaService } from '../services/gitea';
+import { toErrorLogMeta } from '../utils/error-log';
 import { logger } from '../utils/logger';
 
 const publicRoutes = new Hono();
@@ -31,17 +32,55 @@ publicRoutes.post('/login', async (c) => {
 
 // 获取仓库列表及 Webhook 状态
 protectedRoutes.get('/repositories', async (c) => {
+  const page = Number.parseInt(c.req.query('page') || '1', 10);
+  const query = c.req.query('q');
+  const limit = 30; // 每页数量固定，或也可从查询参数获取
+  const requestContext = {
+    page,
+    limit,
+    query: query ?? null,
+    requestUrl: c.req.url,
+    method: c.req.method,
+    runtime: process.versions.bun ? `bun-${process.versions.bun}` : process.version,
+    nodeEnv: process.env.NODE_ENV ?? null,
+    databasePath: process.env.DATABASE_PATH || './data/assistant.db',
+  };
+
   try {
-    const page = Number.parseInt(c.req.query('page') || '1', 10);
-    const query = c.req.query('q');
-    const limit = 30; // 每页数量固定，或也可从查询参数获取
+    logger.debug('开始获取仓库列表', requestContext);
 
     const { repos, totalCount } = await giteaService.listAllRepositories(page, limit, query);
+    logger.debug('仓库搜索接口返回成功', {
+      ...requestContext,
+      reposCount: repos.length,
+      totalCount,
+      sampleRepos: repos
+        .slice(0, 3)
+        .map((repo) => (typeof repo.full_name === 'string' ? repo.full_name : null)),
+    });
+
     const webhookUrl = c.req.url.replace(/\/admin\/api\/repositories.*$/, '/webhook/gitea');
     const fullNames = repos
       .map((repo) => (typeof repo.full_name === 'string' ? repo.full_name : null))
       .filter((name): name is string => name !== null);
-    const promptMap = repositoryReviewPromptRepo.listProjectPrompts(fullNames);
+    logger.debug('准备批量读取项目级提示词', {
+      ...requestContext,
+      fullNamesCount: fullNames.length,
+      fullNamesSample: fullNames.slice(0, 5),
+    });
+
+    let promptMap: Record<string, string>;
+    try {
+      promptMap = repositoryReviewPromptRepo.listProjectPrompts(fullNames);
+    } catch (error: unknown) {
+      logger.error('批量读取项目级提示词失败', {
+        ...requestContext,
+        fullNamesCount: fullNames.length,
+        fullNamesSample: fullNames.slice(0, 5),
+        error: toErrorLogMeta(error),
+      });
+      throw error;
+    }
 
     const reposWithStatus = await Promise.all(
       repos.map(async (repo) => {
@@ -70,9 +109,13 @@ protectedRoutes.get('/repositories', async (c) => {
       page,
       limit,
     });
-  } catch (error: any) {
-    logger.error('获取仓库列表失败:', error);
-    return c.json({ message: 'Failed to fetch repositories', error: error.message }, 500);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error('获取仓库列表失败:', {
+      ...requestContext,
+      error: toErrorLogMeta(error),
+    });
+    return c.json({ message: 'Failed to fetch repositories', error: errorMessage }, 500);
   }
 });
 
