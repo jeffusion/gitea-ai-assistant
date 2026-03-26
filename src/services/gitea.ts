@@ -3,8 +3,6 @@ import config from '../config';
 import { toErrorLogMeta } from '../utils/error-log';
 import { logger } from '../utils/logger';
 
-const isRepoListDebugEnabled = process.env.REPO_LIST_DEBUG_LOGS === 'true';
-
 export interface LineComment {
   path: string;
   line: number;
@@ -426,9 +424,7 @@ export const giteaService: GiteaService = {
     };
 
     try {
-      if (isRepoListDebugEnabled) {
-        logger.debug('开始请求 Gitea 仓库搜索接口', requestContext);
-      }
+      logger.debug('开始请求 Gitea 仓库搜索接口', requestContext);
 
       const response = await giteaAdminClient.get('/repos/search', {
         params: {
@@ -438,15 +434,13 @@ export const giteaService: GiteaService = {
         },
       });
 
-      if (isRepoListDebugEnabled) {
-        logger.debug('Gitea 仓库搜索接口返回成功', {
-          ...requestContext,
-          status: response.status,
-          contentType: response.headers['content-type'] ?? null,
-          dataCount: Array.isArray(response.data?.data) ? response.data.data.length : null,
-          headerTotalCount: response.headers['x-total-count'] ?? null,
-        });
-      }
+      logger.debug('Gitea 仓库搜索接口返回成功', {
+        ...requestContext,
+        status: response.status,
+        contentType: response.headers['content-type'] ?? null,
+        dataCount: Array.isArray(response.data?.data) ? response.data.data.length : null,
+        headerTotalCount: response.headers['x-total-count'] ?? null,
+      });
 
       const totalCount = Number.parseInt(response.headers['x-total-count'] || '0', 10);
       return { repos: response.data.data, totalCount };
