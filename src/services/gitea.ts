@@ -1,5 +1,6 @@
 import axios from 'axios';
 import config from '../config';
+import { toErrorLogMeta } from '../utils/error-log';
 import { logger } from '../utils/logger';
 
 export interface LineComment {
@@ -31,6 +32,35 @@ giteaAdminClient.interceptors.request.use((req) => {
   req.headers.Authorization = `token ${config.admin.giteaAdminToken || config.gitea.accessToken}`;
   return req;
 });
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getResponseDataPreview(data: unknown): unknown {
+  if (typeof data === 'string') {
+    return data.length > 1000 ? `${data.slice(0, 1000)}...(truncated)` : data;
+  }
+  return data;
+}
+
+function getAxiosErrorMeta(error: unknown): Record<string, unknown> | null {
+  if (!axios.isAxiosError(error)) {
+    return null;
+  }
+
+  return {
+    code: error.code ?? null,
+    status: error.response?.status ?? null,
+    statusText: error.response?.statusText ?? null,
+    method: error.config?.method ?? null,
+    baseURL: error.config?.baseURL ?? null,
+    url: error.config?.url ?? null,
+    params: error.config?.params ?? null,
+    responseHeaders: error.response?.headers ?? null,
+    responseDataPreview: getResponseDataPreview(error.response?.data),
+  };
+}
 
 // Gitea服务接口定义
 export interface GiteaService {
@@ -382,7 +412,19 @@ export const giteaService: GiteaService = {
     limit = 30,
     query?: string
   ): Promise<{ repos: any[]; totalCount: number }> {
+    const requestContext = {
+      page,
+      limit,
+      query: query ?? null,
+      apiUrl: config.gitea.apiUrl,
+      hasAdminToken: Boolean(config.admin.giteaAdminToken),
+      hasAccessToken: Boolean(config.gitea.accessToken),
+      runtime: process.versions.bun ? `bun-${process.versions.bun}` : process.version,
+      nodeEnv: process.env.NODE_ENV ?? null,
+    };
+
     try {
+      logger.debug('开始请求 Gitea 仓库搜索接口', requestContext);
       const response = await giteaAdminClient.get('/repos/search', {
         params: {
           page,
@@ -390,11 +432,51 @@ export const giteaService: GiteaService = {
           q: query,
         },
       });
+
+      logger.debug('Gitea 仓库搜索接口返回成功', {
+        ...requestContext,
+        status: response.status,
+        contentType: response.headers['content-type'] ?? null,
+        dataCount: Array.isArray(response.data?.data) ? response.data.data.length : null,
+        headerTotalCount: response.headers['x-total-count'] ?? null,
+      });
+
       const totalCount = Number.parseInt(response.headers['x-total-count'] || '0', 10);
       return { repos: response.data.data, totalCount };
-    } catch (error: any) {
-      logger.error('获取所有仓库列表失败:', error);
-      throw new Error(`获取所有仓库列表失败: ${error.message}`);
+    } catch (error: unknown) {
+      let rawResponseProbe: Record<string, unknown> | null = null;
+
+      try {
+        const probeResponse = await giteaAdminClient.get('/repos/search', {
+          params: {
+            page,
+            limit,
+            q: query,
+          },
+          responseType: 'text',
+          transformResponse: [(data) => data],
+        });
+
+        rawResponseProbe = {
+          status: probeResponse.status,
+          contentType: probeResponse.headers['content-type'] ?? null,
+          bodyLength: typeof probeResponse.data === 'string' ? probeResponse.data.length : null,
+          bodyPreview: getResponseDataPreview(probeResponse.data),
+        };
+      } catch (probeError: unknown) {
+        rawResponseProbe = {
+          probeError: toErrorLogMeta(probeError),
+        };
+      }
+
+      logger.error('获取所有仓库列表失败:', {
+        ...requestContext,
+        error: toErrorLogMeta(error),
+        axiosError: getAxiosErrorMeta(error),
+        rawResponseProbe,
+      });
+
+      throw new Error(`获取所有仓库列表失败: ${getErrorMessage(error)}`);
     }
   },
 
