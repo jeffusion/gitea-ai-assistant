@@ -4,7 +4,7 @@
 
 ```bash
 docker build -t gitea-assistant .
-docker run -d -p 5174:5174 -v ./data:/app/data -e PORT=5174 gitea-assistant
+docker run -d -p 5174:5174 -v ./data:/app/data -e PORT=5174 -e LOG_LEVEL=error gitea-assistant
 ```
 
 ## Docker Compose
@@ -18,11 +18,14 @@ docker compose up -d
 - `gitea-assistant`
 - `qdrant`
 
+Production default in compose sets `LOG_LEVEL=error`.
+
 If you do not use memory features, Qdrant can be optional in custom compose setups.
 
 ## Kubernetes
 
 Kubernetes manifests are in `k8s/`.
+The default ConfigMap sets `LOG_LEVEL=error` for production.
 
 ### 1) Create namespace and encryption secret
 

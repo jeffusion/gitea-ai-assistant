@@ -30,6 +30,7 @@ bun run bootstrap
 PORT=5174
 ENCRYPTION_KEY= # 必填，使用 openssl rand -hex 32 生成
 # DATABASE_PATH=./data/assistant.db
+# LOG_LEVEL=info   # 本地开发默认；生产环境请使用 LOG_LEVEL=error
 ```
 
 > `ENCRYPTION_KEY` 为必填项，缺失时服务会拒绝启动。
