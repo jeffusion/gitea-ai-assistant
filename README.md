@@ -63,6 +63,7 @@ bun run bootstrap
 PORT=5174
 ENCRYPTION_KEY=   # required, 64 hex chars (openssl rand -hex 32)
 # DATABASE_PATH=./data/assistant.db
+# LOG_LEVEL=info   # dev default; use LOG_LEVEL=error in production
 ```
 
 > `ENCRYPTION_KEY` is mandatory. The app refuses to start without it.

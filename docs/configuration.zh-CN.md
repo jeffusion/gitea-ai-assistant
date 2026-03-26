@@ -14,6 +14,7 @@
 | `ENCRYPTION_KEY` | 是 | API Key 加密主密钥（AES-256-GCM，64 位十六进制） | - |
 | `PORT` | 否 | 服务端口 | `5174` |
 | `DATABASE_PATH` | 否 | SQLite 路径 | `./data/assistant.db` |
+| `LOG_LEVEL` | 否 | 后端日志级别（`debug`/`info`/`warn`/`error`）。默认 `info`；生产环境建议 `error`。 | `info` |
 
 生成密钥：
 

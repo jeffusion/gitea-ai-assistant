@@ -14,6 +14,7 @@ This project uses a DB-first runtime configuration model:
 | `ENCRYPTION_KEY` | Yes | AES-256-GCM master key (64 hex chars) for API key encryption | - |
 | `PORT` | No | Service port | `5174` |
 | `DATABASE_PATH` | No | SQLite path | `./data/assistant.db` |
+| `LOG_LEVEL` | No | Backend log level (`debug`/`info`/`warn`/`error`). Default is `info`; use `error` in production. | `info` |
 
 Generate key:
 

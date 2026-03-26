@@ -4,7 +4,7 @@
 
 ```bash
 docker build -t gitea-assistant .
-docker run -d -p 5174:5174 -v ./data:/app/data -e PORT=5174 gitea-assistant
+docker run -d -p 5174:5174 -v ./data:/app/data -e PORT=5174 -e LOG_LEVEL=error gitea-assistant
 ```
 
 ## Docker Compose
@@ -18,11 +18,14 @@ docker compose up -d
 - `gitea-assistant`
 - `qdrant`
 
+Compose 生产默认日志级别已设置为 `LOG_LEVEL=error`。
+
 如果不使用记忆能力，可在自定义编排中将 Qdrant 设为可选。
 
 ## Kubernetes
 
 Kubernetes 清单位于 `k8s/` 目录。
+默认 ConfigMap 已将生产日志级别设置为 `LOG_LEVEL=error`。
 
 ### 1) 创建命名空间与加密密钥
 
