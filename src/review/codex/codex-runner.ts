@@ -3,6 +3,7 @@ import path from 'node:path';
 import config from '../../config';
 import { logger } from '../../utils/logger';
 import type { LocalRepoManager, LocalRepoPaths } from '../context/local-repo-manager';
+import { resolveProjectReviewPrompt } from '../project-review-prompt';
 import type { FileReviewStore } from '../store/file-review-store';
 import type { ReviewRun } from '../types';
 import { type ReviewRunContext, mcpToolExecutor } from './mcp-tools';
@@ -306,7 +307,7 @@ export class CodexRunner {
   }
 
   private resolveProjectPrompt(_run: ReviewRun): string | undefined {
-    return undefined;
+    return resolveProjectReviewPrompt(_run.owner, _run.repo);
   }
 
   /**

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import type { LLMGateway } from '../../llm/gateway';
 import type { LLMChatResponse, ModelRole } from '../../llm/types';
 import { TriageAgent } from '../agents/triage-agent';
 import type { ChangedFile, FindingCategory, ReviewContext } from '../types';
@@ -202,6 +203,44 @@ describe('TriageAgent task-based routing', () => {
     expect(result.tasks.map((task) => task.domain)).toContain('correctness');
     expect(result.tasks.map((task) => task.domain)).toContain('security');
     expect(result.rationale).toBe('跨文件业务逻辑调整');
+  });
+
+  test('LLM fallback: planner system message keeps full project prompt', async () => {
+    const longProjectPrompt = `repo-policy-${'P'.repeat(420)}`;
+    const { gateway, getCalls } = createMockGateway(async () =>
+      makeChatResponse(
+        JSON.stringify({
+          complexity: 'standard',
+          review_size: 'medium',
+          mode: 'light',
+          relevant_domains: ['correctness'],
+          risk_tags: ['maintainability-hotspot'],
+          rationale: '需要模型判断',
+        })
+      )
+    );
+
+    const agent = new TriageAgent(gateway as unknown as LLMGateway);
+
+    await agent.analyze(
+      makeContext({
+        changedFiles: [
+          makeChangedFile({ path: 'src/service/order.ts', additions: 20, deletions: 10 }),
+          makeChangedFile({ path: 'src/controller/order.ts', additions: 18, deletions: 12 }),
+          makeChangedFile({ path: 'src/repo/order.ts', additions: 15, deletions: 12 }),
+          makeChangedFile({ path: 'src/model/order.ts', additions: 14, deletions: 13 }),
+        ],
+      }),
+      { projectPrompt: longProjectPrompt }
+    );
+
+    const calls = getCalls();
+    expect(calls).toHaveLength(1);
+
+    const plannerMessages = calls[0].request.messages as Array<{ role: string; content: string }>;
+    const plannerSystemMessage = plannerMessages.find((message) => message.role === 'system');
+
+    expect(plannerSystemMessage?.content).toContain(longProjectPrompt);
   });
 
   test('LLM fallback: planner throws -> default full review with all domains', async () => {

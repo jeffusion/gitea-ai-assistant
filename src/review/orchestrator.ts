@@ -12,6 +12,7 @@ import { LocalRepoManager, LocalRepoPaths } from './context/local-repo-manager';
 import { LearningSystem } from './learning/learning-system';
 import { VectorMemoryStore } from './memory/vector-store';
 import { applyPublishPolicy } from './policy/publish-policy';
+import { resolveProjectReviewPrompt } from './project-review-prompt';
 import { FileReviewStore } from './store/file-review-store';
 import { createCodeSearchTool } from './tools/code-search-tool';
 import { createFileReadTool } from './tools/file-read-tool';
@@ -229,6 +230,8 @@ export class ReviewOrchestrator {
         return;
       }
 
+      const projectPrompt = resolveProjectReviewPrompt(run.owner, run.repo);
+
       // ── Triage: 决定哪些 specialist 需要参与 ─────────────────────────
       let triage: TriageResult | null = null;
       const enableTriage = config.review.enableTriage ?? true;
@@ -242,7 +245,7 @@ export class ReviewOrchestrator {
           startedAt: new Date(triageStart).toISOString(),
         });
 
-        triage = await this.triageAgent.analyze(context);
+        triage = await this.triageAgent.analyze(context, { projectPrompt });
 
         await this.store.addStep({
           runId: run.id,
@@ -330,6 +333,7 @@ export class ReviewOrchestrator {
             maxIterations: task.maxIterations,
             mode: task.mode,
             maxContextTokens: Math.max(1500, Math.floor(task.tokenBudget * 0.7)),
+            projectPrompt,
           } as const;
 
           const useReflection =
@@ -411,7 +415,9 @@ export class ReviewOrchestrator {
           const uniqueDebateAgents = [...new Set(debateAgents)];
           const debatedFinding = await this.debateOrchestrator.conductDebate(
             finding,
-            uniqueDebateAgents
+            uniqueDebateAgents,
+            2,
+            projectPrompt
           );
           debatedFindings.push(debatedFinding);
         }

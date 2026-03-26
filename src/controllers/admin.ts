@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { sign } from 'hono/jwt';
 import config from '../config';
+import { repositoryReviewPromptRepo } from '../db/repositories/repository-review-prompt-repo';
 import { reviewEngine } from '../review/engine';
 import { giteaService } from '../services/gitea';
 import { logger } from '../utils/logger';
@@ -37,6 +38,10 @@ protectedRoutes.get('/repositories', async (c) => {
 
     const { repos, totalCount } = await giteaService.listAllRepositories(page, limit, query);
     const webhookUrl = c.req.url.replace(/\/admin\/api\/repositories.*$/, '/webhook/gitea');
+    const fullNames = repos
+      .map((repo) => (typeof repo.full_name === 'string' ? repo.full_name : null))
+      .filter((name): name is string => name !== null);
+    const promptMap = repositoryReviewPromptRepo.listProjectPrompts(fullNames);
 
     const reposWithStatus = await Promise.all(
       repos.map(async (repo) => {
@@ -47,9 +52,17 @@ protectedRoutes.get('/repositories', async (c) => {
           name: repo.full_name,
           webhook_status: webhook ? 'active' : 'inactive',
           hook_id: webhook ? webhook.id : null,
+          project_review_prompt: promptMap[repo.full_name] || null,
         };
       })
     );
+
+    reposWithStatus.sort((a, b) => {
+      if (a.webhook_status === b.webhook_status) {
+        return 0;
+      }
+      return a.webhook_status === 'active' ? -1 : 1;
+    });
 
     return c.json({
       data: reposWithStatus,
@@ -60,6 +73,29 @@ protectedRoutes.get('/repositories', async (c) => {
   } catch (error: any) {
     logger.error('获取仓库列表失败:', error);
     return c.json({ message: 'Failed to fetch repositories', error: error.message }, 500);
+  }
+});
+
+protectedRoutes.put('/repositories/:owner/:repo/project-prompt', async (c) => {
+  const { owner, repo } = c.req.param();
+
+  try {
+    const body = (await c.req.json()) as { project_review_prompt?: unknown };
+    if (typeof body.project_review_prompt !== 'string') {
+      return c.json({ message: 'project_review_prompt must be a string' }, 400);
+    }
+
+    const normalizedPrompt = body.project_review_prompt.trim();
+    if (!normalizedPrompt) {
+      repositoryReviewPromptRepo.clearProjectPrompt(owner, repo);
+      return c.json({ success: true, project_review_prompt: null });
+    }
+
+    const updated = repositoryReviewPromptRepo.setProjectPrompt(owner, repo, normalizedPrompt);
+    return c.json({ success: true, project_review_prompt: updated.project_prompt });
+  } catch (error: any) {
+    logger.error(`更新 ${owner}/${repo} 的项目级审查提示词失败:`, error);
+    return c.json({ message: 'Failed to update project review prompt', error: error.message }, 500);
   }
 });
 

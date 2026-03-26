@@ -1,7 +1,7 @@
 import config from '../../config';
 import type { LLMGateway } from '../../llm/gateway';
 import type { LLMMessage } from '../../llm/types';
-import { withCoreGlobalPrompt } from '../../utils/global-prompt';
+import { mergeReviewPrompts, withCoreGlobalPrompt } from '../../utils/global-prompt';
 import { logger } from '../../utils/logger';
 import { Finding, FindingSeverity } from '../types';
 import { SpecialistAgent } from './specialist-agent';
@@ -24,7 +24,8 @@ export class DebateOrchestrator {
   async conductDebate(
     finding: Omit<Finding, 'id' | 'runId' | 'published'>,
     agents: SpecialistAgent[],
-    maxRounds = 2
+    maxRounds = 2,
+    projectPrompt?: string
   ): Promise<Omit<Finding, 'id' | 'runId' | 'published'>> {
     if (agents.length < 2) {
       logger.debug('Debate需要至少2个agents，跳过');
@@ -41,7 +42,7 @@ export class DebateOrchestrator {
 
     // 收集初始意见
     for (const agent of agents) {
-      const opinion = await this.getAgentOpinion(agent, finding);
+      const opinion = await this.getAgentOpinion(agent, finding, projectPrompt);
       opinions.set((agent as any).agentName, opinion);
     }
 
@@ -55,7 +56,13 @@ export class DebateOrchestrator {
         const agentName = (agent as any).agentName;
         const otherOpinions = Array.from(opinions.entries()).filter(([name]) => name !== agentName);
 
-        const revisedOpinion = await this.reviseOpinion(agent, finding, otherOpinions, opinions);
+        const revisedOpinion = await this.reviseOpinion(
+          agent,
+          finding,
+          otherOpinions,
+          opinions,
+          projectPrompt
+        );
 
         opinions.set(agentName, revisedOpinion);
       }
@@ -75,7 +82,8 @@ export class DebateOrchestrator {
 
   private async getAgentOpinion(
     agent: SpecialistAgent,
-    finding: Omit<Finding, 'id' | 'runId' | 'published'>
+    finding: Omit<Finding, 'id' | 'runId' | 'published'>,
+    projectPrompt?: string
   ): Promise<AgentOpinion> {
     const agentName = (agent as any).agentName;
     const prompt = `你是${agentName}。评估以下代码问题的严重性、置信度和有效性。
@@ -107,7 +115,7 @@ export class DebateOrchestrator {
           role: 'system',
           content: withCoreGlobalPrompt(
             `你是${agentName}，从你的专业角度独立评估代码问题。`,
-            config.review.globalPrompt
+            mergeReviewPrompts(config.review.globalPrompt, projectPrompt)
           ),
         },
         { role: 'user', content: prompt },
@@ -153,7 +161,8 @@ export class DebateOrchestrator {
     agent: SpecialistAgent,
     finding: Omit<Finding, 'id' | 'runId' | 'published'>,
     otherOpinions: [string, AgentOpinion][],
-    opinions: Map<string, AgentOpinion>
+    opinions: Map<string, AgentOpinion>,
+    projectPrompt?: string
   ): Promise<AgentOpinion> {
     const agentName = (agent as any).agentName;
     const prompt = `你是${agentName}。重新评估以下问题，考虑其他专家的意见。
@@ -188,7 +197,7 @@ ${otherOpinions
           role: 'system',
           content: withCoreGlobalPrompt(
             `你是${agentName}，根据同行意见重新评估，但也要坚持你的专业判断。`,
-            config.review.globalPrompt
+            mergeReviewPrompts(config.review.globalPrompt, projectPrompt)
           ),
         },
         { role: 'user', content: prompt },
