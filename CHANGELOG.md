@@ -1,3 +1,12 @@
+## [1.3.1](https://github.com/jeffusion/gitea-ai-assistant/compare/v1.3.0...v1.3.1) (2026-03-26)
+
+
+### Bug Fixes
+
+* **db:** self-heal missing repository prompt schema ([b6e6ee0](https://github.com/jeffusion/gitea-ai-assistant/commit/b6e6ee0927eb757b86ee426bf8eed84ae633621a))
+* **logs:** gate repository list debug logs behind REPO_LIST_DEBUG_LOGS env flag ([3a97d67](https://github.com/jeffusion/gitea-ai-assistant/commit/3a97d673f671752a2e7f676fb0074b413c2e40cc))
+* **repo:** add structured diagnostics for repository list failures ([22b6032](https://github.com/jeffusion/gitea-ai-assistant/commit/22b603258ac32e70653aa1a05032a91e8ad23f89))
+
 # [1.3.0](https://github.com/jeffusion/gitea-ai-assistant/compare/v1.2.1...v1.3.0) (2026-03-26)
 
 
