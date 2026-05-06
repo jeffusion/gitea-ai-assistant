@@ -9,14 +9,17 @@ import { llmConfigRouter } from './controllers/llm-config';
 import { handleGiteaWebhook } from './controllers/review';
 import { initMasterKey } from './crypto/secrets';
 import { initDatabase } from './db/database';
+import { installE2EMockLLMGateway } from './llm/e2e-mock';
 import { cleanupScheduler } from './review/cleanup-scheduler';
 import { codexEngine } from './review/codex/codex-engine';
 import { mcpRouter } from './review/codex/mcp-handler';
-import { reviewEngine } from './review/engine';
+import { kernelReviewEngine } from './review/kernel/kernel-review-engine';
+import { getActiveReviewEngine } from './review/review-engine-provider';
 
 initMasterKey();
 initDatabase();
 configManager.seedDefaults();
+installE2EMockLLMGateway();
 
 // 创建Hono应用实例
 const app = new Hono();
@@ -78,18 +81,18 @@ const port = config.app.port;
 console.log(`⚡️ 服务启动在 http://localhost:${port}`);
 
 // 启动审查引擎（根据配置选择）
-reviewEngine.start().catch((error) => {
-  console.error('❌ 启动Agent Review Engine失败', error);
-});
 codexEngine.start().catch((error) => {
   console.error('❌ 启动Codex Review Engine失败', error);
+});
+kernelReviewEngine.start().catch((error) => {
+  console.error('❌ 启动Kernel Review Engine失败', error);
 });
 
 // 启动清理调度器（定期清理过期 mirror/workspace 目录）
 cleanupScheduler.start();
 
 // 初始化反馈系统（总是初始化，记忆系统可选）
-const reviewStore = reviewEngine.getStore();
+const reviewStore = getActiveReviewEngine().getStore();
 initializeFeedbackSystem(reviewStore);
 
 if (config.review.enableMemory) {

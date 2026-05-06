@@ -1,4 +1,4 @@
-export type ReviewEngineMode = 'agent' | 'codex';
+export type ReviewEngineMode = 'codex' | 'kernel';
 
 export type ReviewEventType = 'pull_request' | 'commit_status';
 
@@ -6,7 +6,7 @@ export type ReviewRunStatus = 'queued' | 'in_progress' | 'succeeded' | 'failed' 
 
 export type FindingSeverity = 'high' | 'medium' | 'low';
 
-export type FindingCategory = 'correctness' | 'security' | 'reliability' | 'maintainability';
+export type FindingCategory = 'correctness' | 'security' | 'quality';
 
 export type ReviewMode = 'skip' | 'light' | 'full';
 
@@ -21,7 +21,6 @@ export interface ReviewTask {
   maxIterations: number;
   allowTools: boolean;
   allowReflection: boolean;
-  allowDebate: boolean;
 }
 
 export interface ReviewBudgetPolicy {

@@ -54,6 +54,7 @@ function makeDummyTool(name = 'search_code'): Tool {
     name,
     description: 'Search code in the workspace',
     parameters: z.object({ query: z.string() }),
+    isConcurrencySafe: true,
     execute: async () => ({ results: [] }),
   };
 }

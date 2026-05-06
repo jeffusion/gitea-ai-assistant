@@ -32,7 +32,7 @@ export interface AppConfig {
     giteaAdminToken: string | undefined;
   };
   review: {
-    engine: 'agent' | 'codex';
+    engine: 'codex' | 'kernel';
     workdir: string;
     globalPrompt: string | undefined;
     maxParallelRuns: number;
@@ -63,8 +63,6 @@ export interface AppConfig {
     fewShotExamplesCount: number;
     enableReflection: boolean;
     maxReflectionRounds: number;
-    enableDebate: boolean;
-    debateThreshold: string;
   };
 }
 
@@ -139,8 +137,8 @@ class ConfigManager {
 
     return {
       gitea: {
-        apiUrl: values.GITEA_API_URL ?? 'http://localhost:5174/api/v1',
-        accessToken: values.GITEA_ACCESS_TOKEN ?? 'test_token',
+        apiUrl: values.GITEA_API_URL ?? '',
+        accessToken: values.GITEA_ACCESS_TOKEN ?? '',
       },
       notification: {
         feishu: {
@@ -163,7 +161,7 @@ class ConfigManager {
         giteaAdminToken: values.GITEA_ADMIN_TOKEN,
       },
       review: {
-        engine: values.REVIEW_ENGINE === 'codex' ? 'codex' : 'agent',
+        engine: values.REVIEW_ENGINE === 'codex' ? 'codex' : 'kernel',
         workdir: values.REVIEW_WORKDIR ?? '/tmp/gitea-assistant',
         globalPrompt: values.GLOBAL_PROMPT,
         maxParallelRuns: toNumber('REVIEW_MAX_PARALLEL_RUNS', 2),
@@ -200,8 +198,6 @@ class ConfigManager {
         fewShotExamplesCount: toNumber('FEW_SHOT_EXAMPLES_COUNT', 10),
         enableReflection: toBoolean('ENABLE_REFLECTION', false),
         maxReflectionRounds: toNumber('MAX_REFLECTION_ROUNDS', 2),
-        enableDebate: toBoolean('ENABLE_DEBATE', false),
-        debateThreshold: values.DEBATE_THRESHOLD ?? 'high',
       },
     };
   }

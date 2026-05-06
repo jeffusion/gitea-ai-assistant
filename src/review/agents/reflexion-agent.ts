@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { KernelHookRegistry } from '../../agent-kernel/hooks/kernel-hook-registry';
 import config from '../../config';
 import type { LLMGateway } from '../../llm/gateway';
 import type { LLMMessage } from '../../llm/types';
@@ -28,9 +29,10 @@ export class ReflexionAgent extends SpecialistAgent {
     agentName: string,
     focusPrompt: string,
     toolRegistry?: ToolRegistry,
-    learningSystem?: LearningSystem
+    learningSystem?: LearningSystem,
+    hookRegistry?: KernelHookRegistry
   ) {
-    super(gateway, category, agentName, focusPrompt, toolRegistry, learningSystem);
+    super(gateway, category, agentName, focusPrompt, toolRegistry, learningSystem, hookRegistry);
     this.criticAgent = new CriticAgent(gateway);
   }
 

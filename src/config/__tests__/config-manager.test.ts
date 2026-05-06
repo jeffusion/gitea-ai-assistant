@@ -66,7 +66,7 @@ describe('ConfigManager (DB backend)', () => {
 
   describe('getCurrent() defaults', () => {
     test('returns default engine when DB is empty', () => {
-      expect(configManager.getCurrent().review.engine).toBe('agent');
+      expect(configManager.getCurrent().review.engine).toBe('kernel');
     });
 
     test('reads port from process.env.PORT, defaults to 5174', () => {
@@ -105,18 +105,18 @@ describe('ConfigManager (DB backend)', () => {
 
   describe('setOverrides() and getSource()', () => {
     test('setOverrides writes to DB, getCurrent reflects the change', async () => {
-      await configManager.setOverrides({ REVIEW_ENGINE: 'agent' });
-      expect(configManager.getCurrent().review.engine).toBe('agent');
+      await configManager.setOverrides({ REVIEW_ENGINE: 'kernel' });
+      expect(configManager.getCurrent().review.engine).toBe('kernel');
     });
 
     test('setOverrides with empty string deletes the key (resets to default)', async () => {
-      await configManager.setOverrides({ REVIEW_ENGINE: 'agent' });
+      await configManager.setOverrides({ REVIEW_ENGINE: 'kernel' });
       await configManager.setOverrides({ REVIEW_ENGINE: '' });
-      expect(configManager.getCurrent().review.engine).toBe('agent');
+      expect(configManager.getCurrent().review.engine).toBe('kernel');
     });
 
     test('getSource returns "db" when value is stored', async () => {
-      await configManager.setOverrides({ REVIEW_ENGINE: 'agent' });
+      await configManager.setOverrides({ REVIEW_ENGINE: 'kernel' });
       expect(configManager.getSource('REVIEW_ENGINE')).toBe('db');
     });
 
@@ -131,7 +131,7 @@ describe('ConfigManager (DB backend)', () => {
 
     test('unknown keys are silently ignored', async () => {
       await configManager.setOverrides({ UNKNOWN_KEY_XYZ: 'value' });
-      expect(configManager.getCurrent().review.engine).toBe('agent');
+      expect(configManager.getCurrent().review.engine).toBe('kernel');
     });
   });
 
@@ -139,15 +139,15 @@ describe('ConfigManager (DB backend)', () => {
 
   describe('resetKeys()', () => {
     test('resetKeys deletes key from DB, value reverts to default', async () => {
-      await configManager.setOverrides({ REVIEW_ENGINE: 'agent' });
+      await configManager.setOverrides({ REVIEW_ENGINE: 'kernel' });
       await configManager.resetKeys(['REVIEW_ENGINE']);
-      expect(configManager.getCurrent().review.engine).toBe('agent');
+      expect(configManager.getCurrent().review.engine).toBe('kernel');
       expect(configManager.getSource('REVIEW_ENGINE')).toBe('default');
     });
 
     test('resetKeys on non-existent key does not throw', async () => {
       await configManager.resetKeys(['REVIEW_ENGINE']);
-      expect(configManager.getCurrent().review.engine).toBe('agent');
+      expect(configManager.getCurrent().review.engine).toBe('kernel');
     });
   });
 
@@ -171,9 +171,9 @@ describe('ConfigManager (DB backend)', () => {
     });
 
     test('seedDefaults is idempotent — no-op when DB already has entries', async () => {
-      await configManager.setOverrides({ REVIEW_ENGINE: 'agent' });
+      await configManager.setOverrides({ REVIEW_ENGINE: 'kernel' });
       configManager.seedDefaults();
-      expect(configManager.getCurrent().review.engine).toBe('agent');
+      expect(configManager.getCurrent().review.engine).toBe('kernel');
     });
 
     test('ADMIN_PASSWORD defaults to "password"', () => {

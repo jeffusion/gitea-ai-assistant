@@ -2,10 +2,9 @@ import * as crypto from 'node:crypto';
 import { Context } from 'hono';
 import { map } from 'lodash-es';
 import config from '../config';
-import { codexEngine } from '../review/codex/codex-engine';
 import { LocalRepoManager } from '../review/context/local-repo-manager';
 import { SandboxExec } from '../review/context/sandbox-exec';
-import { reviewEngine } from '../review/engine';
+import { getActiveReviewEngine, getReviewEngineLabel } from '../review/review-engine-provider';
 import { PullRequestDetails, giteaService } from '../services/gitea';
 import { getNotificationManager } from '../services/notification-manager';
 import type { NotificationContext } from '../services/notification/types';
@@ -175,7 +174,7 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
 
   // 包含baseSha以支持retarget场景：相同headSha但baseSha变化时需要重新审查
   const idempotencyKey = `${owner}/${repoName}#${prNumber}:${baseSha}...${headSha}`;
-  const engineInstance = config.review.engine === 'codex' ? codexEngine : reviewEngine;
+  const engineInstance = getActiveReviewEngine();
   const { run, reused } = await engineInstance.enqueuePullRequest({
     eventType: 'pull_request',
     idempotencyKey,
@@ -188,7 +187,7 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
     headSha,
   });
 
-  const engineLabel = config.review.engine === 'codex' ? 'Codex' : 'Agent';
+  const engineLabel = getReviewEngineLabel();
   return c.json(
     {
       status: reused ? 'deduplicated' : 'accepted',
@@ -322,7 +321,7 @@ async function handleCommitStatusEvent(c: Context, body: any): Promise<Response>
   }
 
   const idempotencyKey = `${owner}/${repoName}@${commitSha}`;
-  const engineInstance = config.review.engine === 'codex' ? codexEngine : reviewEngine;
+  const engineInstance = getActiveReviewEngine();
   const { run, reused } = await engineInstance.enqueueCommit({
     eventType: 'commit_status',
     idempotencyKey,
@@ -334,7 +333,7 @@ async function handleCommitStatusEvent(c: Context, body: any): Promise<Response>
     relatedPrNumber: relatedPR?.number,
   });
 
-  const engineLabel = config.review.engine === 'codex' ? 'Codex' : 'Agent';
+  const engineLabel = getReviewEngineLabel();
   return c.json(
     {
       status: reused ? 'deduplicated' : 'accepted',

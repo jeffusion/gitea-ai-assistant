@@ -64,7 +64,7 @@ describe('TriageAgent task-based routing', () => {
           complexity: 'complex',
           review_size: 'large',
           mode: 'full',
-          relevant_domains: ['correctness', 'security', 'reliability', 'maintainability'],
+          relevant_domains: ['correctness', 'security', 'quality'],
         })
       )
     );
@@ -84,7 +84,7 @@ describe('TriageAgent task-based routing', () => {
           complexity: 'complex',
           review_size: 'large',
           mode: 'full',
-          relevant_domains: ['correctness', 'security', 'reliability', 'maintainability'],
+          relevant_domains: ['correctness', 'security', 'quality'],
         })
       )
     );
@@ -156,12 +156,7 @@ describe('TriageAgent task-based routing', () => {
     expect(result.mode).toBe('full');
     expect(result.reviewSize).toBe('large');
     expect(result.complexity).toBe('complex');
-    const expectedDomains: FindingCategory[] = [
-      'correctness',
-      'maintainability',
-      'reliability',
-      'security',
-    ];
+    const expectedDomains: FindingCategory[] = ['correctness', 'quality', 'security'];
     expect(result.tasks.map((task) => task.domain).sort()).toEqual(expectedDomains.sort());
     expect(getCalls()).toHaveLength(0);
   });
@@ -173,7 +168,7 @@ describe('TriageAgent task-based routing', () => {
           complexity: 'standard',
           review_size: 'medium',
           mode: 'light',
-          relevant_domains: ['security', 'maintainability'],
+          relevant_domains: ['security', 'quality'],
           risk_tags: ['security-sensitive'],
           rationale: '跨文件业务逻辑调整',
         })
@@ -214,7 +209,7 @@ describe('TriageAgent task-based routing', () => {
           review_size: 'medium',
           mode: 'light',
           relevant_domains: ['correctness'],
-          risk_tags: ['maintainability-hotspot'],
+          risk_tags: ['quality-sensitive'],
           rationale: '需要模型判断',
         })
       )
@@ -263,12 +258,7 @@ describe('TriageAgent task-based routing', () => {
 
     expect(getCalls()).toHaveLength(1);
     expect(result.mode).toBe('full');
-    const expectedDomains: FindingCategory[] = [
-      'correctness',
-      'maintainability',
-      'reliability',
-      'security',
-    ];
+    const expectedDomains: FindingCategory[] = ['correctness', 'quality', 'security'];
     expect(result.tasks.map((task) => task.domain).sort()).toEqual(expectedDomains.sort());
     expect(result.rationale).toContain('LLM');
   });

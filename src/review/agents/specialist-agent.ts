@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { getKernelAgentContext } from '../../agent-kernel/agents/kernel-agent-context';
+import type { KernelHookRegistry } from '../../agent-kernel/hooks/kernel-hook-registry';
 import config from '../../config';
 import type { LLMGateway } from '../../llm/gateway';
 import type { LLMMessage, LLMToolCall } from '../../llm/types';
@@ -8,6 +10,7 @@ import { tokenCounter } from '../context/token-counter';
 import type { LearningSystem } from '../learning/learning-system';
 import { findingResponseSchema } from '../schema/finding-schema';
 import { ToolRegistry } from '../tools/registry';
+import { runToolOrchestration } from '../tools/tool-orchestration';
 import type { ToolExecutionContext, ToolResult } from '../tools/types';
 import {
   AgentResult,
@@ -37,6 +40,7 @@ export interface SpecialistReviewOptions {
   mode?: ReviewMode;
   maxContextTokens?: number;
   projectPrompt?: string;
+  contextSummary?: string;
 }
 
 function toCompactContext(context: ReviewContext, options?: CompactContextOptions): string {
@@ -132,7 +136,8 @@ export class SpecialistAgent {
     protected readonly agentName: string,
     protected readonly focusPrompt: string,
     protected readonly toolRegistry?: ToolRegistry,
-    protected readonly learningSystem?: LearningSystem
+    protected readonly learningSystem?: LearningSystem,
+    protected readonly hookRegistry?: KernelHookRegistry
   ) {}
 
   async review(run: ReviewRun, context: ReviewContext): Promise<AgentResult> {
@@ -173,6 +178,8 @@ export class SpecialistAgent {
 输出必须是JSON对象格式:
 {"findings": [{"severity": "high"|"medium"|"low", "confidence": 0-1, "path": "文件路径", "line": 正整数, "title": "标题", "detail": "详情", "evidence": "证据", "suggestion": "建议"}]}
 每个 finding 的所有字段都是必填的。仅报告有明确证据的问题；无问题时返回空数组。
+
+${options?.contextSummary ? `压缩上下文摘要（优先参考历史信息）：\n${options.contextSummary}\n` : ''}
 
 审查上下文如下:
 ${toCompactContext(context, {
@@ -317,7 +324,7 @@ ${this.toolRegistry!.getAll()
     // 添加当前审查任务
     messages.push({
       role: 'user',
-      content: `审查以下代码变更：\n${compactContext}`,
+      content: `${options?.contextSummary ? `压缩上下文摘要：\n${options.contextSummary}\n\n` : ''}审查以下代码变更：\n${compactContext}`,
     });
 
     try {
@@ -437,48 +444,19 @@ ${this.toolRegistry!.getAll()
     toolCalls: LLMToolCall[],
     context: ToolExecutionContext
   ): Promise<ToolResult[]> {
-    const results: ToolResult[] = [];
+    const agentContext = getKernelAgentContext();
+    const orchestration = await runToolOrchestration({
+      registry: this.toolRegistry!,
+      toolCalls,
+      context: {
+        ...context,
+        agentName: this.agentName,
+        agentId: agentContext?.agentId,
+        source: 'react',
+      },
+      hookRegistry: this.hookRegistry,
+    });
 
-    for (const toolCall of toolCalls) {
-      const tool = this.toolRegistry!.get(toolCall.name);
-
-      if (!tool) {
-        results.push({
-          toolCallId: toolCall.id,
-          success: false,
-          error: `工具 ${toolCall.name} 未找到`,
-        });
-        continue;
-      }
-
-      try {
-        const params = JSON.parse(toolCall.arguments);
-        const result = await tool.execute(params, context);
-
-        logger.info(`工具调用成功: ${toolCall.name}`, {
-          runId: context.runId,
-          params,
-        });
-
-        results.push({
-          toolCallId: toolCall.id,
-          success: true,
-          result,
-        });
-      } catch (error) {
-        logger.error(`工具调用失败: ${toolCall.name}`, {
-          runId: context.runId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-
-        results.push({
-          toolCallId: toolCall.id,
-          success: false,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    return results;
+    return orchestration.results;
   }
 }

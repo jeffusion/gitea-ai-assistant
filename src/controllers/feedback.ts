@@ -1,7 +1,10 @@
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { kernelSessionRepository } from '../agent-kernel/session/session-repository';
 import config from '../config';
+import { kernelReviewEngine } from '../review/kernel/kernel-review-engine';
+import { getReviewSessionScope } from '../review/kernel/session-scope';
 import { LearningSystem } from '../review/learning/learning-system';
 import { VectorMemoryStore } from '../review/memory/vector-store';
 import { FileReviewStore } from '../review/store/file-review-store';
@@ -61,6 +64,10 @@ feedbackRouter.post(
     if (!runDetails) {
       return c.json({ error: 'Run not found' }, 404);
     }
+
+    const session = kernelSessionRepository.getSessionByScopeKey(
+      getReviewSessionScope(runDetails.run).scopeKey
+    );
 
     const { owner, repo } = runDetails.run;
 
@@ -210,6 +217,25 @@ _此问题已通过人工审批确认_`;
       }
 
       // finding已在开头原子标记为published，处理成功则保持published状态
+      if (session) {
+        kernelSessionRepository.appendEvent(session.id, 'human_feedback_processed', {
+          runId: finding.runId,
+          findingId,
+          approved,
+          reason: reason || null,
+          published: approved,
+        });
+
+        if (config.review.engine === 'kernel') {
+          const latestRunDetails = await reviewStore.getRunDetails(finding.runId);
+          const hasRemainingPendingFindings =
+            latestRunDetails?.findings.some((item) => !item.published) ?? false;
+
+          if (!hasRemainingPendingFindings) {
+            await kernelReviewEngine.continueSession(session.id);
+          }
+        }
+      }
 
       return c.json({
         success: true,

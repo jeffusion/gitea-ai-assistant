@@ -5,7 +5,7 @@
  *   1. Change complexity (trivial / standard / complex)
  *   2. Which specialist domains are relevant
  *
- * This avoids wasting tokens by running all 4 specialist agents on trivial changes
+ * This avoids wasting tokens by running all specialist agents on trivial changes
  * (e.g. README typo fixes, string-only edits, pure documentation changes).
  */
 
@@ -43,15 +43,11 @@ export interface TriageResult {
 
 export interface TriageOptions {
   projectPrompt?: string;
+  contextSummary?: string;
 }
 
 /** All valid finding categories. */
-const ALL_DOMAINS: FindingCategory[] = [
-  'correctness',
-  'security',
-  'reliability',
-  'maintainability',
-];
+const ALL_DOMAINS: FindingCategory[] = ['correctness', 'security', 'quality'];
 
 const DOCUMENTATION_EXTENSIONS = new Set([
   '.md',
@@ -190,11 +186,11 @@ function collectRiskTags(changedFiles: ChangedFile[]): string[] {
     if (hasPattern(filePath, SECURITY_SENSITIVE_PATTERNS)) {
       tags.add('security-sensitive');
     }
-    if (hasPattern(filePath, RELIABILITY_PATTERNS)) {
-      tags.add('reliability-sensitive');
-    }
-    if (hasPattern(filePath, MAINTAINABILITY_PATTERNS)) {
-      tags.add('maintainability-hotspot');
+    if (
+      hasPattern(filePath, RELIABILITY_PATTERNS) ||
+      hasPattern(filePath, MAINTAINABILITY_PATTERNS)
+    ) {
+      tags.add('quality-sensitive');
     }
     if (/test|spec|__tests__/i.test(filePath)) {
       tags.add('test-change');
@@ -250,14 +246,10 @@ function buildDomainPaths(changedFiles: ChangedFile[], domain: FindingCategory):
     return scoped.length > 0 ? scoped : candidatePaths;
   }
 
-  if (domain === 'reliability') {
-    const scoped = candidatePaths.filter((filePath) => hasPattern(filePath, RELIABILITY_PATTERNS));
-    return scoped.length > 0 ? scoped : candidatePaths;
-  }
-
-  if (domain === 'maintainability') {
-    const scoped = candidatePaths.filter((filePath) =>
-      hasPattern(filePath, MAINTAINABILITY_PATTERNS)
+  if (domain === 'quality') {
+    const scoped = candidatePaths.filter(
+      (filePath) =>
+        hasPattern(filePath, RELIABILITY_PATTERNS) || hasPattern(filePath, MAINTAINABILITY_PATTERNS)
     );
     return scoped.length > 0 ? scoped : candidatePaths;
   }
@@ -291,7 +283,6 @@ function buildTasks(
       maxIterations,
       allowTools: mode === 'full',
       allowReflection: mode === 'full' && (domain === 'correctness' || domain === 'security'),
-      allowDebate: mode === 'full' && domain !== 'maintainability',
     };
   });
 }
@@ -304,17 +295,13 @@ function decideDomains(
   const domains: FindingCategory[] = ['correctness'];
 
   const hasSecurityFiles = riskTags.includes('security-sensitive');
-  const hasReliabilityFiles = riskTags.includes('reliability-sensitive');
-  const hasMaintainabilityHotspot = riskTags.includes('maintainability-hotspot');
+  const hasQualityFiles = riskTags.includes('quality-sensitive');
 
   if (hasSecurityFiles) {
     domains.push('security');
   }
-  if (hasReliabilityFiles || reviewSize === 'large') {
-    domains.push('reliability');
-  }
-  if (hasMaintainabilityHotspot || changedFiles.length >= 4 || reviewSize === 'large') {
-    domains.push('maintainability');
+  if (hasQualityFiles || changedFiles.length >= 4 || reviewSize === 'large') {
+    domains.push('quality');
   }
 
   if (reviewSize === 'large') {
@@ -468,7 +455,11 @@ export class TriageAgent {
     // Use a small slice of diff for context (just the first 2000 chars for speed)
     const diffPreview = context.diff.slice(0, 2000);
 
-    const prompt = `你是代码审查分流专家。分析以下变更并判断其复杂度、审查模式和审查领域。
+    const compressedSummarySection = options?.contextSummary
+      ? `\n压缩上下文摘要（优先参考）：\n${options.contextSummary}\n`
+      : '';
+
+    const prompt = `你是代码审查分流专家。分析以下变更并判断其复杂度、审查模式和审查领域。${compressedSummarySection}
 
 变更文件列表：
 ${fileSummary}
@@ -481,7 +472,7 @@ ${diffPreview}
 - **mode=light**: 小范围可执行代码改动，低风险，最小深度审查
 - **mode=full**: 安全/配置/跨模块/中大型改动，需要完整审查
 
-可选领域：correctness（逻辑正确性）, security（安全）, reliability（可靠性）, maintainability（可维护性）
+可选领域：correctness（逻辑正确性）, security（安全）, quality（可靠性、可维护性与可测试性）
 
 返回 JSON：
 {
