@@ -17,7 +17,7 @@ import { toast } from 'sonner';
 // Engine-specific field visibility
 // ---------------------------------------------------------------------------
 
-type EngineMode = 'agent' | 'codex';
+type EngineMode = 'kernel' | 'codex';
 
 /** The engine selector field — always visible at the top. */
 const ENGINE_FIELD = 'REVIEW_ENGINE';
@@ -30,8 +30,7 @@ const AGENT_SHARED_FIELDS = new Set([
   'REVIEW_MAX_FILE_CONTENT_CHARS',
 ]);
 
-/** Fields specific to agent mode only. */
-const AGENT_ONLY_FIELDS = new Set([
+const KERNEL_ONLY_FIELDS = new Set([
   'REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE',
   'REVIEW_ENABLE_HUMAN_GATE',
   'REVIEW_ALLOWED_COMMANDS',
@@ -62,8 +61,8 @@ function getVisibleFields(engine: EngineMode, fields: ConfigFieldDto[]): ConfigF
   return fields.filter((f) => {
     if (f.envKey === ENGINE_FIELD) return false; // rendered separately
     switch (engine) {
-      case 'agent':
-        return AGENT_SHARED_FIELDS.has(f.envKey) || AGENT_ONLY_FIELDS.has(f.envKey);
+      case 'kernel':
+        return AGENT_SHARED_FIELDS.has(f.envKey) || KERNEL_ONLY_FIELDS.has(f.envKey);
       case 'codex':
         return CODEX_FIELDS.has(f.envKey);
       default:
@@ -77,7 +76,7 @@ function getVisibleFields(engine: EngineMode, fields: ConfigFieldDto[]): ConfigF
 // ---------------------------------------------------------------------------
 
 const ENGINE_OPTIONS: { value: EngineMode; label: string; description: string }[] = [
-  { value: 'agent', label: 'Agent', description: '多代理编排深度审查' },
+  { value: 'kernel', label: 'Kernel', description: 'PR Session + Agentic Loop 审查' },
   { value: 'codex', label: 'Codex', description: 'Codex CLI 审查' },
 ];
 
@@ -98,8 +97,8 @@ export function ReviewConfigPage() {
   // Derived: current engine mode
   const engine: EngineMode = useMemo(() => {
     const val = localConfig[ENGINE_FIELD];
-    if (val === 'agent' || val === 'codex') return val;
-    return 'agent';
+    if (val === 'kernel' || val === 'codex') return val;
+    return 'kernel';
   }, [localConfig]);
 
   // Derived: review group and memory group from fetched data
@@ -225,11 +224,11 @@ export function ReviewConfigPage() {
   const syntheticReviewGroup: ConfigGroupDto | null = reviewGroup
     ? {
         ...reviewGroup,
-        label: engine === 'codex' ? 'Codex 审查设置' : 'Agent 审查设置',
+          label: engine === 'codex' ? 'Codex 审查设置' : 'Kernel 审查设置',
         description:
           engine === 'codex'
             ? 'Codex CLI 审查引擎配置'
-            : '多代理编排审查引擎配置',
+            : '基于 PR Session 的 agentic loop 审查引擎配置',
         fields: visibleReviewFields,
       }
     : null;
@@ -358,8 +357,7 @@ export function ReviewConfigPage() {
           />
         )}
 
-        {/* Memory group — agent mode only */}
-        {engine === 'agent' && memoryGroup && (
+        {engine === 'kernel' && memoryGroup && (
           <ConfigGroupCard
             group={memoryGroup}
             localConfig={localConfig}
@@ -369,7 +367,7 @@ export function ReviewConfigPage() {
           />
         )}
 
-        {engine !== 'codex' && (
+        {engine === 'kernel' && (
           <>
             <ProviderList />
             <RoleAssignment />

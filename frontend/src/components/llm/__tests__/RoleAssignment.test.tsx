@@ -4,7 +4,12 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { RoleAssignment } from '../RoleAssignment';
-import { fetchProviders, fetchRoles, setRole } from '@/services/llmProviderService';
+import {
+  fetchKernelSubagents,
+  fetchProviders,
+  fetchRoles,
+  setRole,
+} from '@/services/llmProviderService';
 
 vi.mock('sonner', () => ({
   toast: {
@@ -18,6 +23,7 @@ vi.mock('@/services/llmProviderService', async () => {
   return {
     ...actual,
     fetchProviders: vi.fn(),
+    fetchKernelSubagents: vi.fn(),
     fetchRoles: vi.fn(),
     setRole: vi.fn(),
     fetchModelSuggestions: vi.fn().mockResolvedValue({
@@ -65,6 +71,29 @@ describe('RoleAssignment', () => {
       },
     ]);
 
+    vi.mocked(fetchKernelSubagents).mockResolvedValueOnce([
+      {
+        kind: 'subagent',
+        name: 'review:triage',
+        source: 'built-in',
+        description: '根据变更范围决定 review 域与审查模式',
+        whenToUse: '当需要规划任务时',
+        modelRole: 'planner',
+        tags: ['review', 'planner', 'triage'],
+        resumable: true,
+      },
+      {
+        kind: 'subagent',
+        name: 'review:specialist:security',
+        source: 'built-in',
+        description: '专项审查 security 域变更',
+        whenToUse: '当 security 风险域被命中时',
+        modelRole: 'specialist',
+        tags: ['review', 'specialist', 'domain-review', 'domain:security'],
+        resumable: true,
+      },
+    ]);
+
     vi.mocked(setRole).mockResolvedValue({
       role: 'planner',
       providerId: 'p1',
@@ -76,8 +105,11 @@ describe('RoleAssignment', () => {
     const user = userEvent.setup();
     renderWithQuery(<RoleAssignment />);
 
-    expect(await screen.findByText('角色分配')).toBeInTheDocument();
-    expect(await screen.findByText('规划器 Planner')).toBeInTheDocument();
+    expect(await screen.findByText('Subagents 与模型角色路由')).toBeInTheDocument();
+    expect(await screen.findByText('review:triage')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: /模型角色路由/ }));
+    expect(await screen.findByText('Planner')).toBeInTheDocument();
 
     // Radix Select renders placeholder in a span with pointer-events: none.
     // Click the trigger button (parent) instead of the placeholder text.

@@ -1,8 +1,16 @@
 import { Hono } from 'hono';
 import { sign } from 'hono/jwt';
+import { kernelSessionRepository } from '../agent-kernel/session/session-repository';
 import config from '../config';
 import { repositoryReviewPromptRepo } from '../db/repositories/repository-review-prompt-repo';
-import { reviewEngine } from '../review/engine';
+import { kernelReviewEngine } from '../review/kernel/kernel-review-engine';
+import {
+  buildReviewPlanSnapshot,
+  buildReviewSessionSummary,
+  buildReviewTimeline,
+  filterEventsByLatestHeadSha,
+} from '../review/kernel/session-read-model';
+import { getActiveReviewEngine } from '../review/review-engine-provider';
 import { giteaService } from '../services/gitea';
 import { toErrorLogMeta } from '../utils/error-log';
 import { logger } from '../utils/logger';
@@ -173,7 +181,7 @@ protectedRoutes.delete('/repositories/:owner/:repo/webhook/:hookId', async (c) =
 protectedRoutes.get('/review/runs', async (c) => {
   try {
     const limit = Number.parseInt(c.req.query('limit') || '50', 10);
-    const runs = await reviewEngine.listRuns(limit);
+    const runs = await getActiveReviewEngine().listRuns(limit);
     return c.json({ data: runs });
   } catch (error: any) {
     logger.error('获取审查任务列表失败:', error);
@@ -185,7 +193,7 @@ protectedRoutes.get('/review/runs', async (c) => {
 protectedRoutes.get('/review/runs/:runId', async (c) => {
   try {
     const { runId } = c.req.param();
-    const result = await reviewEngine.getRunDetails(runId);
+    const result = await getActiveReviewEngine().getRunDetails(runId);
     if (!result) {
       return c.json({ message: 'Run not found' }, 404);
     }
@@ -193,6 +201,92 @@ protectedRoutes.get('/review/runs/:runId', async (c) => {
   } catch (error: any) {
     logger.error('获取审查任务详情失败:', error);
     return c.json({ message: 'Failed to fetch review run details', error: error.message }, 500);
+  }
+});
+
+protectedRoutes.get('/review/sessions', (c) => {
+  try {
+    const limit = Number.parseInt(c.req.query('limit') || '50', 10);
+    const catalog = kernelReviewEngine.listTaskCatalog();
+    const sessions = kernelSessionRepository.listSessions(limit).map((session) => {
+      const checkpoint = kernelSessionRepository.loadCheckpoint(session.id);
+      const events = kernelSessionRepository.listEvents(session.id);
+      const plan = buildReviewPlanSnapshot(catalog, checkpoint, events);
+      return {
+        session,
+        summary: buildReviewSessionSummary(session, checkpoint, events, plan),
+      };
+    });
+
+    return c.json({ data: sessions });
+  } catch (error: any) {
+    logger.error('获取审查会话列表失败:', error);
+    return c.json({ message: 'Failed to fetch review sessions', error: error.message }, 500);
+  }
+});
+
+protectedRoutes.get('/review/sessions/:sessionId', async (c) => {
+  try {
+    const { sessionId } = c.req.param();
+    const session = kernelSessionRepository.getSessionById(sessionId);
+    if (!session) {
+      return c.json({ message: 'Session not found' }, 404);
+    }
+
+    const checkpoint = kernelSessionRepository.loadCheckpoint(sessionId);
+    const allEvents = kernelSessionRepository.listEvents(sessionId);
+    const events = filterEventsByLatestHeadSha(allEvents, checkpoint);
+    const catalog = kernelReviewEngine.listTaskCatalog();
+    const plan = buildReviewPlanSnapshot(catalog, checkpoint, events);
+    const summary = buildReviewSessionSummary(session, checkpoint, events, plan);
+    const runDetails = session.lastRunId
+      ? await getActiveReviewEngine().getRunDetails(session.lastRunId)
+      : null;
+    const subagentInvocations = kernelSessionRepository.listSubagentInvocations(sessionId);
+
+    return c.json({
+      session,
+      summary,
+      checkpoint,
+      plan,
+      timeline: buildReviewTimeline(events),
+      events,
+      subagentInvocations,
+      runDetails,
+    });
+  } catch (error: any) {
+    logger.error('获取审查会话详情失败:', error);
+    return c.json({ message: 'Failed to fetch review session details', error: error.message }, 500);
+  }
+});
+
+protectedRoutes.get('/review/kernel/tasks', (c) => {
+  try {
+    return c.json({ data: kernelReviewEngine.listTaskCatalog() });
+  } catch (error: any) {
+    logger.error('获取 kernel 任务目录失败:', error);
+    return c.json({ message: 'Failed to fetch kernel task catalog', error: error.message }, 500);
+  }
+});
+
+protectedRoutes.get('/review/kernel/subagents', (c) => {
+  try {
+    return c.json({ data: kernelReviewEngine.listSubagentCatalog() });
+  } catch (error: any) {
+    logger.error('获取 kernel subagent 目录失败:', error);
+    return c.json(
+      { message: 'Failed to fetch kernel subagent catalog', error: error.message },
+      500
+    );
+  }
+});
+
+protectedRoutes.get('/review/kernel/hooks', (c) => {
+  try {
+    return c.json({ data: kernelReviewEngine.listHookCatalog() });
+  } catch (error: any) {
+    logger.error('获取 kernel hook 目录失败:', error);
+    return c.json({ message: 'Failed to fetch kernel hook catalog', error: error.message }, 500);
   }
 });
 
