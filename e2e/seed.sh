@@ -26,12 +26,12 @@ for i in $(seq 1 30); do
 done
 
 echo "=== [2/6] 创建管理员用户 ==="
-docker exec e2e-gitea gitea admin user create \
+docker exec -u git e2e-gitea gitea admin user create \
   --username "${ADMIN_USER}" \
   --password "${ADMIN_PASS}" \
   --email "${ADMIN_EMAIL}" \
   --admin \
-  --must-change-password=false 2>/dev/null || echo "  用户已存在，跳过"
+  --must-change-password=false 2>/dev/null || echo " 用户已存在，跳过"
 
 echo "=== [3/6] 生成 API Token ==="
 TOKEN_RESPONSE=$(curl -sf -X POST "${GITEA_URL}/api/v1/users/${ADMIN_USER}/tokens" \
@@ -120,37 +120,43 @@ ADMIN_DEFAULT_PASS="password"
 
 # Wait for assistant to be healthy
 for i in $(seq 1 20); do
-  if curl -sf "${ASSISTANT_URL}/" > /dev/null 2>&1; then
-    echo "  Assistant 已就绪"
+  if curl -sf "${ASSISTANT_URL}/api/health" > /dev/null 2>&1; then
+    echo " Assistant 已就绪"
     break
   fi
-  echo "  等待 Assistant... ($i/20)"
+  echo " 等待 Assistant... ($i/20)"
   sleep 3
 done
 
-# Login to get JWT
-LOGIN_RESP=$(curl -sf -X POST "${ASSISTANT_URL}/admin/login" \
+# Login to get JWT (正确路径: /admin/api/login)
+LOGIN_RESP=$(curl -sf -X POST "${ASSISTANT_URL}/admin/api/login" \
   -H "Content-Type: application/json" \
   -d "{\"password\": \"${ADMIN_DEFAULT_PASS}\"}" 2>/dev/null || true)
 ADMIN_JWT=$(echo "${LOGIN_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || true)
 
 if [ -z "${ADMIN_JWT}" ]; then
-  echo "  WARNING: 无法获取管理员 JWT，跳过 assistant 配置"
+  echo " WARNING: 无法获取管理员 JWT，跳过 assistant 配置"
 else
-  echo "  JWT 获取成功，配置 assistant 设置..."
-  curl -sf -X PUT "${ASSISTANT_URL}/admin/config" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer ${ADMIN_JWT}" \
-    -d "{
-      \"WEBHOOK_SECRET\": \"${WEBHOOK_SECRET}\",
-      \"GITEA_API_URL\": \"http://gitea:3000/api/v1\",
-      \"REVIEW_ENGINE\": \"agent\",
-      \"REVIEW_WORKDIR\": \"/tmp/e2e-review\",
-      \"REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE\": \"0.5\",
-      \"REVIEW_ENABLE_HUMAN_GATE\": \"false\",
-      \"REVIEW_ALLOWED_COMMANDS\": \"git,rg,cat,sed,wc\",
-      \"REVIEW_COMMAND_TIMEOUT_MS\": \"30000\"
-    }" > /dev/null 2>&1 && echo "  Assistant 配置完成" || echo "  WARNING: assistant 配置失败"
+  echo " JWT 获取成功，配置 assistant 设置..."
+
+  # 逐项配置（避免 JSON 格式化问题）
+  set_assistant_config() {
+    local key="$1" value="$2"
+    curl -sf -X PUT "${ASSISTANT_URL}/admin/api/config" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer ${ADMIN_JWT}" \
+      -d "{\"${key}\": \"${value}\"}" > /dev/null 2>&1
+  }
+
+  set_assistant_config "WEBHOOK_SECRET" "${WEBHOOK_SECRET}"
+  set_assistant_config "GITEA_API_URL" "http://gitea:3000/api/v1"
+  set_assistant_config "GITEA_ACCESS_TOKEN" "${GITEA_TOKEN}"
+  set_assistant_config "REVIEW_ENGINE" "kernel"
+  set_assistant_config "REVIEW_ENABLE_HUMAN_GATE" "false"
+  set_assistant_config "REVIEW_ALLOWED_COMMANDS" "git,rg,cat,sed,wc"
+  set_assistant_config "REVIEW_COMMAND_TIMEOUT_MS" "30000"
+
+  echo " Assistant 配置完成（含 Gitea 连接参数）"
 fi
 
 echo "=== [6/7] 配置 Webhook ==="
@@ -207,6 +213,5 @@ echo "  PR:        #${PR_NUMBER}"
 echo "  Token:     ${GITEA_TOKEN:0:8}..."
 echo ""
 echo "下一步:"
-echo "  1. 更新 assistant 容器的 GITEA_ACCESS_TOKEN:"
-echo "     E2E_GITEA_TOKEN=${GITEA_TOKEN} docker compose -f docker-compose.e2e.yml up -d assistant"
-echo "  2. 运行测试: ./e2e/test.sh"
+echo " 1. 触发 PR webhook 或推送 feature 分支新提交"
+echo " 2. 运行 E2E 测试: bun run test:e2e"

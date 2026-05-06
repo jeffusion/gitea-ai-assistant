@@ -52,6 +52,7 @@
     "start:prod": "bun run dist/index.js",
     "lint": "biome check src/",
     "test": "bun test",
+"test:e2e": "E2E_MOCK_LLM=1 bun test ./e2e/__tests__/e2e-review.test.ts",
     "prepare": "command -v husky >/dev/null 2>&1 && husky || true"
   },
   "keywords": [

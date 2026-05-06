@@ -1,0 +1,8 @@
+{
+  "name": "simple-bug-pr",
+  "description": "包含空指针、SQL注入、硬编码密钥的PR",
+  "expectedTriageMode": "light",
+  "expectedDomains": ["correctness"],
+  "minFindings": 2,
+  "minHighSeverity": 1
+}

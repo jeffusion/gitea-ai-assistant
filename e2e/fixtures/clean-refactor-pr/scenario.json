@@ -1,0 +1,9 @@
+{
+  "name": "clean-refactor-pr",
+  "description": "正确的重构",
+  "expectedTriageMode": "light",
+  "expectedDomains": ["correctness"],
+  "minFindings": 0,
+  "maxFindings": 1,
+  "minHighSeverity": 0
+}
