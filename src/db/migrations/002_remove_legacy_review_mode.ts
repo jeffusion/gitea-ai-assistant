@@ -9,7 +9,7 @@ export const migration002RemoveLegacyReviewMode: Migration = {
 
   up(db: Database): void {
     db.exec(
-      "UPDATE system_settings SET value = 'agent' WHERE key = 'REVIEW_ENGINE' AND value NOT IN ('agent','codex')"
+      "UPDATE system_settings SET value = 'kernel' WHERE key = 'REVIEW_ENGINE' AND value NOT IN ('codex','kernel')"
     );
 
     db.exec(`
