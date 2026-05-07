@@ -195,6 +195,7 @@ export class E2ETestHarness {
         E2E_MOCK_LLM: '1',
         ENCRYPTION_KEY,
         DATABASE_PATH: this.databasePath,
+        REVIEW_ENGINE: 'kernel',
         PORT: String(this.assistantPort),
         LOG_LEVEL: process.env.LOG_LEVEL ?? 'error',
       },
@@ -271,18 +272,27 @@ export class E2ETestHarness {
     const pullRequest = await this.giteaFetch<GiteaPullRequest>(
       `/repos/${owner}/${repo}/pulls/${prNumber}`
     );
+    const normalizedRepository = this.normalizeRepoUrls({
+      ...repository,
+      ...options.repositoryPatch,
+      owner: repository.owner,
+    });
     const payload = {
       action: options.action ?? 'opened',
       number: prNumber,
       pull_request: {
         ...pullRequest,
+        head: {
+          ...pullRequest.head,
+          repo: pullRequest.head.repo ? this.normalizeRepoUrls(pullRequest.head.repo) : undefined,
+        },
+        base: {
+          ...pullRequest.base,
+          repo: pullRequest.base.repo ? this.normalizeRepoUrls(pullRequest.base.repo) : undefined,
+        },
         requested_reviewers: pullRequest.requested_reviewers ?? [],
       },
-      repository: {
-        ...repository,
-        ...options.repositoryPatch,
-        owner: repository.owner,
-      },
+      repository: normalizedRepository,
       sender: repository.owner,
     };
     const body = JSON.stringify(payload);
@@ -687,6 +697,19 @@ export class E2ETestHarness {
 
   private fixturesDir(): string {
     return path.resolve(import.meta.dir, '../fixtures');
+  }
+
+  private normalizeRepoUrls(repo: GiteaRepo): GiteaRepo {
+    return {
+      ...repo,
+      clone_url: this.normalizeGiteaUrl(repo.clone_url),
+      html_url: this.normalizeGiteaUrl(repo.html_url),
+      ssh_url: repo.ssh_url ? this.normalizeGiteaUrl(repo.ssh_url) : repo.ssh_url,
+    };
+  }
+
+  private normalizeGiteaUrl(value: string): string {
+    return value.replace('http://gitea:3000', this.giteaUrl);
   }
 
   private requireToken(): string {

@@ -11,9 +11,7 @@ import { initMasterKey } from './crypto/secrets';
 import { initDatabase } from './db/database';
 import { installE2EMockLLMGateway } from './llm/e2e-mock';
 import { cleanupScheduler } from './review/cleanup-scheduler';
-import { codexEngine } from './review/codex/codex-engine';
 import { mcpRouter } from './review/codex/mcp-handler';
-import { kernelReviewEngine } from './review/kernel/kernel-review-engine';
 import { getActiveReviewEngine } from './review/review-engine-provider';
 
 initMasterKey();
@@ -80,13 +78,12 @@ app.get('*', serveStatic({ path: './public/index.html' }));
 const port = config.app.port;
 console.log(`⚡️ 服务启动在 http://localhost:${port}`);
 
-// 启动审查引擎（根据配置选择）
-codexEngine.start().catch((error) => {
-  console.error('❌ 启动Codex Review Engine失败', error);
-});
-kernelReviewEngine.start().catch((error) => {
-  console.error('❌ 启动Kernel Review Engine失败', error);
-});
+// 启动当前配置的审查引擎，避免非 active 引擎产生副作用。
+getActiveReviewEngine()
+  .start()
+  .catch((error) => {
+    console.error('❌ 启动 Review Engine 失败', error);
+  });
 
 // 启动清理调度器（定期清理过期 mirror/workspace 目录）
 cleanupScheduler.start();
