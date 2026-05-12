@@ -14,6 +14,7 @@ import { migration002RemoveLegacyReviewMode } from './migrations/002_remove_lega
 import { migration003RepositoryReviewPrompts } from './migrations/003_repository_review_prompts';
 import { migration004AgentKernelSessions } from './migrations/004_agent_kernel_sessions';
 import { migration005AgentKernelSubagentInvocations } from './migrations/005_agent_kernel_subagent_invocations';
+import { migration006RemoveJudgeEmbeddingRoles } from './migrations/006_remove_judge_embedding_roles';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -35,6 +36,7 @@ const MIGRATIONS: Migration[] = [
   migration003RepositoryReviewPrompts,
   migration004AgentKernelSessions,
   migration005AgentKernelSubagentInvocations,
+  migration006RemoveJudgeEmbeddingRoles,
 ];
 
 const REPOSITORY_REVIEW_PROMPTS_TABLE = 'repository_review_prompts';
