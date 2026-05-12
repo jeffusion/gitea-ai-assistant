@@ -20,7 +20,6 @@ export interface ReviewTask {
   tokenBudget: number;
   maxIterations: number;
   allowTools: boolean;
-  allowReflection: boolean;
 }
 
 export interface ReviewBudgetPolicy {
@@ -155,6 +154,16 @@ export interface ReviewContext {
 export interface AgentResult {
   agentName: string;
   findings: Omit<Finding, 'id' | 'runId' | 'published'>[];
+  diagnostics?: {
+    scopedPaths?: string[];
+    compactContextTokens?: number;
+    iterations?: number;
+    toolCallNames?: string[];
+    parsedFindingCount?: number;
+    finalResponsePreview?: string;
+    parseErrors?: string[];
+    emptyResponseCount?: number;
+  };
 }
 
 export interface ReviewDecision {

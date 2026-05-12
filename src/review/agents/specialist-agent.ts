@@ -7,7 +7,6 @@ import type { LLMMessage, LLMToolCall } from '../../llm/types';
 import { mergeReviewPrompts, withGlobalPrompt } from '../../utils/global-prompt';
 import { logger } from '../../utils/logger';
 import { tokenCounter } from '../context/token-counter';
-import type { LearningSystem } from '../learning/learning-system';
 import { findingResponseSchema } from '../schema/finding-schema';
 import { ToolRegistry } from '../tools/registry';
 import { runToolOrchestration } from '../tools/tool-orchestration';
@@ -31,6 +30,18 @@ function buildFingerprint(category: string, path: string, line: number, title: s
 interface CompactContextOptions {
   scopePaths?: string[];
   maxContextTokens?: number;
+}
+
+interface SpecialistDiagnostics {
+  scopedPaths?: string[];
+  compactContextTokens?: number;
+  iterations?: number;
+  toolCallNames?: string[];
+  forcedToolChoiceCount?: number;
+  parsedFindingCount?: number;
+  finalResponsePreview?: string;
+  parseErrors?: string[];
+  emptyResponseCount?: number;
 }
 
 export interface SpecialistReviewOptions {
@@ -129,6 +140,66 @@ function toCompactContext(context: ReviewContext, options?: CompactContextOption
   return result;
 }
 
+function buildChangedFileChecklist(
+  context: ReviewContext,
+  options?: CompactContextOptions
+): string {
+  const scopedPaths = options?.scopePaths ? new Set(options.scopePaths) : null;
+  const files = (
+    scopedPaths
+      ? context.changedFiles.filter((file) => scopedPaths.has(file.path))
+      : context.changedFiles
+  ).map((file) => `${file.path} (+${file.additions}/-${file.deletions}, ${file.status})`);
+
+  if (files.length === 0) {
+    return '本轮没有匹配到变更文件。';
+  }
+
+  return files.map((file, index) => `${index + 1}. ${file}`).join('\n');
+}
+
+function buildReviewQualityInstruction(
+  context: ReviewContext,
+  options?: CompactContextOptions
+): string {
+  return `以下是本轮 PR 的变更文件清单。它是调查地图，不是拆分任务；你必须自主决定先读哪些文件、哪些函数、哪些调用链，并保留跨文件关联判断：
+${buildChangedFileChecklist(context, options)}
+
+重点检查会导致真实功能错误的问题，尤其是：
+- 新增/删除/编辑类 UI 操作是否真正调用后端 API 持久化，而不是只修改前端数组或临时状态；
+- 表单提交是否和界面当前展示/预览的数据一致，是否可能提交额外或错误的数据；
+- 去重、编号、边界条件、空值、权限、错误处理是否和已有业务规则一致；
+- 新增大文件中的核心 CRUD 路径、watch/onMounted 副作用、异步失败分支是否闭环。
+
+像 Codex review 一样工作：先从 diff 找风险点，再用 read_file/search_code 自主读取相关片段、上下游调用和相似实现。不要按文件孤立审查；涉及 UI 状态、API 持久化、列表刷新、跨组件事件时必须串起来判断。只有完成必要调查后仍无可执行问题，才返回空 findings。`;
+}
+
+function previewContent(content: string | null | undefined): string | undefined {
+  if (!content) return undefined;
+  return content.length > 2000 ? `${content.slice(0, 2000)}…` : content;
+}
+
+function buildReviewToolChoice(params: {
+  mode?: ReviewMode;
+  hasReadFile: boolean;
+  isLastIteration: boolean;
+  availableToolNames: string[];
+}): unknown {
+  if (params.isLastIteration) {
+    return 'none';
+  }
+
+  if (
+    params.mode === 'full' &&
+    !params.hasReadFile &&
+    params.availableToolNames.includes('read_file')
+  ) {
+    return { type: 'function', function: { name: 'read_file' } };
+  }
+
+  return 'auto';
+}
+
 export class SpecialistAgent {
   constructor(
     protected readonly gateway: LLMGateway,
@@ -136,7 +207,6 @@ export class SpecialistAgent {
     protected readonly agentName: string,
     protected readonly focusPrompt: string,
     protected readonly toolRegistry?: ToolRegistry,
-    protected readonly learningSystem?: LearningSystem,
     protected readonly hookRegistry?: KernelHookRegistry
   ) {}
 
@@ -179,6 +249,8 @@ export class SpecialistAgent {
 {"findings": [{"severity": "high"|"medium"|"low", "confidence": 0-1, "path": "文件路径", "line": 正整数, "title": "标题", "detail": "详情", "evidence": "证据", "suggestion": "建议"}]}
 每个 finding 的所有字段都是必填的。仅报告有明确证据的问题；无问题时返回空数组。
 
+${buildReviewQualityInstruction(context, options)}
+
 ${options?.contextSummary ? `压缩上下文摘要（优先参考历史信息）：\n${options.contextSummary}\n` : ''}
 
 审查上下文如下:
@@ -207,7 +279,11 @@ ${toCompactContext(context, {
 
       const content = response.content;
       if (!content) {
-        return { agentName: this.agentName, findings: [] };
+        return {
+          agentName: this.agentName,
+          findings: [],
+          diagnostics: { emptyResponseCount: 1 },
+        };
       }
 
       const parsed = findingResponseSchema.parse(JSON.parse(content));
@@ -221,6 +297,13 @@ ${toCompactContext(context, {
       return {
         agentName: this.agentName,
         findings,
+        diagnostics: {
+          scopedPaths: options?.scopePaths,
+          compactContextTokens: tokenCounter.count(prompt),
+          iterations: 1,
+          parsedFindingCount: findings.length,
+          finalResponsePreview: previewContent(content),
+        },
       };
     } catch (error) {
       logger.error(`${this.agentName} 执行失败`, {
@@ -240,11 +323,21 @@ ${toCompactContext(context, {
       1,
       options?.maxIterations ?? (options?.mode === 'light' ? 1 : 2)
     );
+    const maxTurns = options?.mode === 'full' ? maxIterations + 2 : maxIterations;
     const findingsMap = new Map<string, Omit<Finding, 'id' | 'runId' | 'published'>>();
     const compactContext = toCompactContext(context, {
       scopePaths: options?.scopePaths,
       maxContextTokens: options?.maxContextTokens,
     });
+    const diagnostics: SpecialistDiagnostics = {
+      scopedPaths: options?.scopePaths,
+      compactContextTokens: tokenCounter.count(compactContext),
+      iterations: 0,
+      toolCallNames: [],
+      parseErrors: [],
+      emptyResponseCount: 0,
+      forcedToolChoiceCount: 0,
+    };
     const messages: LLMMessage[] = [
       {
         role: 'system',
@@ -257,9 +350,11 @@ ${this.toolRegistry!.getAll()
   .join('\n')}
 
 工作流程：
-1. 分析给定的代码变更
-2. 如需更多信息，使用工具调查（如搜索相似代码、分析函数调用）
-3. 基于证据报告问题
+1. 先从 diff 和变更文件清单识别风险点，自主决定需要读取哪些文件、函数片段和上下游调用。
+2. 不要按文件孤立审查；涉及 UI 状态、API 持久化、列表刷新、跨组件事件时必须串起来判断。
+3. 对新增/删除/编辑类 UI 操作，必须确认是否调用后端 API 持久化；只修改本地数组/临时状态属于高优先级问题。
+4. 如需更多信息，使用工具调查（如读取完整文件、搜索相似代码、分析函数调用）。
+5. 基于证据报告会导致真实功能错误的问题；不要因为没有崩溃或语法错误就返回空结果。
 
 当你需要使用工具时，直接调用工具即可。
 当你完成所有调查并准备输出最终结果时，以纯JSON格式返回（不要包含任何额外文字）：
@@ -284,68 +379,51 @@ ${this.toolRegistry!.getAll()
       },
     ];
 
-    // 添加Few-shot示例（如果学习系统可用）
-    if (this.learningSystem) {
-      try {
-        const fewShotExamples = await this.learningSystem.generateFewShotExamples(
-          this.category,
-          run.owner,
-          run.repo
-        );
-        if (fewShotExamples.length > 0) {
-          const llmFewShotExamples = fewShotExamples
-            .map((msg) => {
-              if (
-                (msg.role === 'system' || msg.role === 'user' || msg.role === 'assistant') &&
-                typeof msg.content === 'string'
-              ) {
-                return { role: msg.role, content: msg.content } as const;
-              }
-              return null;
-            })
-            .filter(
-              (msg): msg is { role: 'system' | 'user' | 'assistant'; content: string } =>
-                msg !== null
-            );
-
-          messages.push(...llmFewShotExamples);
-          logger.debug(`${this.agentName} 添加了 ${fewShotExamples.length} 条Few-shot示例`, {
-            runId: run.id,
-          });
-        }
-      } catch (error) {
-        logger.warn(`${this.agentName} Few-shot示例生成失败`, {
-          runId: run.id,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
     // 添加当前审查任务
     messages.push({
       role: 'user',
-      content: `${options?.contextSummary ? `压缩上下文摘要：\n${options.contextSummary}\n\n` : ''}审查以下代码变更：\n${compactContext}`,
+      content: `${options?.contextSummary ? `压缩上下文摘要：\n${options.contextSummary}\n\n` : ''}${buildReviewQualityInstruction(context, options)}\n\n审查以下代码变更：\n${compactContext}`,
     });
 
     try {
-      for (let iteration = 0; iteration < maxIterations; iteration++) {
-        logger.info(`${this.agentName} ReAct迭代 ${iteration + 1}/${maxIterations}`, {
+      for (let iteration = 0; iteration < maxTurns; iteration++) {
+        diagnostics.iterations = iteration + 1;
+        logger.info(`${this.agentName} ReAct迭代 ${iteration + 1}/${maxTurns}`, {
           runId: run.id,
         });
 
         // 仅在最后一轮迭代强制 JSON 输出（无工具调用时解析结果）
         // 避免 response_format: json_object 与 tools 参数冲突导致工具不被调用
-        const isLastIteration = iteration === maxIterations - 1;
+        const hasReadFile = diagnostics.toolCallNames?.includes('read_file') ?? false;
+        const availableToolNames = this.toolRegistry!.getAll().map((tool) => tool.name);
+        const canReadFile = availableToolNames.includes('read_file');
+        const isFullModeReadyToSummarize =
+          options?.mode === 'full' && (!canReadFile || hasReadFile) && iteration > 0;
+        const isDefaultModeReadyToSummarize =
+          options?.mode !== 'full' && iteration >= maxIterations - 1;
+        const isLastIteration =
+          isFullModeReadyToSummarize || isDefaultModeReadyToSummarize || iteration === maxTurns - 1;
+        const toolChoice = buildReviewToolChoice({
+          mode: options?.mode,
+          hasReadFile,
+          isLastIteration,
+          availableToolNames,
+        });
+        if (toolChoice !== 'auto' && toolChoice !== 'none') {
+          diagnostics.forcedToolChoiceCount = (diagnostics.forcedToolChoiceCount ?? 0) + 1;
+        }
+
         const response = await this.gateway.chatForRole('specialist', {
           messages,
           temperature: 0,
           tools: this.toolRegistry!.toToolDefinitions(),
-          providerOptions: { tool_choice: isLastIteration ? 'none' : 'auto' },
+          providerOptions: { tool_choice: toolChoice },
           responseFormat: isLastIteration ? 'json' : undefined,
         });
 
         // 处理工具调用
         if (response.toolCalls.length > 0) {
+          diagnostics.toolCallNames?.push(...response.toolCalls.map((toolCall) => toolCall.name));
           messages.push({
             role: 'assistant',
             content: response.content || '',
@@ -373,8 +451,27 @@ ${this.toolRegistry!.getAll()
 
         // 解析findings（模型选择返回内容而非调用工具）
         if (response.content) {
+          diagnostics.finalResponsePreview = previewContent(response.content);
           try {
             const parsed = JSON.parse(response.content);
+
+            if (
+              options?.mode === 'full' &&
+              canReadFile &&
+              !(diagnostics.toolCallNames?.includes('read_file') ?? false) &&
+              iteration < maxTurns - 1
+            ) {
+              messages.push({
+                role: 'assistant',
+                content: response.content,
+              });
+              messages.push({
+                role: 'user',
+                content:
+                  '你还没有读取任何文件内容。full 模式下不能基于整体 diff 直接输出最终结论；请调用 read_file 读取最可疑的文件片段，并在必要时继续 search_code 或 search_function_references。完成调查后再输出最终 JSON。',
+              });
+              continue;
+            }
 
             if (parsed.findings && parsed.findings.length > 0) {
               // 使用schema验证findings，防止畸形数据流入发布系统
@@ -390,6 +487,26 @@ ${this.toolRegistry!.getAll()
                   fingerprint: fp,
                 });
               }
+              diagnostics.parsedFindingCount = findingsMap.size;
+            }
+
+            const noFindings = !parsed.findings || parsed.findings.length === 0;
+            if (
+              noFindings &&
+              options?.mode === 'full' &&
+              !(diagnostics.toolCallNames?.includes('read_file') ?? false) &&
+              iteration < maxTurns - 1
+            ) {
+              messages.push({
+                role: 'assistant',
+                content: response.content,
+              });
+              messages.push({
+                role: 'user',
+                content:
+                  '你还没有读取任何文件内容。full 模式下不能仅凭搜索或整体 diff 返回空 findings。请自主选择最可疑的文件和函数，调用 read_file 读取相关片段；如果涉及跨文件关系，也可继续 search_code。完成调查后再输出最终 JSON。',
+              });
+              continue;
             }
 
             // 判断是否需要继续调查
@@ -414,6 +531,9 @@ ${this.toolRegistry!.getAll()
               runId: run.id,
               error: parseError instanceof Error ? parseError.message : String(parseError),
             });
+            diagnostics.parseErrors?.push(
+              parseError instanceof Error ? parseError.message : String(parseError)
+            );
             messages.push({
               role: 'assistant',
               content: response.content,
@@ -426,11 +546,17 @@ ${this.toolRegistry!.getAll()
           }
         } else {
           // 没有内容，结束循环
+          diagnostics.emptyResponseCount = (diagnostics.emptyResponseCount ?? 0) + 1;
           break;
         }
       }
 
-      return { agentName: this.agentName, findings: Array.from(findingsMap.values()) };
+      diagnostics.parsedFindingCount = findingsMap.size;
+      return {
+        agentName: this.agentName,
+        findings: Array.from(findingsMap.values()),
+        diagnostics,
+      };
     } catch (error) {
       logger.error(`${this.agentName} ReAct执行失败`, {
         runId: run.id,

@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from 'bun:test';
 import { z } from 'zod';
+import type { LLMGateway } from '../../llm/gateway';
 import type {
   LLMChatRequest,
   LLMChatResponse,
@@ -178,7 +179,13 @@ describe('SpecialistAgent ReAct loop', () => {
       () => jsonResponse({ findings: [finding], need_more_investigation: false }),
     ]);
 
-    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs', registry);
+    const agent = new SpecialistAgent(
+      gateway as unknown as LLMGateway,
+      category,
+      'TestAgent',
+      'bugs',
+      registry
+    );
     const result = await agent.review(makeRun(), makeContext());
 
     expect(executeFn).toHaveBeenCalledTimes(1);
@@ -446,6 +453,287 @@ describe('SpecialistAgent ReAct loop', () => {
 
     expect(userMessage.content).toContain('"type": "delete"');
     expect(userMessage.content).toContain('"oldLineNumber": 12');
+  });
+
+  test('review prompt guides autonomous cross-file investigation and durable CRUD checks', async () => {
+    const { gateway, getCalls } = createMockGateway([
+      () =>
+        jsonResponse({
+          findings: [],
+          need_more_investigation: false,
+        }),
+    ]);
+
+    const context = makeContext({
+      changedFiles: [
+        {
+          path: 'components/business/SRv6/SRv6SlicePanel.vue',
+          status: 'A',
+          additions: 384,
+          deletions: 0,
+        },
+        {
+          path: 'components/business/SRv6/SRv6BasePlannerPanel.vue',
+          status: 'A',
+          additions: 746,
+          deletions: 0,
+        },
+      ],
+      parsedDiff: [
+        {
+          path: 'components/business/SRv6/SRv6SlicePanel.vue',
+          changes: [
+            { lineNumber: 231, content: 'const removeSliceAt = (index: number) => {', type: 'add' },
+            { lineNumber: 232, content: '  slices.value.splice(index, 1)', type: 'add' },
+          ],
+        },
+        {
+          path: 'components/business/SRv6/SRv6BasePlannerPanel.vue',
+          changes: [
+            {
+              lineNumber: 491,
+              content: 'validateDeviceCodes(true, createPayloads.map(...))',
+              type: 'add',
+            },
+          ],
+        },
+      ],
+      fileContents: {
+        'components/business/SRv6/SRv6SlicePanel.vue':
+          'const removeSliceAt = (index: number) => {\n  slices.value.splice(index, 1)\n}',
+        'components/business/SRv6/SRv6BasePlannerPanel.vue':
+          'validateDeviceCodes(true, createPayloads.map((item) => item.device_uuid))',
+      },
+    });
+
+    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs');
+    await agent.reviewWithOptions(makeRun(), context, {
+      mode: 'full',
+      allowTools: false,
+      scopePaths: context.changedFiles.map((file) => file.path),
+      maxContextTokens: 20000,
+    });
+
+    const userMessage = getCalls()[0].messages.find((message) => message.role === 'user');
+    expect(userMessage).toBeDefined();
+    if (!userMessage) throw new Error('Expected user message in request');
+
+    expect(getCalls()).toHaveLength(1);
+    expect(userMessage.content).toContain('调查地图，不是拆分任务');
+    expect(userMessage.content).toContain('自主决定先读哪些文件');
+    expect(userMessage.content).toContain('不要按文件孤立审查');
+    expect(userMessage.content).toContain('components/business/SRv6/SRv6SlicePanel.vue');
+    expect(userMessage.content).toContain('components/business/SRv6/SRv6BasePlannerPanel.vue');
+    expect(userMessage.content).toContain('真正调用后端 API 持久化');
+    expect(userMessage.content).toContain('只修改前端数组或临时状态');
+  });
+
+  test('ReAct regression: can report kuiper-web slice deletion that only mutates local array', async () => {
+    const registry = new ToolRegistry();
+    const readFile = mock(async () => ({
+      path: 'components/business/SRv6/SRv6SlicePanel.vue',
+      content:
+        'const removeSliceAt = (index: number) => {\n  slices.value.splice(index, 1)\n  if (activeSliceIndex.value === index) {\n    activeSliceIndex.value = -1\n  }\n}',
+      totalLines: 384,
+    }));
+    registry.register({ ...makeDummyTool('read_file'), execute: readFile });
+
+    const finding = {
+      severity: 'high' as const,
+      confidence: 0.92,
+      path: 'components/business/SRv6/SRv6SlicePanel.vue',
+      line: 232,
+      title: 'Flex 切片删除未持久化',
+      detail:
+        '删除操作只执行 slices.value.splice(index, 1)，没有调用后端删除接口，刷新后切片会恢复。',
+      evidence: 'slices.value.splice(index, 1)',
+      suggestion: '删除已持久化切片时调用 /network-slices 对应 DELETE 接口，成功后再刷新列表。',
+    };
+
+    const { gateway, getCalls } = createMockGateway([
+      () =>
+        toolCallResponse([
+          {
+            id: 'call_1',
+            name: 'read_file',
+            args: {
+              file_path: 'components/business/SRv6/SRv6SlicePanel.vue',
+              start_line: 220,
+              end_line: 240,
+            },
+          },
+        ]),
+      () => jsonResponse({ findings: [finding], need_more_investigation: false }),
+    ]);
+
+    const context = makeContext({
+      changedFiles: [
+        {
+          path: 'components/business/SRv6/SRv6SlicePanel.vue',
+          status: 'A',
+          additions: 384,
+          deletions: 0,
+        },
+      ],
+      parsedDiff: [
+        {
+          path: 'components/business/SRv6/SRv6SlicePanel.vue',
+          changes: [
+            { lineNumber: 231, content: 'const removeSliceAt = (index: number) => {', type: 'add' },
+            { lineNumber: 232, content: '  slices.value.splice(index, 1)', type: 'add' },
+          ],
+        },
+      ],
+      fileContents: {
+        'components/business/SRv6/SRv6SlicePanel.vue':
+          'const removeSliceAt = (index: number) => {\n  slices.value.splice(index, 1)\n}',
+      },
+    });
+
+    const agent = new SpecialistAgent(
+      gateway as any,
+      'quality',
+      'Quality Agent',
+      '错误处理、持久化、可维护性',
+      registry
+    );
+    const result = await agent.reviewWithOptions(makeRun(), context, {
+      mode: 'full',
+      allowTools: true,
+      maxIterations: 4,
+      scopePaths: ['components/business/SRv6/SRv6SlicePanel.vue'],
+    });
+
+    expect(readFile).toHaveBeenCalledTimes(1);
+    expect(getCalls()).toHaveLength(2);
+    expect(getCalls()[0].providerOptions).toEqual({
+      tool_choice: { type: 'function', function: { name: 'read_file' } },
+    });
+    expect(getCalls()[1].providerOptions).toEqual({ tool_choice: 'none' });
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]).toMatchObject({
+      category: 'quality',
+      path: 'components/business/SRv6/SRv6SlicePanel.vue',
+      line: 232,
+      title: 'Flex 切片删除未持久化',
+    });
+    expect(result.diagnostics).toMatchObject({
+      iterations: 2,
+      parsedFindingCount: 1,
+      toolCallNames: ['read_file'],
+      forcedToolChoiceCount: 1,
+    });
+  });
+
+  test('full mode challenges empty findings until the agent reads file content', async () => {
+    const registry = new ToolRegistry();
+    const readFile = mock(async () => ({
+      path: 'src/feature.ts',
+      content: 'export function removeItem(index: number) { items.splice(index, 1) }',
+      totalLines: 1,
+    }));
+    registry.register(makeDummyTool('search_code'));
+    registry.register({ ...makeDummyTool('read_file'), execute: readFile });
+
+    const { gateway, getCalls } = createMockGateway([
+      () => jsonResponse({ findings: [], need_more_investigation: false }),
+      () =>
+        toolCallResponse([
+          {
+            id: 'call_1',
+            name: 'read_file',
+            args: { file_path: 'src/feature.ts', start_line: 1, end_line: 40 },
+          },
+        ]),
+      () => jsonResponse({ findings: [], need_more_investigation: false }),
+    ]);
+
+    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs', registry);
+    const result = await agent.reviewWithOptions(makeRun(), makeContext(), {
+      mode: 'full',
+      allowTools: true,
+      maxIterations: 2,
+      scopePaths: ['src/feature.ts'],
+    });
+
+    expect(readFile).toHaveBeenCalledTimes(1);
+    expect(getCalls()).toHaveLength(3);
+    expect(getCalls()[0].providerOptions).toEqual({
+      tool_choice: { type: 'function', function: { name: 'read_file' } },
+    });
+    expect(getCalls()[1].providerOptions).toEqual({
+      tool_choice: { type: 'function', function: { name: 'read_file' } },
+    });
+    expect(getCalls()[2].providerOptions).toEqual({ tool_choice: 'none' });
+    const secondCallUserMessage = getCalls()[1]
+      .messages.filter((message) => message.role === 'user')
+      .pop();
+    expect(secondCallUserMessage?.content).toContain('还没有读取任何文件内容');
+    expect(result.findings).toHaveLength(0);
+    expect(result.diagnostics).toMatchObject({
+      iterations: 3,
+      toolCallNames: ['read_file'],
+      parsedFindingCount: 0,
+      forcedToolChoiceCount: 2,
+    });
+  });
+
+  test('full mode does not accept findings before reading file content', async () => {
+    const registry = new ToolRegistry();
+    const readFile = mock(async () => ({
+      path: 'src/feature.ts',
+      content: 'export function save() { return api.save() }',
+      totalLines: 1,
+    }));
+    registry.register({ ...makeDummyTool('read_file'), execute: readFile });
+
+    const prematureFinding = {
+      severity: 'high' as const,
+      confidence: 0.9,
+      path: 'src/feature.ts',
+      line: 1,
+      title: 'Premature finding',
+      detail: 'This should not be accepted before reading file content',
+      evidence: 'diff only',
+      suggestion: 'Read the file first',
+    };
+    const finalFinding = {
+      ...prematureFinding,
+      title: 'Evidence-backed finding',
+      evidence: 'export function save() { return api.save() }',
+    };
+
+    const { gateway, getCalls } = createMockGateway([
+      () => jsonResponse({ findings: [prematureFinding], need_more_investigation: false }),
+      () =>
+        toolCallResponse([
+          {
+            id: 'call_1',
+            name: 'read_file',
+            args: { file_path: 'src/feature.ts', start_line: 1, end_line: 40 },
+          },
+        ]),
+      () => jsonResponse({ findings: [finalFinding], need_more_investigation: false }),
+    ]);
+
+    const agent = new SpecialistAgent(gateway as any, category, 'TestAgent', 'bugs', registry);
+    const result = await agent.reviewWithOptions(makeRun(), makeContext(), {
+      mode: 'full',
+      allowTools: true,
+      maxIterations: 2,
+      scopePaths: ['src/feature.ts'],
+    });
+
+    expect(readFile).toHaveBeenCalledTimes(1);
+    expect(getCalls()).toHaveLength(3);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].title).toBe('Evidence-backed finding');
+    expect(result.findings[0].evidence).toBe('export function save() { return api.save() }');
+    expect(result.diagnostics).toMatchObject({
+      iterations: 3,
+      parsedFindingCount: 1,
+      toolCallNames: ['read_file'],
+    });
   });
 
   test('ReAct: auto-generates fingerprint when finding has none', async () => {
