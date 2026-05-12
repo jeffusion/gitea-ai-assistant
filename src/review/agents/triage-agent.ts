@@ -282,7 +282,6 @@ function buildTasks(
       tokenBudget,
       maxIterations,
       allowTools: mode === 'full',
-      allowReflection: mode === 'full' && (domain === 'correctness' || domain === 'security'),
     };
   });
 }
