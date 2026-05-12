@@ -331,7 +331,7 @@ describe('ReviewKernelRuntime happy path', () => {
       2
     );
     expect(runDetails?.comments.find((comment) => !comment.path)?.body).toContain(
-      '## AI Agent代码审查结果'
+      '## AI 代码审查结果'
     );
     expect(runDetails?.comments.find((comment) => comment.path === 'src/index.ts')).toMatchObject({
       line: 2,
@@ -339,7 +339,9 @@ describe('ReviewKernelRuntime happy path', () => {
     });
 
     expect(summaryBodies).toHaveLength(1);
-    expect(summaryBodies[0]).toContain('本次 AI Agent 审查共识别 1 个问题');
+    expect(summaryBodies[0]).toContain('发现 1 个需要关注的问题');
+    expect(summaryBodies[0]).toContain('### 必须优先处理');
+    expect(summaryBodies[0]).not.toContain('[HIGH]');
     expect(lineCommentCalls).toHaveLength(1);
     expect(lineCommentCalls[0]).toMatchObject({
       owner: 'acme',
@@ -354,6 +356,12 @@ describe('ReviewKernelRuntime happy path', () => {
         comment: expect.stringContaining('Missing optional chaining before trim'),
       },
     ]);
+    expect(lineCommentCalls[0].comments[0].comment).toContain('建议：');
+    expect(lineCommentCalls[0].comments[0].comment).toContain(
+      '_优先级：必须优先处理 · 类型：功能正确性_'
+    );
+    expect(lineCommentCalls[0].comments[0].comment).not.toContain('[HIGH]');
+    expect(lineCommentCalls[0].comments[0].comment).not.toContain('[correctness]');
 
     expect(savedReviewedRefs).toEqual([
       {
