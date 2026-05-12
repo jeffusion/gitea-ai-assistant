@@ -2,9 +2,8 @@ import type { KernelHookRegistry } from '../../agent-kernel/hooks/kernel-hook-re
 import type { KernelSubagentDefinition } from '../../agent-kernel/types';
 import config from '../../config';
 import { llmGateway } from '../../llm/gateway';
-import { ReflexionAgent } from '../agents/reflexion-agent';
+import { SpecialistAgent } from '../agents/specialist-agent';
 import { TriageAgent } from '../agents/triage-agent';
-import type { LearningSystem } from '../learning/learning-system';
 import type { FileReviewStore } from '../store/file-review-store';
 import { ToolRegistry } from '../tools/registry';
 import type { FindingCategory, ReviewRun, ReviewTask } from '../types';
@@ -26,7 +25,6 @@ function buildDefaultTasks(state: ReviewKernelState): ReviewTask[] {
     tokenBudget: config.review.tokenBudgetLarge,
     maxIterations: 2,
     allowTools: true,
-    allowReflection: true,
   }));
 }
 
@@ -46,7 +44,6 @@ function mergeDomainTasks(tasks: ReviewTask[]): ReviewTask[] {
       maxIterations: Math.max(existing.maxIterations, task.maxIterations),
       tokenBudget: Math.max(existing.tokenBudget, task.tokenBudget),
       allowTools: existing.allowTools || task.allowTools,
-      allowReflection: existing.allowReflection || task.allowReflection,
       mode: existing.mode === 'full' || task.mode === 'full' ? 'full' : 'light',
     });
   }
@@ -57,7 +54,6 @@ function mergeDomainTasks(tasks: ReviewTask[]): ReviewTask[] {
 interface ReviewBuiltInSubagentDeps {
   store: FileReviewStore;
   toolRegistry: ToolRegistry;
-  learningSystem?: LearningSystem;
   hookRegistry: KernelHookRegistry;
   requireRun(runId: string): Promise<ReviewRun>;
 }
@@ -67,32 +63,29 @@ export function createReviewBuiltInSubagents(
 ): KernelSubagentDefinition<ReviewKernelState>[] {
   const triageAgent = new TriageAgent(llmGateway);
 
-  const specialistMap: Record<FindingCategory, ReflexionAgent> = {
-    correctness: new ReflexionAgent(
+  const specialistMap: Record<FindingCategory, SpecialistAgent> = {
+    correctness: new SpecialistAgent(
       llmGateway,
       'correctness',
       'Correctness Agent',
       '业务逻辑正确性、边界条件、空值处理和明显bug',
       deps.toolRegistry,
-      deps.learningSystem,
       deps.hookRegistry
     ),
-    security: new ReflexionAgent(
+    security: new SpecialistAgent(
       llmGateway,
       'security',
       'Security Agent',
       '注入漏洞、权限绕过、敏感信息泄露、反序列化和输入校验缺失',
       deps.toolRegistry,
-      deps.learningSystem,
       deps.hookRegistry
     ),
-    quality: new ReflexionAgent(
+    quality: new SpecialistAgent(
       llmGateway,
       'quality',
       'Quality Agent',
       '错误处理、重试策略、幂等性、并发一致性、资源释放、可维护性、复杂度和可测试性',
       deps.toolRegistry,
-      deps.learningSystem,
       deps.hookRegistry
     ),
   };
@@ -181,27 +174,17 @@ export function createReviewBuiltInSubagents(
         const reviewOptions = {
           scopePaths: reviewTask.paths,
           allowTools: reviewTask.allowTools,
-          maxIterations: reviewTask.maxIterations,
+          maxIterations:
+            reviewTask.mode === 'full'
+              ? Math.max(reviewTask.maxIterations, 4)
+              : Math.max(reviewTask.maxIterations, 2),
           mode: reviewTask.mode,
           maxContextTokens: Math.max(1500, Math.floor(reviewTask.tokenBudget * 0.7)),
           projectPrompt: context.state.projectPrompt,
           contextSummary: context.state.compressedContext?.summary,
         } as const;
 
-        const shouldReflect =
-          config.review.enableReflection &&
-          reviewTask.allowReflection &&
-          reviewTask.mode !== 'light' &&
-          context.state.triage?.complexity !== 'trivial';
-
-        const result = shouldReflect
-          ? await agent.reviewWithReflection(
-              run,
-              context.state.context,
-              config.review.maxReflectionRounds,
-              reviewOptions
-            )
-          : await agent.reviewWithOptions(run, context.state.context, reviewOptions);
+        const result = await agent.reviewWithOptions(run, context.state.context, reviewOptions);
 
         await deps.store.addStep({
           runId: run.id,
@@ -214,6 +197,11 @@ export function createReviewBuiltInSubagents(
         });
 
         return {
+          summary: `${domain} specialist found ${result.findings.length} findings`,
+          artifacts: {
+            findingsCount: result.findings.length,
+            diagnostics: result.diagnostics,
+          },
           state: {
             ...context.state,
             completedDomains: [...new Set([...context.state.completedDomains, domain])],
