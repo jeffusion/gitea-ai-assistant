@@ -46,7 +46,7 @@ function renderWithQuery(ui: ReactNode) {
 }
 
 describe('RoleAssignment', () => {
-  it('renders role cards and supports provider/model editing', async () => {
+  it('renders subagent directory and model role routing', async () => {
     vi.mocked(fetchProviders).mockResolvedValueOnce([
       {
         id: 'p1',
@@ -105,14 +105,12 @@ describe('RoleAssignment', () => {
     const user = userEvent.setup();
     renderWithQuery(<RoleAssignment />);
 
-    expect(await screen.findByText('Subagents 与模型角色路由')).toBeInTheDocument();
-    expect(await screen.findByText('review:triage')).toBeInTheDocument();
+    expect(await screen.findByText('Subagents 与模型路由')).toBeInTheDocument();
+    expect((await screen.findAllByText('review:triage')).length).toBeGreaterThan(0);
+    expect(screen.getByText('模型角色路由')).toBeInTheDocument();
+    expect(screen.getByText('Planner')).toBeInTheDocument();
+    expect(screen.getByText('Specialist')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('tab', { name: /模型角色路由/ }));
-    expect(await screen.findByText('Planner')).toBeInTheDocument();
-
-    // Radix Select renders placeholder in a span with pointer-events: none.
-    // Click the trigger button (parent) instead of the placeholder text.
     const providerPlaceholders = screen.getAllByText('选择提供商');
     const triggerButton = providerPlaceholders[0].closest('button')!;
     await user.click(triggerButton);
