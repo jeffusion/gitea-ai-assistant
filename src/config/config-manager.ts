@@ -38,8 +38,6 @@ export interface AppConfig {
     maxParallelRuns: number;
     maxFilesPerRun: number;
     maxFileContentChars: number;
-    autoPublishMinConfidence: number;
-    enableHumanGate: boolean;
     allowedCommands: string[];
     commandTimeoutMs: number;
     llmMaxConcurrentCalls: number;
@@ -58,11 +56,6 @@ export interface AppConfig {
     codexModel: string;
     codexTimeoutMs: number;
     codexReviewPrompt: string | undefined;
-    qdrantUrl: string | undefined;
-    enableMemory: boolean;
-    fewShotExamplesCount: number;
-    enableReflection: boolean;
-    maxReflectionRounds: number;
   };
 }
 
@@ -167,8 +160,6 @@ class ConfigManager {
         maxParallelRuns: toNumber('REVIEW_MAX_PARALLEL_RUNS', 2),
         maxFilesPerRun: toNumber('REVIEW_MAX_FILES_PER_RUN', 200),
         maxFileContentChars: toNumber('REVIEW_MAX_FILE_CONTENT_CHARS', 40000),
-        autoPublishMinConfidence: toNumber('REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE', 0.8),
-        enableHumanGate: toBoolean('REVIEW_ENABLE_HUMAN_GATE', true),
         allowedCommands: toStringArray('REVIEW_ALLOWED_COMMANDS', [
           'git',
           'rg',
@@ -193,11 +184,6 @@ class ConfigManager {
         codexModel: values.CODEX_MODEL ?? 'o3',
         codexTimeoutMs: toNumber('CODEX_TIMEOUT_MS', 300000),
         codexReviewPrompt: values.CODEX_REVIEW_PROMPT,
-        qdrantUrl: values.QDRANT_URL,
-        enableMemory: toBoolean('ENABLE_MEMORY', false),
-        fewShotExamplesCount: toNumber('FEW_SHOT_EXAMPLES_COUNT', 10),
-        enableReflection: toBoolean('ENABLE_REFLECTION', false),
-        maxReflectionRounds: toNumber('MAX_REFLECTION_ROUNDS', 2),
       },
     };
   }

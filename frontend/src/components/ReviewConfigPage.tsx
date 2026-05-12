@@ -101,16 +101,15 @@ export function ReviewConfigPage() {
     return 'kernel';
   }, [localConfig]);
 
-  // Derived: review group and memory group from fetched data
+  // Derived: review group from fetched data
   const reviewGroup = useMemo(() => data?.groups.find((g) => g.key === 'review'), [data]);
-  const memoryGroup = useMemo(() => data?.groups.find((g) => g.key === 'memory'), [data]);
 
-  // Initialize local config from ALL groups (so save works for review + memory fields)
+  // Initialize local config from review group
   useEffect(() => {
     if (data) {
       const initialState: Record<string, any> = {};
       data.groups
-        .filter((g) => g.key === 'review' || g.key === 'memory')
+        .filter((g) => g.key === 'review')
         .forEach((group) => {
           group.fields.forEach((field) => {
             if (field.sensitive && field.hasValue) {
@@ -174,11 +173,9 @@ export function ReviewConfigPage() {
   };
 
   const handleResetAll = () => {
-    const groups = [reviewGroup, memoryGroup].filter(Boolean) as ConfigGroupDto[];
-    const allOverrideKeys = groups
-      .flatMap((g) => g.fields)
-      .filter((f) => f.source === 'db')
-      .map((f) => f.envKey);
+  const allOverrideKeys = (reviewGroup?.fields ?? [])
+    .filter((f) => f.source === 'db')
+    .map((f) => f.envKey);
     if (allOverrideKeys.length === 0) return;
     if (confirm('确定要重置所有审查配置到默认值吗？这将立即生效。')) {
       resetMutation.mutate(allOverrideKeys);
@@ -192,9 +189,8 @@ export function ReviewConfigPage() {
   );
 
   const hasOverrides = useMemo(() => {
-    const groups = [reviewGroup, memoryGroup].filter(Boolean) as ConfigGroupDto[];
-    return groups.some((g) => g.fields.some((f) => f.source === 'db'));
-  }, [reviewGroup, memoryGroup]);
+    return (reviewGroup?.fields ?? []).some((f) => f.source === 'db');
+  }, [reviewGroup]);
 
   // -- Render states --
 
@@ -354,16 +350,6 @@ export function ReviewConfigPage() {
             onReset={handleResetGroup}
             isResetting={resetMutation.isPending}
             renderField={renderReviewField}
-          />
-        )}
-
-        {engine === 'kernel' && memoryGroup && (
-          <ConfigGroupCard
-            group={memoryGroup}
-            localConfig={localConfig}
-            onFieldChange={handleFieldChange}
-            onReset={handleResetGroup}
-            isResetting={resetMutation.isPending}
           />
         )}
 

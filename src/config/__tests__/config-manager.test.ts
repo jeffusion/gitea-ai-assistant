@@ -196,13 +196,13 @@ describe('ConfigManager (DB backend)', () => {
 
   describe('type conversions in getCurrent()', () => {
     test('boolean field "true" → true', async () => {
-      await configManager.setOverrides({ REVIEW_ENABLE_HUMAN_GATE: 'true' });
-      expect(configManager.getCurrent().review.enableHumanGate).toBe(true);
+      await configManager.setOverrides({ ENABLE_TRIAGE: 'true' });
+      expect(configManager.getCurrent().review.enableTriage).toBe(true);
     });
 
     test('boolean field "false" → false', async () => {
-      await configManager.setOverrides({ REVIEW_ENABLE_HUMAN_GATE: 'false' });
-      expect(configManager.getCurrent().review.enableHumanGate).toBe(false);
+      await configManager.setOverrides({ ENABLE_TRIAGE: 'false' });
+      expect(configManager.getCurrent().review.enableTriage).toBe(false);
     });
 
     test('number field is parsed correctly', async () => {

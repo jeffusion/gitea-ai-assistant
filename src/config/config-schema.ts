@@ -7,7 +7,7 @@
 // Types
 // ---------------------------------------------------------------------------
 
-export type ConfigGroup = 'gitea' | 'notification' | 'security' | 'review' | 'memory';
+export type ConfigGroup = 'gitea' | 'notification' | 'security' | 'review';
 
 export type ConfigFieldType = 'string' | 'number' | 'boolean' | 'url' | 'text' | 'enum';
 
@@ -59,12 +59,6 @@ export const CONFIG_GROUPS: ConfigGroupMeta[] = [
     label: '审查引擎',
     description: 'Kernel/Codex 审查模式、并发与沙箱设置',
     icon: 'file-check',
-  },
-  {
-    key: 'memory',
-    label: '记忆与学习',
-    description: '向量记忆与反思系统',
-    icon: 'brain',
   },
 ];
 
@@ -235,26 +229,6 @@ export const CONFIG_FIELDS: ConfigFieldMeta[] = [
     min: 1000,
     max: 1000000,
     defaultValue: 40000,
-  },
-  {
-    envKey: 'REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE',
-    group: 'review',
-    label: '自动发布置信度',
-    description: '自动发布评论所需的最小置信度（0~1）',
-    type: 'number',
-    sensitive: false,
-    min: 0,
-    max: 1,
-    defaultValue: 0.8,
-  },
-  {
-    envKey: 'REVIEW_ENABLE_HUMAN_GATE',
-    group: 'review',
-    label: '人工审批',
-    description: '是否启用人工审批队列（低置信度评论需人工确认后发布）',
-    type: 'boolean',
-    sensitive: false,
-    defaultValue: true,
   },
   {
     envKey: 'REVIEW_ALLOWED_COMMANDS',
@@ -441,56 +415,6 @@ export const CONFIG_FIELDS: ConfigFieldMeta[] = [
     description: '覆盖 Codex 引擎默认的代码审查提示词（留空使用内置提示词）',
     type: 'text',
     sensitive: false,
-  },
-
-  // ── 记忆与学习 ──────────────────────────────────────────────────────────
-  {
-    envKey: 'QDRANT_URL',
-    group: 'memory',
-    label: 'Qdrant 地址',
-    description: 'Qdrant 向量数据库的连接 URL',
-    type: 'url',
-    sensitive: false,
-  },
-  {
-    envKey: 'ENABLE_MEMORY',
-    group: 'memory',
-    label: '启用记忆',
-    description: '是否启用向量记忆系统（需配置 Qdrant）',
-    type: 'boolean',
-    sensitive: false,
-    defaultValue: false,
-  },
-  {
-    envKey: 'FEW_SHOT_EXAMPLES_COUNT',
-    group: 'memory',
-    label: 'Few-shot 示例数',
-    description: '检索的 few-shot 示例数量',
-    type: 'number',
-    sensitive: false,
-    min: 0,
-    max: 20,
-    defaultValue: 10,
-  },
-  {
-    envKey: 'ENABLE_REFLECTION',
-    group: 'memory',
-    label: '启用反思',
-    description: '是否启用审查结果自我反思机制',
-    type: 'boolean',
-    sensitive: false,
-    defaultValue: false,
-  },
-  {
-    envKey: 'MAX_REFLECTION_ROUNDS',
-    group: 'memory',
-    label: '最大反思轮数',
-    description: '反思迭代的最大轮数',
-    type: 'number',
-    sensitive: false,
-    min: 1,
-    max: 5,
-    defaultValue: 2,
   },
 ];
 
