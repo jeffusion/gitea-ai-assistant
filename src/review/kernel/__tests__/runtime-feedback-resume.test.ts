@@ -2,10 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { Hono } from 'hono';
 import { kernelSessionRepository } from '../../../agent-kernel/session/session-repository';
 import type { KernelSessionEventRecord, KernelTask } from '../../../agent-kernel/types';
-import { feedbackRouter, initializeFeedbackSystem } from '../../../controllers/feedback';
+import { initializeFeedbackSystem } from '../../../controllers/feedback';
 import { closeDatabase, initDatabase } from '../../../db/database';
 import { llmGateway } from '../../../llm/gateway';
 import type { LLMChatRequest, LLMChatResponse, ModelRole } from '../../../llm/types';
@@ -16,12 +15,6 @@ import { kernelReviewEngine } from '../kernel-review-engine';
 import { ReviewKernelRuntime } from '../review-kernel-runtime';
 import { REVIEW_TRIAGE_SUBAGENT, getReviewDomainSubagentId } from '../review-subagent-ids';
 import { getReviewSessionScope } from '../session-scope';
-
-function createTestApp(): Hono {
-  const app = new Hono();
-  app.route('/feedback', feedbackRouter);
-  return app;
-}
 
 function createPullRequestPayload(keySuffix: string): PullRequestReviewPayload {
   return {
@@ -86,21 +79,6 @@ function createJsonResponse(content: Record<string, unknown>): LLMChatResponse {
   };
 }
 
-async function jsonRequest(app: Hono, findingId: string, approved: boolean, reason?: string) {
-  const response = await app.request(`http://localhost/feedback/finding/${findingId}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ approved, reason }),
-  });
-
-  return {
-    response,
-    payload: (await response.json()) as Record<string, unknown>,
-  };
-}
-
 function getTaskEvents(sessionId: string, eventType: 'task_started' | 'task_completed') {
   return kernelSessionRepository
     .listEvents(sessionId)
@@ -135,7 +113,6 @@ describe('ReviewKernelRuntime feedback resume', () => {
   let tempDir: string;
   let savedDbPath: string | undefined;
   let store: FileReviewStore;
-  let app: Hono;
   let chatCalls: Array<{ role: ModelRole; request: Omit<LLMChatRequest, 'model'> }>;
   let summaryBodies: string[];
   let lineCommentCalls: Array<{
@@ -174,7 +151,6 @@ describe('ReviewKernelRuntime feedback resume', () => {
     store = new FileReviewStore(path.join(tempDir, 'review-workdir'));
     await store.init();
     initializeFeedbackSystem(store);
-    app = createTestApp();
 
     chatCalls = [];
     summaryBodies = [];
@@ -219,7 +195,7 @@ describe('ReviewKernelRuntime feedback resume', () => {
     };
 
     giteaService.addPullRequestComment = async (_owner, _repo, _prNumber, body) => {
-      if (body.includes('## AI Agent代码审查结果')) {
+      if (body.includes('## AI 代码审查结果')) {
         summaryBodies.push(body);
       }
       pullRequestCommentBodies.push(body);
@@ -254,7 +230,7 @@ describe('ReviewKernelRuntime feedback resume', () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  test('runtime resumes from awaiting_human_feedback through feedback controller until reviewed ref is saved', async () => {
+  test('runtime completes without human feedback after low findings are dropped', async () => {
     const { run } = await store.createOrReuseRun(createPullRequestPayload('resume-success'));
     const { scopeType, scopeKey } = getReviewSessionScope(run);
     const session = kernelSessionRepository.ensureSession({
@@ -312,38 +288,38 @@ describe('ReviewKernelRuntime feedback resume', () => {
     const firstCheckpoint = await runtime.execute(run, session.id);
     const checkpointBeforeResume = kernelSessionRepository.loadCheckpoint<any>(session.id);
     const runDetailsBeforeResume = await store.getRunDetails(run.id);
-    const gatedFinding = runDetailsBeforeResume?.findings.find(
+    const droppedFinding = firstCheckpoint.state.policyResult?.dropped.find(
       (finding) => finding.fingerprint === 'gated-finding'
     );
 
-    expect(firstCheckpoint.stopReason).toBe('awaiting_human_feedback');
+    expect(firstCheckpoint.stopReason).toBe('completed');
     expect(firstCheckpoint.pendingTasks).toEqual([]);
     expect(firstCheckpoint.state.published).toBe(true);
-    expect(firstCheckpoint.state.reviewedRefSaved).toBe(false);
+    expect(firstCheckpoint.state.reviewedRefSaved).toBe(true);
     expect(firstCheckpoint.state.policyResult).toMatchObject({
       publishable: [expect.objectContaining({ fingerprint: 'publishable-finding' })],
-      gated: [expect.objectContaining({ fingerprint: 'gated-finding' })],
+      gated: [],
+      dropped: [expect.objectContaining({ fingerprint: 'gated-finding' })],
     });
-    expect(checkpointBeforeResume?.stopReason).toBe('awaiting_human_feedback');
+    expect(checkpointBeforeResume?.stopReason).toBe('completed');
     expect(checkpointBeforeResume?.pendingTasks).toEqual([]);
     expect(getPendingPublishTask(checkpointBeforeResume)).toBeUndefined();
     expect(checkpointBeforeResume?.state).toMatchObject({
       published: true,
-      reviewedRefSaved: false,
+      reviewedRefSaved: true,
     });
     expect(
       runDetailsBeforeResume?.comments.filter((comment) => comment.status === 'pending')
-    ).toHaveLength(1);
+    ).toHaveLength(0);
     expect(
       runDetailsBeforeResume?.comments.filter((comment) => comment.fingerprint === 'gated-finding')
-    ).toHaveLength(1);
+    ).toHaveLength(0);
     expect(
       runDetailsBeforeResume?.comments.filter(
         (comment) => comment.fingerprint === 'publishable-finding'
       )
     ).toHaveLength(0);
-    expect(gatedFinding).toBeDefined();
-    expect(gatedFinding?.published).toBe(false);
+    expect(droppedFinding).toBeDefined();
     expect(summaryBodies).toHaveLength(1);
     expect(lineCommentCalls).toHaveLength(1);
     expect(lineCommentCalls[0]?.comments).toHaveLength(1);
@@ -362,6 +338,7 @@ describe('ReviewKernelRuntime feedback resume', () => {
         getReviewDomainSubagentId('correctness'),
         'aggregate_findings',
         'publish_review',
+        'save_reviewed_ref',
       ])
     );
     expect(taskCompletionsBeforeResume).toEqual(
@@ -372,84 +349,25 @@ describe('ReviewKernelRuntime feedback resume', () => {
         getReviewDomainSubagentId('correctness'),
         'aggregate_findings',
         'publish_review',
+        'save_reviewed_ref',
       ])
     );
-    expect(taskStartsBeforeResume.filter((name) => name === 'save_reviewed_ref')).toHaveLength(0);
-    expect(taskCompletionsBeforeResume.filter((name) => name === 'save_reviewed_ref')).toHaveLength(
-      0
-    );
-
-    const feedbackResult = await jsonRequest(app, gatedFinding!.id, true, 'human approved');
-    const finalCheckpoint = kernelSessionRepository.loadCheckpoint<any>(session.id);
-    const runDetailsAfterResume = await store.getRunDetails(run.id);
-    const relevantEvents = getRelevantEvents(session.id);
-    const taskStartsAfterResume = getTaskEvents(session.id, 'task_started');
-    const taskCompletionsAfterResume = getTaskEvents(session.id, 'task_completed');
-
-    expect(feedbackResult.response.status).toBe(200);
-    expect(feedbackResult.payload).toMatchObject({
-      success: true,
-      published: true,
-      learningApplied: false,
-    });
-    expect(relevantEvents.map((event) => event.eventType).sort()).toEqual([
-      'human_feedback_processed',
-      'session_continue_completed',
-      'session_continue_requested',
-    ]);
-    const humanFeedbackEvent = relevantEvents.find(
-      (event) => event.eventType === 'human_feedback_processed'
-    );
-    const continueRequestedEvent = relevantEvents.find(
-      (event) => event.eventType === 'session_continue_requested'
-    );
-    const continueCompletedEvent = relevantEvents.find(
-      (event) => event.eventType === 'session_continue_completed'
-    );
-
-    expect(humanFeedbackEvent?.payload).toMatchObject({
-      runId: run.id,
-      findingId: gatedFinding!.id,
-      approved: true,
-      reason: 'human approved',
-      published: true,
-    });
-    expect(continueRequestedEvent?.payload).toEqual({ runId: run.id });
-    expect(continueCompletedEvent?.payload).toEqual({ runId: run.id });
-
-    expect(finalCheckpoint?.stopReason).toBe('completed');
-    expect(finalCheckpoint?.pendingTasks).toEqual([]);
-    expect(finalCheckpoint?.state).toMatchObject({
-      published: true,
-      reviewedRefSaved: true,
-    });
     expect(
-      runDetailsAfterResume?.findings.find(
+      runDetailsBeforeResume?.findings.find(
         (finding) => finding.fingerprint === 'publishable-finding'
       )?.published
     ).toBe(true);
     expect(
-      runDetailsAfterResume?.findings.find((finding) => finding.fingerprint === 'gated-finding')
+      runDetailsBeforeResume?.findings.find((finding) => finding.fingerprint === 'gated-finding')
         ?.published
-    ).toBe(true);
-    expect(
-      runDetailsAfterResume?.comments.filter((comment) => comment.status === 'pending')
-    ).toHaveLength(1);
-    expect(
-      runDetailsAfterResume?.comments.filter((comment) => comment.fingerprint === 'gated-finding')
-    ).toHaveLength(2);
-    expect(
-      runDetailsAfterResume?.comments.filter(
-        (comment) => comment.fingerprint === 'publishable-finding'
-      )
-    ).toHaveLength(0);
-    expect(pullRequestCommentBodies).toHaveLength(2);
+    ).toBeUndefined();
+    expect(pullRequestCommentBodies).toHaveLength(1);
     expect(summaryBodies).toHaveLength(1);
     expect(lineCommentCalls).toHaveLength(1);
-    expect(taskStartsAfterResume.filter((name) => name === 'publish_review')).toHaveLength(1);
-    expect(taskCompletionsAfterResume.filter((name) => name === 'publish_review')).toHaveLength(1);
-    expect(taskStartsAfterResume.filter((name) => name === 'save_reviewed_ref')).toHaveLength(1);
-    expect(taskCompletionsAfterResume.filter((name) => name === 'save_reviewed_ref')).toHaveLength(
+    expect(taskStartsBeforeResume.filter((name) => name === 'publish_review')).toHaveLength(1);
+    expect(taskCompletionsBeforeResume.filter((name) => name === 'publish_review')).toHaveLength(1);
+    expect(taskStartsBeforeResume.filter((name) => name === 'save_reviewed_ref')).toHaveLength(1);
+    expect(taskCompletionsBeforeResume.filter((name) => name === 'save_reviewed_ref')).toHaveLength(
       1
     );
     expect(savedReviewedRefs).toEqual([
@@ -524,11 +442,6 @@ describe('ReviewKernelRuntime feedback resume', () => {
     engine._store = store;
 
     await runtime.execute(run, session.id);
-    const runDetailsBeforeFeedback = await store.getRunDetails(run.id);
-    const gatedFinding = runDetailsBeforeFeedback?.findings.find(
-      (finding) => finding.fingerprint === 'gated-finding'
-    );
-    await jsonRequest(app, gatedFinding!.id, true, 'final approval');
 
     const checkpointAfterFeedback = kernelSessionRepository.loadCheckpoint<any>(session.id);
     const taskStartsBeforeSecondContinue = getTaskEvents(session.id, 'task_started');
@@ -567,9 +480,7 @@ describe('ReviewKernelRuntime feedback resume', () => {
     expect(relevantEventsAfterSecondContinue).toHaveLength(
       relevantEventsBeforeSecondContinue.length + 2
     );
-    expect(relevantEventCountsAfterSecondContinue.human_feedback_processed).toBe(
-      relevantEventCountsBeforeSecondContinue.human_feedback_processed
-    );
+    expect(relevantEventCountsAfterSecondContinue.human_feedback_processed).toBeUndefined();
     expect(relevantEventCountsAfterSecondContinue.session_continue_requested).toBe(
       (relevantEventCountsBeforeSecondContinue.session_continue_requested ?? 0) + 1
     );

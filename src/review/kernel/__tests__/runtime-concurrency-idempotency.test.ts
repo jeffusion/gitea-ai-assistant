@@ -439,7 +439,7 @@ describe('KernelReviewEngine concurrency and idempotency', () => {
     await store.addCommentRecord({
       runId: run.id,
       status: 'published',
-      body: '## AI Agent代码审查结果\n\nsummary already published',
+      body: '## AI 代码审查结果\n\nsummary already published',
     });
     await store.addCommentRecord({
       runId: run.id,
@@ -510,7 +510,6 @@ describe('KernelReviewEngine concurrency and idempotency', () => {
     expect(first.payload).toMatchObject({
       success: true,
       published: true,
-      learningApplied: false,
     });
     expect(second.response.status).toBe(200);
     expect(second.payload).toMatchObject({
@@ -518,7 +517,6 @@ describe('KernelReviewEngine concurrency and idempotency', () => {
       message: '该finding已处理过',
       alreadyProcessed: true,
       published: true,
-      learningApplied: false,
     });
     expect(pullRequestCommentBodies).toHaveLength(1);
     expect(

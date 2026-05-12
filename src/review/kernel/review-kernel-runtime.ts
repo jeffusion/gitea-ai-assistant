@@ -14,15 +14,10 @@ import type {
   KernelTaskHandler,
   KernelTurnPlanner,
 } from '../../agent-kernel/types';
-import config from '../../config';
 import { llmGateway } from '../../llm/gateway';
 import { giteaService } from '../../services/gitea';
-import { logger } from '../../utils/logger';
 import { DiffExtractor } from '../context/diff-extractor';
 import type { LocalRepoManager } from '../context/local-repo-manager';
-import { LearningSystem } from '../learning/learning-system';
-import { VectorMemoryStore } from '../memory/vector-store';
-import { applyPublishPolicy } from '../policy/publish-policy';
 import { resolveProjectReviewPrompt } from '../project-review-prompt';
 import type { FileReviewStore } from '../store/file-review-store';
 import { createCodeSearchTool } from '../tools/code-search-tool';
@@ -44,14 +39,42 @@ function summarizeGatedCount(gatedCount: number): string {
   if (gatedCount <= 0) {
     return '';
   }
-  return `\n\n> ${gatedCount} 条低置信或低优先级问题已进入人工审批队列。`;
+  return `\n\n> 另有 ${gatedCount} 条问题需要人工确认后再处理。`;
+}
+
+const SEVERITY_LABEL: Record<string, string> = {
+  high: '必须优先处理',
+  medium: '建议处理',
+  low: '可选优化',
+};
+
+const CATEGORY_LABEL: Record<string, string> = {
+  correctness: '功能正确性',
+  security: '安全',
+  quality: '代码质量',
+};
+
+function getSeverityLabel(severity: string): string {
+  return SEVERITY_LABEL[severity] ?? '建议处理';
+}
+
+function getCategoryLabel(category: string): string {
+  return CATEGORY_LABEL[category] ?? category;
 }
 
 function findingToLineComment(finding: PendingFinding): LineCommentInput {
   return {
     path: finding.path,
     line: finding.line,
-    comment: `**[${finding.severity.toUpperCase()}][${finding.category}]** ${finding.title}\n\n${finding.detail}\n\n建议: ${finding.suggestion}`,
+    comment: [
+      `**${finding.title}**`,
+      '',
+      finding.detail,
+      '',
+      `建议：${finding.suggestion}`,
+      '',
+      `_优先级：${getSeverityLabel(finding.severity)} · 类型：${getCategoryLabel(finding.category)}_`,
+    ].join('\n'),
   };
 }
 
@@ -65,11 +88,146 @@ function severityWeight(finding: { severity: string }): number {
   return 1;
 }
 
-const SEVERITY_ICON: Record<string, string> = {
-  high: '🔴',
-  medium: '🟡',
-  low: '🔵',
+function findingWeight(finding: PendingFinding): number {
+  return severityWeight(finding) * finding.confidence;
+}
+
+function tokenizeFindingText(finding: PendingFinding): Set<string> {
+  const normalized =
+    `${finding.title}\n${finding.detail}\n${finding.evidence}\n${finding.suggestion}`
+      .toLowerCase()
+      .replace(/[\p{P}\p{S}\s]+/gu, ' ')
+      .trim();
+  const tokens = new Set<string>();
+
+  for (const token of normalized.split(/\s+/u)) {
+    if (!token) continue;
+    if (/^[\p{Script=Han}]+$/u.test(token)) {
+      if (token.length <= 2) {
+        tokens.add(token);
+        continue;
+      }
+      for (let index = 0; index < token.length - 1; index++) {
+        tokens.add(token.slice(index, index + 2));
+      }
+      continue;
+    }
+    if (token.length >= 2) {
+      tokens.add(token);
+    }
+  }
+
+  return tokens;
+}
+
+function tokenSimilarity(left: Set<string>, right: Set<string>): number {
+  if (left.size === 0 || right.size === 0) {
+    return 0;
+  }
+  let intersection = 0;
+  for (const token of left) {
+    if (right.has(token)) {
+      intersection += 1;
+    }
+  }
+  const union = left.size + right.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function normalizedFindingText(finding: PendingFinding): string {
+  return `${finding.title}\n${finding.detail}\n${finding.evidence}\n${finding.suggestion}`.toLowerCase();
+}
+
+function hasLocalDeleteWithoutPersistenceSignal(text: string): boolean {
+  return (
+    text.includes('删除') &&
+    (text.includes('splice') || text.includes('本地')) &&
+    (text.includes('持久化') ||
+      text.includes('后端') ||
+      text.includes('接口') ||
+      text.includes('delete'))
+  );
+}
+
+function hasSortedIndexDeletionSignal(text: string): boolean {
+  return (
+    (text.includes('排序') || text.includes('sortedslices')) &&
+    (text.includes('索引') || text.includes('$index') || text.includes('删错'))
+  );
+}
+
+function haveSameRootCauseSignal(left: PendingFinding, right: PendingFinding): boolean {
+  const leftText = normalizedFindingText(left);
+  const rightText = normalizedFindingText(right);
+
+  return (
+    (hasLocalDeleteWithoutPersistenceSignal(leftText) &&
+      hasLocalDeleteWithoutPersistenceSignal(rightText)) ||
+    (hasSortedIndexDeletionSignal(leftText) && hasSortedIndexDeletionSignal(rightText))
+  );
+}
+
+function areDuplicateFindings(left: PendingFinding, right: PendingFinding): boolean {
+  if (left.path !== right.path) {
+    return false;
+  }
+
+  const similarity = tokenSimilarity(tokenizeFindingText(left), tokenizeFindingText(right));
+  const lineDistance = Math.abs(left.line - right.line);
+  if (haveSameRootCauseSignal(left, right) && (lineDistance <= 80 || similarity >= 0.2)) {
+    return true;
+  }
+
+  if (similarity >= 0.42) {
+    return true;
+  }
+
+  return lineDistance <= 80 && similarity >= 0.28;
+}
+
+export function dedupeFindingsForReview(findings: PendingFinding[]): PendingFinding[] {
+  const deduped: PendingFinding[] = [];
+
+  for (const finding of findings) {
+    const duplicateIndex = deduped.findIndex((existing) => areDuplicateFindings(existing, finding));
+    if (duplicateIndex === -1) {
+      deduped.push(finding);
+      continue;
+    }
+
+    const existing = deduped[duplicateIndex];
+    if (findingWeight(finding) > findingWeight(existing)) {
+      deduped[duplicateIndex] = finding;
+    }
+  }
+
+  return deduped.sort((a, b) => findingWeight(b) - findingWeight(a));
+}
+
+const SUMMARY_SECTION_TITLE: Record<string, string> = {
+  high: '必须优先处理',
+  medium: '建议处理',
+  low: '可选优化',
 };
+
+function formatCount(count: number, label: string): string | null {
+  return count > 0 ? `${count} 个${label}` : null;
+}
+
+function formatFindingForSummary(finding: PendingFinding, index: number): string[] {
+  const lines = [
+    `${index}. **${finding.title}**`,
+    `   - 位置：\`${finding.path}:${finding.line}\``,
+  ];
+  if (finding.detail) {
+    lines.push(`   - 影响：${finding.detail}`);
+  }
+  if (finding.suggestion) {
+    lines.push(`   - 建议：${finding.suggestion}`);
+  }
+  lines.push(`   - 类型：${getCategoryLabel(finding.category)}`);
+  return lines;
+}
 
 function buildStructuredSummary(
   findings: PendingFinding[],
@@ -79,39 +237,45 @@ function buildStructuredSummary(
   low: number
 ): string {
   if (total === 0) {
-    return '本次变更未发现需要立即处理的高置信问题。建议人工快速复核关键业务路径。';
+    return [
+      '未发现需要立即处理的问题。',
+      '',
+      '建议人工重点复核：',
+      '- 核心业务流程是否符合预期',
+      '- 新增接口是否覆盖失败分支',
+      '- UI 状态是否与后端数据保持一致',
+    ].join('\n');
   }
 
+  const countSummary = [
+    formatCount(high, '必须优先处理'),
+    formatCount(medium, '建议处理'),
+    formatCount(low, '可选优化'),
+  ]
+    .filter((item): item is string => Boolean(item))
+    .join('、');
+
   const lines: string[] = [
-    `本次 AI Agent 审查共识别 ${total} 个问题，其中 high ${high} 个、medium ${medium} 个、low ${low} 个。`,
+    `发现 ${total} 个需要关注的问题：${countSummary}。`,
     '',
-    '以下评论按风险优先级自动发布，建议优先处理 high 与 medium 项。',
+    '行级评论已标在对应代码位置；下面按处理优先级汇总。',
     '',
   ];
 
-  for (const finding of findings) {
-    const icon = SEVERITY_ICON[finding.severity] ?? '⚪';
-    lines.push('---');
-    lines.push('');
-    lines.push(
-      `### ${icon} [${finding.severity.toUpperCase()}] ${finding.title} — \`${finding.path}:${finding.line}\``
-    );
-    lines.push('');
-    if (finding.detail) {
-      lines.push(`> ${finding.detail}`);
-      lines.push('');
+  for (const severity of ['high', 'medium', 'low'] as const) {
+    const group = findings.filter((finding) => finding.severity === severity);
+    if (group.length === 0) {
+      continue;
     }
-    if (finding.evidence) {
-      lines.push(`**证据**: \`${finding.evidence}\``);
-      lines.push('');
-    }
-    if (finding.suggestion) {
-      lines.push(`**建议**: ${finding.suggestion}`);
+    lines.push(`### ${SUMMARY_SECTION_TITLE[severity]}`);
+    lines.push('');
+    for (const [index, finding] of group.entries()) {
+      lines.push(...formatFindingForSummary(finding, index + 1));
       lines.push('');
     }
   }
 
-  return lines.join('\n');
+  return lines.join('\n').trimEnd();
 }
 
 export class ReviewKernelRuntime {
@@ -122,7 +286,6 @@ export class ReviewKernelRuntime {
   private readonly agentInvoker = new KernelAgentInvoker(this.agentRegistry, this.hookRegistry);
   private readonly toolRegistry = new ToolRegistry();
   private readonly compressionService = new ContextCompressionService(llmGateway);
-  private readonly memoryStore?: VectorMemoryStore;
 
   constructor(
     private readonly store: FileReviewStore,
@@ -132,17 +295,6 @@ export class ReviewKernelRuntime {
     this.toolRegistry.register(createCodeSearchTool(this.diffExtractor.getSandbox()));
     this.toolRegistry.register(createFunctionReferenceSearchTool(this.diffExtractor.getSandbox()));
     this.toolRegistry.register(createFileReadTool());
-
-    let learningSystem: LearningSystem | undefined;
-    if (config.review.qdrantUrl && config.review.enableMemory) {
-      this.memoryStore = new VectorMemoryStore(config.review.qdrantUrl);
-      learningSystem = new LearningSystem(this.memoryStore, this.store);
-      this.memoryStore.initialize().catch((error) => {
-        logger.warn('Kernel 向量记忆系统初始化失败', {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
-    }
 
     this.registerHandlers();
     this.registerHooks();
@@ -155,7 +307,6 @@ export class ReviewKernelRuntime {
     for (const agent of createReviewBuiltInSubagents({
       store: this.store,
       toolRegistry: this.toolRegistry,
-      learningSystem,
       hookRegistry: this.hookRegistry,
       requireRun: (runId) => this.requireRun(runId),
     })) {
@@ -198,11 +349,10 @@ export class ReviewKernelRuntime {
     });
 
     try {
-      const existingCheckpoint =
-        kernelSessionRepository.loadCheckpoint<ReviewKernelState>(sessionId);
-      if (existingCheckpoint && existingCheckpoint.state.targetSha !== targetSha) {
-        kernelSessionRepository.deleteCheckpoint(sessionId);
-      }
+      // execute() always represents a new review run. A PR session is intentionally reused across
+      // commits/attempts, but a completed checkpoint from an older run must not short-circuit the
+      // new run. Continuation uses continueExecution(); new webhook-triggered runs start fresh.
+      kernelSessionRepository.deleteCheckpoint(sessionId);
 
       const checkpoint = await this.runner.run({
         sessionId,
@@ -605,16 +755,12 @@ export class ReviewKernelRuntime {
             continue;
           }
 
-          const existingWeight = severityWeight(existing) * existing.confidence;
-          const currentWeight = severityWeight(finding) * finding.confidence;
-          if (currentWeight > existingWeight) {
+          if (findingWeight(finding) > findingWeight(existing)) {
             bestByFingerprint.set(finding.fingerprint, finding);
           }
         }
 
-        const dedupedFindings = [...bestByFingerprint.values()].sort(
-          (a, b) => severityWeight(b) * b.confidence - severityWeight(a) * a.confidence
-        );
+        const dedupedFindings = dedupeFindingsForReview([...bestByFingerprint.values()]);
 
         const total = dedupedFindings.length;
         const high = dedupedFindings.filter((finding) => finding.severity === 'high').length;
@@ -623,11 +769,13 @@ export class ReviewKernelRuntime {
         const summaryMarkdown = buildStructuredSummary(dedupedFindings, total, high, medium, low);
         const decision = { summaryMarkdown, findings: dedupedFindings };
 
-        const policyResult = applyPublishPolicy(
-          decision.findings,
-          config.review.autoPublishMinConfidence,
-          config.review.enableHumanGate
-        );
+        const policyResult = {
+          publishable: decision.findings.filter(
+            (finding) => finding.severity === 'high' || finding.severity === 'medium'
+          ),
+          gated: [],
+          dropped: decision.findings.filter((finding) => finding.severity === 'low'),
+        };
 
         const runDetails = await this.store.getRunDetails(run.id);
         const publishedStatus = new Map<string, boolean>();
@@ -723,23 +871,6 @@ export class ReviewKernelRuntime {
           addedLocations.add(locationKey);
         }
 
-        if (this.memoryStore && policyResult.publishable.length > 0) {
-          const latestDetails = await this.store.getRunDetails(run.id);
-          for (const finding of latestDetails?.findings ?? []) {
-            if (!finding.published) {
-              continue;
-            }
-            await this.memoryStore
-              .storeFinding(finding, true, run.owner, run.repo)
-              .catch((error) => {
-                logger.warn('Kernel 存储 finding 到向量记忆失败', {
-                  findingId: finding.id,
-                  error: error instanceof Error ? error.message : String(error),
-                });
-              });
-          }
-        }
-
         return {
           state: {
             ...context.state,
@@ -792,7 +923,7 @@ export class ReviewKernelRuntime {
   }
 
   private async publishSummary(run: ReviewRun, summary: string, gatedCount: number): Promise<void> {
-    const body = `## AI Agent代码审查结果\n\n${summary}${summarizeGatedCount(gatedCount)}`;
+    const body = `## AI 代码审查结果\n\n${summary}${summarizeGatedCount(gatedCount)}`;
 
     if (run.eventType === 'pull_request' && run.prNumber) {
       await giteaService.addPullRequestComment(run.owner, run.repo, run.prNumber, body);
