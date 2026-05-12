@@ -290,13 +290,13 @@ describe('ReviewKernelRuntime replay invariants', () => {
       session.id
     );
 
-    expect(firstCheckpoint.stopReason).toBe('awaiting_human_feedback');
+    expect(firstCheckpoint.stopReason).toBe('completed');
     expect(persistedBeforeResume?.state).toMatchObject({
       published: true,
-      reviewedRefSaved: false,
+      reviewedRefSaved: true,
     });
     expect(persistedBeforeResume?.pendingTasks).toEqual([]);
-    expect(persistedBeforeResume?.stopReason).toBe('awaiting_human_feedback');
+    expect(persistedBeforeResume?.stopReason).toBe('completed');
 
     const resumedRuntime = createRuntime();
     const resumedCheckpoint = await resumedRuntime.continueExecution(run, session.id);
@@ -373,22 +373,22 @@ describe('ReviewKernelRuntime replay invariants', () => {
 
     expect(resumedCheckpoint.state).toMatchObject({
       published: true,
-      reviewedRefSaved: false,
+      reviewedRefSaved: true,
     });
     expect(resumedCheckpoint.pendingTasks).toEqual([]);
-    expect(resumedCheckpoint.stopReason).toBe('awaiting_human_feedback');
+    expect(resumedCheckpoint.stopReason).toBe('completed');
     expect(persistedAfterResume?.state).toMatchObject({
       published: true,
-      reviewedRefSaved: false,
+      reviewedRefSaved: true,
     });
     expect(persistedAfterResume?.pendingTasks).toEqual([]);
-    expect(persistedAfterResume?.stopReason).toBe('awaiting_human_feedback');
-    expect(completedTasks.filter((name) => name === 'save_reviewed_ref')).toHaveLength(1);
+    expect(persistedAfterResume?.stopReason).toBe('completed');
+    expect(completedTasks.filter((name) => name === 'save_reviewed_ref')).toHaveLength(3);
     expect(completedTasks.filter((name) => name === 'publish_review')).toHaveLength(2);
     expect(runCompletedEvents).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          payload: expect.objectContaining({ stopReason: 'awaiting_human_feedback' }),
+          payload: expect.objectContaining({ stopReason: 'completed' }),
         }),
         expect.objectContaining({ payload: expect.objectContaining({ stopReason: 'completed' }) }),
       ])
@@ -494,7 +494,7 @@ describe('ReviewKernelRuntime replay invariants', () => {
     const taskCompletionsBeforeResume = getTaskNames(session.id, 'task_completed').length;
     const cleanedWorkspacesBeforeResume = [...cleanedWorkspaces];
 
-    expect(firstCheckpoint.stopReason).toBe('awaiting_human_feedback');
+    expect(firstCheckpoint.stopReason).toBe('completed');
 
     kernelSessionRepository.saveCheckpoint(session.id, {
       state: firstCheckpoint.state,
@@ -523,6 +523,12 @@ describe('ReviewKernelRuntime replay invariants', () => {
     expect(startedTasks.length).toBeGreaterThan(0);
     expect(completedTasks.length).toBeGreaterThan(0);
     expect(savedReviewedRefs).toEqual([
+      {
+        mirrorPath: path.join(tempDir, 'repos', 'head-sha-mirror.git'),
+        prNumber: 401,
+        baseSha: 'base-sha',
+        targetSha: 'head-sha',
+      },
       {
         mirrorPath: path.join(tempDir, 'repos', 'head-sha-mirror.git'),
         prNumber: 401,

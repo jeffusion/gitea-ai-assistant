@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import path from 'node:path';
-import { Hono } from 'hono';
 import { z } from 'zod';
 import { kernelSessionRepository } from '../../../agent-kernel/session/session-repository';
-import { feedbackRouter, initializeFeedbackSystem } from '../../../controllers/feedback';
+import { initializeFeedbackSystem } from '../../../controllers/feedback';
 import { modelRoleRepo } from '../../../db/repositories/model-role-repo';
 import { llmGateway } from '../../../llm/gateway';
 import { giteaService } from '../../../services/gitea';
@@ -22,12 +21,6 @@ import {
   captureKernelBoundaryRestorePoint,
   createKernelTestFixture,
 } from './kernel-test-fixtures';
-
-function createTestApp(): Hono {
-  const app = new Hono();
-  app.route('/feedback', feedbackRouter);
-  return app;
-}
 
 function createJsonResponse(content: Record<string, unknown>) {
   return {
@@ -196,21 +189,6 @@ function createReviewContext(
         `export function module${index}(input?: string) {\n  return input.trim() === "x" ? input.length : 0;\n}\n${'y'.repeat(6000)}`,
       ])
     ),
-  };
-}
-
-async function jsonRequest(app: Hono, findingId: string, approved: boolean, reason?: string) {
-  const response = await app.request(`http://localhost/feedback/finding/${findingId}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ approved, reason }),
-  });
-
-  return {
-    response,
-    payload: (await response.json()) as Record<string, unknown>,
   };
 }
 
@@ -609,7 +587,6 @@ describe('compression resumability and production canaries', () => {
 
     test('feedback resume canary completes pending reviewed ref save once', async () => {
       initializeFeedbackSystem(fixture.store);
-      const app = createTestApp();
       const pullRequestCommentBodies: string[] = [];
       const saveReviewedRefCalls: Array<{
         mirrorPath: string;
@@ -694,20 +671,19 @@ describe('compression resumability and production canaries', () => {
 
       const firstCheckpoint = await runtime.execute(run, session.id);
       const runDetailsBeforeResume = await fixture.store.getRunDetails(run.id);
-      const gatedFinding = runDetailsBeforeResume?.findings.find(
+      const droppedFinding = firstCheckpoint.state.policyResult?.dropped.find(
         (finding) => finding.fingerprint === 'gated-finding'
       );
 
-      expect(firstCheckpoint.stopReason).toBe('awaiting_human_feedback');
-      expect(gatedFinding).toBeDefined();
-
-      const approval = await jsonRequest(app, gatedFinding!.id, true, 'approved by canary');
       const persistedCheckpoint = kernelSessionRepository.loadCheckpoint<ReviewKernelState>(
         session.id
       );
 
-      expect(approval.response.status).toBe(200);
-      expect(approval.payload).toMatchObject({ success: true, published: true });
+      expect(firstCheckpoint.stopReason).toBe('completed');
+      expect(droppedFinding).toBeDefined();
+      expect(
+        runDetailsBeforeResume?.findings.find((finding) => finding.fingerprint === 'gated-finding')
+      ).toBeUndefined();
       expect(persistedCheckpoint?.stopReason).toBe('completed');
       expect(saveReviewedRefCalls).toHaveLength(1);
       expect(pullRequestCommentBodies.length).toBeGreaterThanOrEqual(1);
@@ -732,7 +708,6 @@ describe('compression resumability and production canaries', () => {
       const compressedSummary =
         '## Change Overview\n- Resume with compressed state\n\n## High-Risk Areas\n- optional input handling\n\n## Important Files\n- src/module-0.ts\n\n## Open Questions\n- none\n\n## Recommended Focus\n- verify feedback resume after compression';
       initializeFeedbackSystem(fixture.store);
-      const app = createTestApp();
       const saveReviewedRefCalls: Array<{
         mirrorPath: string;
         prNumber: number;
@@ -854,16 +829,16 @@ describe('compression resumability and production canaries', () => {
       );
       const runDetailsBeforeResume = await fixture.store.getRunDetails(run.id);
       const invocationsBeforeResume = kernelSessionRepository.listSubagentInvocations(session.id);
-      const gatedFinding = runDetailsBeforeResume?.findings.find(
+      const droppedFinding = firstCheckpoint.state.policyResult?.dropped.find(
         (finding) => finding.fingerprint === 'compressed-gated'
       );
 
-      expect(firstCheckpoint.stopReason).toBe('awaiting_human_feedback');
+      expect(firstCheckpoint.stopReason).toBe('completed');
       expect(persistedBeforeResume?.state.compressedContext).toBeDefined();
       expect(persistedBeforeResume?.state).toMatchObject({
         targetSha: run.headSha,
         published: true,
-        reviewedRefSaved: false,
+        reviewedRefSaved: true,
       });
       expect(persistedBeforeResume?.pendingTasks).toEqual([]);
       expect(invocationsBeforeResume.filter((item) => item.status === 'completed')).toHaveLength(2);
@@ -873,21 +848,17 @@ describe('compression resumability and production canaries', () => {
       expect(plannerCallCount).toBe(2);
       expect(plannerPrompts[0]).toContain(compressedSummary);
       expect(specialistPrompts[0]).toContain(compressedSummary);
-      expect(gatedFinding).toBeDefined();
-
-      const approval = await jsonRequest(
-        app,
-        gatedFinding!.id,
-        true,
-        'resume from compressed context'
-      );
       const persistedAfterResume = kernelSessionRepository.loadCheckpoint<ReviewKernelState>(
         session.id
       );
       const invocationsAfterResume = kernelSessionRepository.listSubagentInvocations(session.id);
 
-      expect(approval.response.status).toBe(200);
-      expect(approval.payload).toMatchObject({ success: true, published: true });
+      expect(droppedFinding).toBeDefined();
+      expect(
+        runDetailsBeforeResume?.findings.find(
+          (finding) => finding.fingerprint === 'compressed-gated'
+        )
+      ).toBeUndefined();
       expect(persistedAfterResume?.stopReason).toBe('completed');
       expect(persistedAfterResume?.state).toMatchObject({
         targetSha: run.headSha,
