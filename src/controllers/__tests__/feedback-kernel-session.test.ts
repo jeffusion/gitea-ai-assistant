@@ -203,7 +203,6 @@ describe('feedback kernel session integration', () => {
     expect(payload).toMatchObject({
       success: true,
       message: '已标记为有效问题并发布到Gitea',
-      learningApplied: false,
       published: true,
     });
     expect(persistedFinding?.published).toBe(true);
@@ -254,7 +253,6 @@ describe('feedback kernel session integration', () => {
     expect(payload).toMatchObject({
       success: true,
       message: '已标记为误报',
-      learningApplied: false,
       published: false,
     });
     expect(persistedFinding?.published).toBe(true);
@@ -298,7 +296,6 @@ describe('feedback kernel session integration', () => {
       success: true,
       message: '该finding已处理过',
       alreadyProcessed: true,
-      learningApplied: false,
       published: true,
     });
     expect(runDetails?.comments).toHaveLength(1);
