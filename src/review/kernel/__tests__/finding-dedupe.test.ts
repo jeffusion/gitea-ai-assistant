@@ -19,7 +19,7 @@ function finding(overrides: Partial<PendingFinding>): PendingFinding {
 }
 
 describe('dedupeFindingsForReview', () => {
-  test('collapses duplicate slice deletion findings across specialists', () => {
+  test('collapses duplicate slice deletion findings from one autonomous full review result', () => {
     const result = dedupeFindingsForReview([
       finding({
         category: 'correctness',
@@ -112,5 +112,40 @@ describe('dedupeFindingsForReview', () => {
     ]);
 
     expect(result).toHaveLength(2);
+  });
+
+  test('sorts deduped findings deterministically when weights tie', () => {
+    const result = dedupeFindingsForReview([
+      finding({
+        category: 'quality',
+        severity: 'medium',
+        confidence: 0.8,
+        path: 'src/z.ts',
+        line: 30,
+        title: 'Z issue',
+      }),
+      finding({
+        category: 'quality',
+        severity: 'medium',
+        confidence: 0.8,
+        path: 'src/a.ts',
+        line: 10,
+        title: 'A issue',
+      }),
+      finding({
+        category: 'quality',
+        severity: 'medium',
+        confidence: 0.8,
+        path: 'src/b.ts',
+        line: 5,
+        title: 'B issue',
+      }),
+    ]);
+
+    expect(result.map((item) => `${item.path}:${item.line}:${item.title}`)).toEqual([
+      'src/a.ts:10:A issue',
+      'src/b.ts:5:B issue',
+      'src/z.ts:30:Z issue',
+    ]);
   });
 });

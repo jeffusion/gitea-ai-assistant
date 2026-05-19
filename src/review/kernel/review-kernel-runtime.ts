@@ -24,7 +24,7 @@ import { createCodeSearchTool } from '../tools/code-search-tool';
 import { createFileReadTool } from '../tools/file-read-tool';
 import { createFunctionReferenceSearchTool } from '../tools/function-reference-search-tool';
 import { ToolRegistry } from '../tools/registry';
-import type { ReviewRun } from '../types';
+import type { FindingCategory, FindingSeverity, ReviewRun } from '../types';
 import { ContextCompressionService } from './context-compression-service';
 import { createReviewBuiltInSubagents } from './review-built-in-subagents';
 import type { PendingFinding, ReviewKernelState } from './review-kernel-state';
@@ -55,12 +55,46 @@ const CATEGORY_LABEL: Record<string, string> = {
   quality: '代码质量',
 };
 
+const FINDING_CATEGORIES: FindingCategory[] = ['correctness', 'security', 'quality'];
+const FINDING_SEVERITIES: FindingSeverity[] = ['high', 'medium', 'low'];
+
 function getSeverityLabel(severity: string): string {
   return SEVERITY_LABEL[severity] ?? '建议处理';
 }
 
 function getCategoryLabel(category: string): string {
   return CATEGORY_LABEL[category] ?? category;
+}
+
+function normalizeFindingCategory(category: string): FindingCategory {
+  return FINDING_CATEGORIES.includes(category as FindingCategory)
+    ? (category as FindingCategory)
+    : 'quality';
+}
+
+function normalizeFindingSeverity(severity: string): FindingSeverity {
+  return FINDING_SEVERITIES.includes(severity as FindingSeverity)
+    ? (severity as FindingSeverity)
+    : 'medium';
+}
+
+function normalizeFindingLocation(finding: PendingFinding): { path: string; line: number } {
+  return {
+    path: finding.path.trim() || finding.path,
+    line: Number.isFinite(finding.line) ? Math.max(1, Math.trunc(finding.line)) : 1,
+  };
+}
+
+function normalizeFindingForReview(finding: PendingFinding): PendingFinding {
+  const { path, line } = normalizeFindingLocation(finding);
+
+  return {
+    ...finding,
+    category: normalizeFindingCategory(finding.category),
+    severity: normalizeFindingSeverity(finding.severity),
+    path,
+    line,
+  };
 }
 
 function findingToLineComment(finding: PendingFinding): LineCommentInput {
@@ -202,7 +236,44 @@ export function dedupeFindingsForReview(findings: PendingFinding[]): PendingFind
     }
   }
 
-  return deduped.sort((a, b) => findingWeight(b) - findingWeight(a));
+  return deduped.sort((left, right) => {
+    const weightDiff = findingWeight(right) - findingWeight(left);
+    if (weightDiff !== 0) {
+      return weightDiff;
+    }
+
+    const severityDiff = severityWeight(right) - severityWeight(left);
+    if (severityDiff !== 0) {
+      return severityDiff;
+    }
+
+    const pathDiff = left.path.localeCompare(right.path);
+    if (pathDiff !== 0) {
+      return pathDiff;
+    }
+
+    const lineDiff = left.line - right.line;
+    if (lineDiff !== 0) {
+      return lineDiff;
+    }
+
+    const titleDiff = left.title.localeCompare(right.title);
+    if (titleDiff !== 0) {
+      return titleDiff;
+    }
+
+    const fingerprintDiff = left.fingerprint.localeCompare(right.fingerprint);
+    if (fingerprintDiff !== 0) {
+      return fingerprintDiff;
+    }
+
+    const categoryDiff = left.category.localeCompare(right.category);
+    if (categoryDiff !== 0) {
+      return categoryDiff;
+    }
+
+    return left.detail.localeCompare(right.detail);
+  });
 }
 
 const SUMMARY_SECTION_TITLE: Record<string, string> = {
@@ -733,24 +804,12 @@ export class ReviewKernelRuntime {
     return {
       kind: 'skill',
       name: 'aggregate_findings',
-      description: '聚合 findings：去重、排序、应用发布策略',
+      description: '归一化 full review findings：去重、排序、应用发布策略',
       resumable: true,
       execute: async (_task, context) => {
         const run = await this.requireRun(context.runId);
-        const bestByFingerprint = new Map<string, PendingFinding>();
-        for (const finding of context.state.findings) {
-          const existing = bestByFingerprint.get(finding.fingerprint);
-          if (!existing) {
-            bestByFingerprint.set(finding.fingerprint, finding);
-            continue;
-          }
-
-          if (findingWeight(finding) > findingWeight(existing)) {
-            bestByFingerprint.set(finding.fingerprint, finding);
-          }
-        }
-
-        const dedupedFindings = dedupeFindingsForReview([...bestByFingerprint.values()]);
+        const normalizedFindings = context.state.findings.map(normalizeFindingForReview);
+        const dedupedFindings = dedupeFindingsForReview(normalizedFindings);
 
         const total = dedupedFindings.length;
         const high = dedupedFindings.filter((finding) => finding.severity === 'high').length;
