@@ -12,14 +12,46 @@ export type ReviewMode = 'skip' | 'light' | 'full';
 
 export type ReviewSize = 'small' | 'medium' | 'large';
 
+export interface ReviewExecutionBudget {
+  maxTurns: number;
+  maxToolCalls: number;
+  maxElapsedMs: number;
+}
+
+export const REVIEW_DEFAULT_BUDGETS = {
+  light: {
+    maxTurns: 4,
+    maxToolCalls: 4,
+    maxElapsedMs: 60_000,
+  },
+  full: {
+    maxTurns: 10,
+    maxToolCalls: 12,
+    maxElapsedMs: 180_000,
+  },
+  largeFull: {
+    maxTurns: 12,
+    maxToolCalls: 16,
+    maxElapsedMs: 240_000,
+  },
+} as const satisfies Record<string, ReviewExecutionBudget>;
+
 export interface ReviewTask {
-  domain: FindingCategory;
-  paths: string[];
-  riskTags: string[];
   mode: ReviewMode;
+  reviewSize?: ReviewSize;
+  riskTags: string[];
+  suspectedEntrypoints?: string[];
+  maxTurns?: number;
+  maxToolCalls?: number;
+  maxElapsedMs?: number;
   tokenBudget: number;
-  maxIterations: number;
-  allowTools: boolean;
+}
+
+export interface ReviewHint {
+  source: 'triage' | 'heuristic' | 'runtime';
+  message: string;
+  riskTags?: string[];
+  suspectedEntrypoints?: string[];
 }
 
 export interface ReviewBudgetPolicy {

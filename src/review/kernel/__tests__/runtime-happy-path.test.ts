@@ -224,7 +224,13 @@ describe('ReviewKernelRuntime happy path', () => {
     expect(checkpoint.pendingTasks).toEqual([]);
     expect(checkpoint.state.published).toBe(true);
     expect(checkpoint.state.reviewedRefSaved).toBe(true);
-    expect(checkpoint.state.completedDomains).toEqual(['correctness']);
+    expect(checkpoint.state.reviewCompleted).toBe(true);
+    expect(checkpoint.state.reviewHints).toHaveLength(1);
+    expect(checkpoint.state.reviewTask).toMatchObject({
+      mode: 'light',
+      suspectedEntrypoints: ['src/index.ts'],
+      tokenBudget: expect.any(Number),
+    });
     expect(checkpoint.state.findings).toHaveLength(1);
     expect(checkpoint.state.findings[0]).toMatchObject({
       category: 'correctness',
@@ -238,7 +244,7 @@ describe('ReviewKernelRuntime happy path', () => {
     expect(persistedCheckpoint?.state).toMatchObject({
       published: true,
       reviewedRefSaved: true,
-      completedDomains: ['correctness'],
+      reviewCompleted: true,
     });
 
     const eventTypes = events.map((event) => event.eventType);
@@ -434,7 +440,8 @@ describe('ReviewKernelRuntime happy path', () => {
     expect(checkpoint.pendingTasks).toEqual([]);
     expect(checkpoint.state).toMatchObject({
       findings: [],
-      completedDomains: [],
+      reviewCompleted: false,
+      reviewHints: [],
       published: false,
       reviewedRefSaved: false,
     });

@@ -433,14 +433,14 @@ describe('ReviewKernelRuntime replay invariants', () => {
     expect(resumedCheckpoint.state).toMatchObject({
       published: true,
       reviewedRefSaved: true,
-      completedDomains: ['correctness'],
+      reviewCompleted: true,
     });
     expect(resumedCheckpoint.pendingTasks).toEqual([]);
     expect(resumedCheckpoint.stopReason).toBe('completed');
     expect(persistedAfterResume?.state).toMatchObject({
       published: true,
       reviewedRefSaved: true,
-      completedDomains: ['correctness'],
+      reviewCompleted: true,
     });
     expect(persistedAfterResume?.pendingTasks).toEqual([]);
     expect(persistedAfterResume?.stopReason).toBe('completed');
@@ -516,7 +516,7 @@ describe('ReviewKernelRuntime replay invariants', () => {
     expect(resumedCheckpoint.state).toMatchObject({
       published: true,
       reviewedRefSaved: true,
-      completedDomains: ['correctness'],
+      reviewCompleted: true,
     });
     expect(resumedCheckpoint.pendingTasks).toEqual([]);
     expect(resumedCheckpoint.stopReason).toBe('completed');

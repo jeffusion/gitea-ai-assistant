@@ -10,7 +10,25 @@ import type { FindingCategory, ReviewRun, ReviewTask } from '../types';
 import type { ReviewKernelState } from './review-kernel-state';
 import { REVIEW_TRIAGE_SUBAGENT, getReviewDomainSubagentId } from './review-subagent-ids';
 
-function buildDefaultTasks(state: ReviewKernelState): ReviewTask[] {
+interface LegacyDomainReviewTask extends ReviewTask {
+  domain: FindingCategory;
+  paths: string[];
+  maxIterations: number;
+  allowTools: boolean;
+}
+
+function asLegacyDomainTasks(tasks: ReviewTask[]): LegacyDomainReviewTask[] {
+  return tasks.filter((task): task is LegacyDomainReviewTask => {
+    const candidate = task as Partial<LegacyDomainReviewTask>;
+    return (
+      candidate.domain === 'correctness' ||
+      candidate.domain === 'security' ||
+      candidate.domain === 'quality'
+    );
+  });
+}
+
+function buildDefaultTasks(state: ReviewKernelState): LegacyDomainReviewTask[] {
   if (!state.context) {
     return [];
   }
@@ -29,21 +47,27 @@ function buildDefaultTasks(state: ReviewKernelState): ReviewTask[] {
 }
 
 function mergeDomainTasks(tasks: ReviewTask[]): ReviewTask[] {
-  const byDomain = new Map<ReviewTask['domain'], ReviewTask>();
-  for (const task of tasks) {
+  const byDomain = new Map<FindingCategory, ReviewTask>();
+  for (const task of asLegacyDomainTasks(tasks)) {
     const existing = byDomain.get(task.domain);
     if (!existing) {
-      byDomain.set(task.domain, { ...task, paths: [...new Set(task.paths)] });
+      byDomain.set(task.domain, {
+        mode: task.mode,
+        riskTags: task.riskTags,
+        suspectedEntrypoints: [...new Set(task.paths)],
+        maxTurns:
+          task.mode === 'full' ? Math.max(task.maxIterations, 4) : Math.max(task.maxIterations, 2),
+        tokenBudget: task.tokenBudget,
+      });
       continue;
     }
 
     byDomain.set(task.domain, {
       ...existing,
-      paths: [...new Set([...existing.paths, ...task.paths])],
+      suspectedEntrypoints: [...new Set([...(existing.suspectedEntrypoints ?? []), ...task.paths])],
       riskTags: [...new Set([...existing.riskTags, ...task.riskTags])],
-      maxIterations: Math.max(existing.maxIterations, task.maxIterations),
+      maxTurns: Math.max(existing.maxTurns ?? 0, task.maxIterations),
       tokenBudget: Math.max(existing.tokenBudget, task.tokenBudget),
-      allowTools: existing.allowTools || task.allowTools,
       mode: existing.mode === 'full' || task.mode === 'full' ? 'full' : 'light',
     });
   }
@@ -130,11 +154,23 @@ export function createReviewBuiltInSubagents(
         });
       }
 
+      const reviewTasks = mergeDomainTasks(triageResult?.tasks ?? buildDefaultTasks(context.state));
+      const reviewTask = reviewTasks[0];
+
       return {
         state: {
           ...context.state,
           triage: triageResult,
-          domainTasks: mergeDomainTasks(triageResult?.tasks ?? buildDefaultTasks(context.state)),
+          reviewTask,
+          reviewHints: [
+            ...context.state.reviewHints,
+            {
+              source: config.review.enableTriage && triageResult ? 'triage' : 'heuristic',
+              message: triageResult?.rationale ?? '使用默认审查计划作为自治审查提示。',
+              riskTags: triageResult?.riskTags,
+              suspectedEntrypoints: reviewTask?.suspectedEntrypoints,
+            },
+          ],
         },
       };
     },
@@ -156,9 +192,11 @@ export function createReviewBuiltInSubagents(
           throw new Error('缺少审查上下文');
         }
 
-        const reviewTask = context.state.domainTasks.find((item) => item.domain === domain);
+        const legacyReviewTask = asLegacyDomainTasks(
+          context.state.triage?.tasks ?? buildDefaultTasks(context.state)
+        ).find((item) => item.domain === domain);
         const agent = specialistMap[domain];
-        if (!reviewTask || !agent) {
+        if (!legacyReviewTask || !agent) {
           throw new Error(`未知的审查域: ${domain}`);
         }
 
@@ -172,14 +210,14 @@ export function createReviewBuiltInSubagents(
         });
 
         const reviewOptions = {
-          scopePaths: reviewTask.paths,
-          allowTools: reviewTask.allowTools,
+          scopePaths: legacyReviewTask.paths,
+          allowTools: legacyReviewTask.allowTools,
           maxIterations:
-            reviewTask.mode === 'full'
-              ? Math.max(reviewTask.maxIterations, 4)
-              : Math.max(reviewTask.maxIterations, 2),
-          mode: reviewTask.mode,
-          maxContextTokens: Math.max(1500, Math.floor(reviewTask.tokenBudget * 0.7)),
+            legacyReviewTask.mode === 'full'
+              ? Math.max(legacyReviewTask.maxIterations, 4)
+              : Math.max(legacyReviewTask.maxIterations, 2),
+          mode: legacyReviewTask.mode,
+          maxContextTokens: Math.max(1500, Math.floor(legacyReviewTask.tokenBudget * 0.7)),
           projectPrompt: context.state.projectPrompt,
           contextSummary: context.state.compressedContext?.summary,
         } as const;
@@ -204,7 +242,8 @@ export function createReviewBuiltInSubagents(
           },
           state: {
             ...context.state,
-            completedDomains: [...new Set([...context.state.completedDomains, domain])],
+            reviewCompleted: true,
+            reviewDiagnostics: result.diagnostics,
             findings: [...context.state.findings, ...result.findings],
           },
         };

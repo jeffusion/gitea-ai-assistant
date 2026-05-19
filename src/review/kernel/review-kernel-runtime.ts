@@ -320,8 +320,8 @@ export class ReviewKernelRuntime {
       await this.store.markRunIgnored(run.id, '缺少目标 sha');
       return {
         state: {
-          domainTasks: [],
-          completedDomains: [],
+          reviewCompleted: false,
+          reviewHints: [],
           findings: [],
           published: false,
           reviewedRefSaved: false,
@@ -359,8 +359,8 @@ export class ReviewKernelRuntime {
         runId: run.id,
         initialState: {
           targetSha,
-          domainTasks: [],
-          completedDomains: [],
+          reviewCompleted: false,
+          reviewHints: [],
           findings: [],
           published: false,
           reviewedRefSaved: false,
@@ -399,8 +399,8 @@ export class ReviewKernelRuntime {
       runId: run.id,
       initialState: {
         targetSha: run.headSha || run.commitSha,
-        domainTasks: [],
-        completedDomains: [],
+        reviewCompleted: false,
+        reviewHints: [],
         findings: [],
         published: false,
         reviewedRefSaved: false,
@@ -542,18 +542,17 @@ export class ReviewKernelRuntime {
       return [{ kind: 'skill', name: 'compress_context' }];
     }
 
-    if (!context.state.triage && context.state.domainTasks.length === 0) {
+    if (!context.state.triage && !context.state.reviewTask) {
       return [{ kind: 'subagent', name: this.requireSubagentByTag('triage') }];
     }
 
-    const remainingDomains = context.state.domainTasks
-      .map((task) => task.domain)
-      .filter((domain) => !context.state.completedDomains.includes(domain));
-    if (remainingDomains.length > 0) {
-      return remainingDomains.map((domain) => ({
-        kind: 'subagent',
-        name: this.requireDomainSubagent(domain),
-      }));
+    if (!context.state.reviewCompleted) {
+      return [
+        {
+          kind: 'subagent',
+          name: this.requireReviewBridgeSubagent(),
+        },
+      ];
     }
 
     if (!context.state.decision) {
@@ -605,12 +604,12 @@ export class ReviewKernelRuntime {
     return agent.name;
   }
 
-  private requireDomainSubagent(domain: string): string {
+  private requireReviewBridgeSubagent(): string {
     const agent = this.agentInvoker
       .filterByTag('domain-review')
-      .find((item) => item.tags?.includes(`domain:${domain}`));
+      .find((item) => item.tags?.includes('domain:correctness'));
     if (!agent) {
-      throw new Error(`Kernel domain subagent not registered for '${domain}'`);
+      throw new Error('Kernel temporary review bridge subagent not registered');
     }
     return agent.name;
   }
