@@ -4,7 +4,7 @@ import type {
   KernelSessionRecord,
   KernelTaskDefinition,
 } from '../../agent-kernel/types';
-import { REVIEW_TRIAGE_SUBAGENT, getReviewDomainSubagentId } from './review-subagent-ids';
+import { REVIEW_FULL_REVIEW_SUBAGENT, REVIEW_TRIAGE_SUBAGENT } from './review-subagent-ids';
 
 type SessionStatus =
   | 'queued'
@@ -17,8 +17,7 @@ type SessionStatus =
 
 interface ReviewKernelCheckpointState {
   targetSha?: string;
-  domainTasks?: Array<{ domain: string }>;
-  completedDomains?: string[];
+  reviewCompleted?: boolean;
   findings?: Array<{ fingerprint: string }>;
   published?: boolean;
 }
@@ -75,15 +74,14 @@ const PLAN_BLUEPRINT: Array<{
   {
     key: REVIEW_TRIAGE_SUBAGENT,
     matches: (taskName) => taskName === REVIEW_TRIAGE_SUBAGENT,
-    label: '制定执行计划',
-    description: '根据风险和规模决定审查域与模式',
+    label: '生成审查提示',
+    description: '根据风险和规模生成完整自主审查的上下文提示与模式',
   },
   {
-    key: 'review-domain',
-    matches: (taskName) =>
-      taskName.startsWith(getReviewDomainSubagentId('correctness').split('correctness')[0]),
-    label: '专项子代理审查',
-    description: '按域执行 correctness / security / quality',
+    key: REVIEW_FULL_REVIEW_SUBAGENT,
+    matches: (taskName) => taskName === REVIEW_FULL_REVIEW_SUBAGENT,
+    label: '完整自主审查',
+    description: '基于 triage 提示执行单次完整自主审查',
   },
   {
     key: 'aggregate_findings',
@@ -150,8 +148,6 @@ export function buildReviewPlanSnapshot(
 ): ReviewPlanStepSnapshot[] {
   const catalogMap = new Map(catalog.map((item) => [item.name, item]));
   const state = checkpoint?.state as ReviewKernelCheckpointState | undefined;
-  const totalDomains = state?.domainTasks?.length ?? 0;
-  const completedDomains = state?.completedDomains?.length ?? 0;
 
   return PLAN_BLUEPRINT.map((step) => {
     const completedCount = countTaskEvents(events, 'task_completed', step.matches);
@@ -162,17 +158,16 @@ export function buildReviewPlanSnapshot(
     let status: ReviewPlanStepSnapshot['status'] = 'pending';
     let progressText: string | undefined;
 
-    if (step.key === 'review-domain') {
-      progressText =
-        totalDomains > 0 ? `${completedDomains}/${totalDomains} domains` : '等待 triage';
+    if (step.key === REVIEW_FULL_REVIEW_SUBAGENT) {
+      progressText = state?.reviewCompleted ? 'full review completed' : '等待 full review';
       if (failedCount > 0) {
         status = 'failed';
-      } else if (totalDomains > 0 && completedDomains >= totalDomains) {
+      } else if (state?.reviewCompleted || completedCount > 0) {
         status = 'completed';
       } else if (startedCount > completedCount || queued) {
         status = startedCount > completedCount ? 'running' : 'queued';
       } else {
-        status = totalDomains > 0 ? 'queued' : 'pending';
+        status = 'pending';
       }
     } else if (failedCount > 0) {
       status = 'failed';

@@ -10,7 +10,7 @@ import { giteaService } from '../../../services/gitea';
 import { FileReviewStore } from '../../store/file-review-store';
 import type { PullRequestReviewPayload, ReviewContext, ReviewRun } from '../../types';
 import { ReviewKernelRuntime } from '../review-kernel-runtime';
-import { REVIEW_TRIAGE_SUBAGENT, getReviewDomainSubagentId } from '../review-subagent-ids';
+import { REVIEW_FULL_REVIEW_SUBAGENT, REVIEW_TRIAGE_SUBAGENT } from '../review-subagent-ids';
 import { getReviewSessionScope } from '../session-scope';
 
 function createPullRequestPayload(
@@ -272,7 +272,7 @@ describe('ReviewKernelRuntime happy path', () => {
       'prepare_workspace',
       'build_context',
       REVIEW_TRIAGE_SUBAGENT,
-      getReviewDomainSubagentId('correctness'),
+      REVIEW_FULL_REVIEW_SUBAGENT,
       'aggregate_findings',
       'publish_review',
       'save_reviewed_ref',
@@ -310,8 +310,8 @@ describe('ReviewKernelRuntime happy path', () => {
       { eventType: 'task_completed', name: 'build_context' },
       { eventType: 'task_started', name: REVIEW_TRIAGE_SUBAGENT },
       { eventType: 'task_completed', name: REVIEW_TRIAGE_SUBAGENT },
-      { eventType: 'task_started', name: getReviewDomainSubagentId('correctness') },
-      { eventType: 'task_completed', name: getReviewDomainSubagentId('correctness') },
+      { eventType: 'task_started', name: REVIEW_FULL_REVIEW_SUBAGENT },
+      { eventType: 'task_completed', name: REVIEW_FULL_REVIEW_SUBAGENT },
     ]);
 
     const completedInvocations = invocations.filter(
@@ -319,8 +319,15 @@ describe('ReviewKernelRuntime happy path', () => {
     );
     expect(completedInvocations.length).toBeGreaterThanOrEqual(2);
     expect(completedInvocations.map((item) => item.subagentName)).toEqual(
-      expect.arrayContaining([REVIEW_TRIAGE_SUBAGENT, getReviewDomainSubagentId('correctness')])
+      expect.arrayContaining([REVIEW_TRIAGE_SUBAGENT, REVIEW_FULL_REVIEW_SUBAGENT])
     );
+
+    const fullReviewSteps = runDetails?.steps.filter(
+      (step) => step.stepName === 'kernel_review_full'
+    );
+    expect(fullReviewSteps).toHaveLength(2);
+    expect(fullReviewSteps?.filter((step) => step.status === 'started')).toHaveLength(1);
+    expect(fullReviewSteps?.filter((step) => step.status === 'succeeded')).toHaveLength(1);
 
     expect(runDetails).not.toBeNull();
     expect(runDetails?.findings).toHaveLength(1);
@@ -386,6 +393,9 @@ describe('ReviewKernelRuntime happy path', () => {
     expect(prepareWorkspaceCalls).toEqual([`${run.id}:head-sha`]);
     expect(chatCalls).toHaveLength(1);
     expect(chatCalls[0].role).toBe('specialist');
+    expect(
+      chatCalls[0].request.messages.some((message) => message.content.includes('审查任务'))
+    ).toBe(true);
   });
 
   test('execute stops early when target sha is missing', async () => {

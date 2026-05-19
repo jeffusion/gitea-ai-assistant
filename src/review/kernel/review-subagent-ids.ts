@@ -1,7 +1,2 @@
-import type { FindingCategory } from '../types';
-
 export const REVIEW_TRIAGE_SUBAGENT = 'review:triage';
-
-export function getReviewDomainSubagentId(domain: FindingCategory): string {
-  return `review:specialist:${domain}`;
-}
+export const REVIEW_FULL_REVIEW_SUBAGENT = 'review:full_review';

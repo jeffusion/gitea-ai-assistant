@@ -8,8 +8,8 @@ import type { KernelSessionRecord } from '../../agent-kernel/types';
 import { closeDatabase, initDatabase } from '../../db/database';
 import { kernelReviewEngine } from '../../review/kernel/kernel-review-engine';
 import {
+  REVIEW_FULL_REVIEW_SUBAGENT,
   REVIEW_TRIAGE_SUBAGENT,
-  getReviewDomainSubagentId,
 } from '../../review/kernel/review-subagent-ids';
 import { adminController } from '../admin';
 
@@ -132,19 +132,18 @@ function seedReviewSession(): { session: KernelSessionRecord; runId: string } {
   kernelSessionRepository.appendEvent(session.id, 'task_completed', {
     name: REVIEW_TRIAGE_SUBAGENT,
     kind: 'subagent',
-    summary: 'domain plan created',
+    summary: 'review hints created',
   });
 
-  const domainSubagent = getReviewDomainSubagentId('correctness');
   kernelSessionRepository.appendEvent(session.id, 'task_started', {
-    name: domainSubagent,
+    name: REVIEW_FULL_REVIEW_SUBAGENT,
     kind: 'subagent',
-    agentId: 'agent-domain-abcdef',
+    agentId: 'agent-full-abcdef',
   });
   kernelSessionRepository.appendEvent(session.id, 'task_completed', {
-    name: domainSubagent,
+    name: REVIEW_FULL_REVIEW_SUBAGENT,
     kind: 'subagent',
-    summary: 'correctness pass done',
+    summary: 'full review done',
   });
   kernelSessionRepository.appendEvent(session.id, 'task_started', {
     name: 'aggregate_findings',
@@ -164,8 +163,7 @@ function seedReviewSession(): { session: KernelSessionRecord; runId: string } {
   kernelSessionRepository.saveCheckpoint(session.id, {
     state: {
       targetSha: 'sha-123',
-      domainTasks: [{ domain: 'correctness' }],
-      completedDomains: ['correctness'],
+      reviewCompleted: true,
       findings: [{ fingerprint: 'fp-1' }, { fingerprint: 'fp-2' }],
       published: false,
     },
@@ -175,13 +173,13 @@ function seedReviewSession(): { session: KernelSessionRecord; runId: string } {
   const invocation = kernelSessionRepository.createSubagentInvocation({
     parentSessionId: session.id,
     parentRunId: runId,
-    parentTaskName: domainSubagent,
-    subagentName: domainSubagent,
-    agentId: 'agent-domain-abcdef',
+    parentTaskName: REVIEW_FULL_REVIEW_SUBAGENT,
+    subagentName: REVIEW_FULL_REVIEW_SUBAGENT,
+    agentId: 'agent-full-abcdef',
     packet: {
-      goal: 'Review correctness risks in changed files',
-      parentTaskName: domainSubagent,
-      input: { domain: 'correctness', paths: ['src/index.ts'] },
+      goal: 'Run a full autonomous review for changed files',
+      parentTaskName: REVIEW_FULL_REVIEW_SUBAGENT,
+      input: { mode: 'light', suspectedEntrypoints: ['src/index.ts'] },
       parentSessionId: session.id,
       parentRunId: runId,
       contextSummary: 'Focus on nullable flow and async boundaries.',
@@ -189,9 +187,9 @@ function seedReviewSession(): { session: KernelSessionRecord; runId: string } {
   });
 
   kernelSessionRepository.completeSubagentInvocation(invocation.id, 'completed', {
-    agentId: 'agent-domain-abcdef',
-    agentType: domainSubagent,
-    summary: 'Found 2 correctness concerns',
+    agentId: 'agent-full-abcdef',
+    agentType: REVIEW_FULL_REVIEW_SUBAGENT,
+    summary: 'Found 2 review concerns',
     totalDurationMs: 25,
     totalToolUseCount: 3,
     totalTokens: 1200,
@@ -275,8 +273,7 @@ describe('admin review session routes', () => {
       checkpoint: {
         state: {
           targetSha: string;
-          domainTasks: Array<{ domain: string }>;
-          completedDomains: string[];
+          reviewCompleted: boolean;
           findings: Array<{ fingerprint: string }>;
           published: boolean;
         };
@@ -302,8 +299,7 @@ describe('admin review session routes', () => {
     expect(payload.summary.pendingTaskCount).toBe(1);
 
     expect(payload.checkpoint.state.targetSha).toBe('sha-123');
-    expect(payload.checkpoint.state.domainTasks).toEqual([{ domain: 'correctness' }]);
-    expect(payload.checkpoint.state.completedDomains).toEqual(['correctness']);
+    expect(payload.checkpoint.state.reviewCompleted).toBe(true);
     expect(payload.checkpoint.state.findings.map((finding) => finding.fingerprint)).toEqual([
       'fp-1',
       'fp-2',
@@ -321,13 +317,13 @@ describe('admin review session routes', () => {
       status: 'completed',
     });
     expect(planByKey.get(REVIEW_TRIAGE_SUBAGENT)).toMatchObject({
-      label: '制定执行计划',
+      label: '生成审查提示',
       status: 'completed',
     });
-    expect(planByKey.get('review-domain')).toMatchObject({
-      label: '专项子代理审查',
+    expect(planByKey.get(REVIEW_FULL_REVIEW_SUBAGENT)).toMatchObject({
+      label: '完整自主审查',
       status: 'completed',
-      progressText: '1/1 domains',
+      progressText: 'full review completed',
     });
     expect(planByKey.get('aggregate_findings')).toMatchObject({
       label: '聚合与筛选',
@@ -353,19 +349,19 @@ describe('admin review session routes', () => {
     expect(payload.subagentInvocations).toHaveLength(1);
     expect(payload.subagentInvocations[0]).toMatchObject({
       parentRunId: runId,
-      subagentName: getReviewDomainSubagentId('correctness'),
+      subagentName: REVIEW_FULL_REVIEW_SUBAGENT,
       status: 'completed',
       input: {
-        goal: 'Review correctness risks in changed files',
+        goal: 'Run a full autonomous review for changed files',
         contextSummary: 'Focus on nullable flow and async boundaries.',
       },
     });
     expect(payload.subagentInvocations[0]?.input.input).toEqual({
-      domain: 'correctness',
-      paths: ['src/index.ts'],
+      mode: 'light',
+      suspectedEntrypoints: ['src/index.ts'],
     });
     expect(payload.subagentInvocations[0]?.result).toMatchObject({
-      summary: 'Found 2 correctness concerns',
+      summary: 'Found 2 review concerns',
       totalDurationMs: 25,
       totalToolUseCount: 3,
     });
@@ -416,5 +412,23 @@ describe('admin review session routes', () => {
     expect(tasksPayload.data.length).toBeGreaterThan(0);
     expect(subagentsPayload.data.length).toBeGreaterThan(0);
     expect(hooksPayload.data.length).toBeGreaterThan(0);
+    const subagents = subagentsPayload.data as Array<{ name?: string; tags?: string[] }>;
+    const fullReviewSubagent = subagents.find(
+      (subagent) => subagent.name === REVIEW_FULL_REVIEW_SUBAGENT
+    );
+
+    expect(subagents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: REVIEW_TRIAGE_SUBAGENT }),
+        expect.objectContaining({ name: REVIEW_FULL_REVIEW_SUBAGENT }),
+      ])
+    );
+    expect(fullReviewSubagent?.tags).toEqual(
+      expect.arrayContaining(['full-review', 'autonomous-review'])
+    );
+    expect(subagents.some((subagent) => subagent.name?.startsWith('review:specialist:'))).toBe(
+      false
+    );
+    expect(subagents.some((subagent) => subagent.tags?.includes('domain-review'))).toBe(false);
   });
 });

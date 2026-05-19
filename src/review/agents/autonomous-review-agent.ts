@@ -44,6 +44,11 @@ interface AutonomousReviewDiagnostics {
   consecutiveToolFailures: number;
 }
 
+interface AutonomousReviewOptions {
+  projectPrompt?: string;
+  contextSummary?: string;
+}
+
 interface ResolvedBudget {
   maxTurns: number;
   maxToolCalls: number;
@@ -130,7 +135,12 @@ ${toolList}
   );
 }
 
-function buildUserPrompt(context: ReviewContext, task: ReviewTask, compactContext: string): string {
+function buildUserPrompt(
+  context: ReviewContext,
+  task: ReviewTask,
+  compactContext: string,
+  contextSummary?: string
+): string {
   const changedFiles = context.changedFiles
     .map(
       (file, index) =>
@@ -144,6 +154,7 @@ function buildUserPrompt(context: ReviewContext, task: ReviewTask, compactContex
 - riskTags: ${task.riskTags.length ? task.riskTags.join(', ') : 'none'}
 - suspectedEntrypoints: ${task.suspectedEntrypoints?.length ? task.suspectedEntrypoints.join(', ') : 'none'}
 - tokenBudget: ${task.tokenBudget}
+${contextSummary ? `- compressedSummary: ${contextSummary}` : ''}
 
 变更文件清单：
 ${changedFiles || '无变更文件'}
@@ -164,6 +175,15 @@ export class AutonomousReviewAgent {
   ) {}
 
   async review(run: ReviewRun, context: ReviewContext, task: ReviewTask): Promise<AgentResult> {
+    return this.reviewWithOptions(run, context, task);
+  }
+
+  async reviewWithOptions(
+    run: ReviewRun,
+    context: ReviewContext,
+    task: ReviewTask,
+    options: AutonomousReviewOptions = {}
+  ): Promise<AgentResult> {
     if (!context.diff.trim() || task.mode === 'skip') {
       return { agentName: this.agentName, findings: [] };
     }
@@ -183,8 +203,14 @@ export class AutonomousReviewAgent {
       consecutiveToolFailures: 0,
     };
     const messages: LLMMessage[] = [
-      { role: 'system', content: buildSystemPrompt(this.toolRegistry, this.projectPrompt) },
-      { role: 'user', content: buildUserPrompt(context, task, compactContext) },
+      {
+        role: 'system',
+        content: buildSystemPrompt(this.toolRegistry, options.projectPrompt ?? this.projectPrompt),
+      },
+      {
+        role: 'user',
+        content: buildUserPrompt(context, task, compactContext, options.contextSummary),
+      },
     ];
 
     let finalAnswer: string | undefined;

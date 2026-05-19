@@ -12,7 +12,7 @@ import { FileReviewStore } from '../../store/file-review-store';
 import type { PullRequestReviewPayload, ReviewContext, ReviewRun } from '../../types';
 import { ReviewKernelRuntime } from '../review-kernel-runtime';
 import type { ReviewKernelState } from '../review-kernel-state';
-import { REVIEW_TRIAGE_SUBAGENT, getReviewDomainSubagentId } from '../review-subagent-ids';
+import { REVIEW_FULL_REVIEW_SUBAGENT, REVIEW_TRIAGE_SUBAGENT } from '../review-subagent-ids';
 import { getReviewSessionScope } from '../session-scope';
 
 function createPullRequestPayload(keySuffix: string): PullRequestReviewPayload {
@@ -450,7 +450,7 @@ describe('ReviewKernelRuntime replay invariants', () => {
         'prepare_workspace',
         'build_context',
         REVIEW_TRIAGE_SUBAGENT,
-        getReviewDomainSubagentId('correctness'),
+        REVIEW_FULL_REVIEW_SUBAGENT,
         'aggregate_findings',
         'publish_review',
       ])
@@ -461,7 +461,7 @@ describe('ReviewKernelRuntime replay invariants', () => {
         'prepare_workspace',
         'build_context',
         REVIEW_TRIAGE_SUBAGENT,
-        getReviewDomainSubagentId('correctness'),
+        REVIEW_FULL_REVIEW_SUBAGENT,
         'aggregate_findings',
         'publish_review',
       ])

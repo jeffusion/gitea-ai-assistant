@@ -6,7 +6,7 @@ import type {
   KernelTask,
   KernelTaskDefinition,
 } from '../../../agent-kernel/types';
-import { REVIEW_TRIAGE_SUBAGENT, getReviewDomainSubagentId } from '../review-subagent-ids';
+import { REVIEW_FULL_REVIEW_SUBAGENT, REVIEW_TRIAGE_SUBAGENT } from '../review-subagent-ids';
 import {
   buildReviewPlanSnapshot,
   buildReviewSessionSummary,
@@ -15,8 +15,7 @@ import {
 
 type ReviewCheckpointState = {
   targetSha?: string;
-  domainTasks?: Array<{ domain: string }>;
-  completedDomains?: string[];
+  reviewCompleted?: boolean;
   findings?: Array<{ fingerprint: string }>;
   published?: boolean;
 };
@@ -74,6 +73,7 @@ function makeCatalog(): KernelTaskDefinition[] {
     { kind: 'skill', name: 'prepare_workspace', description: 'custom prepare workspace' },
     { kind: 'skill', name: 'build_context', description: '自定义上下文构建' },
     { kind: 'subagent', name: REVIEW_TRIAGE_SUBAGENT, description: 'custom triage' },
+    { kind: 'subagent', name: REVIEW_FULL_REVIEW_SUBAGENT, description: 'custom full review' },
     { kind: 'skill', name: 'aggregate_findings', description: 'custom aggregate' },
     { kind: 'skill', name: 'publish_review', description: 'custom publish' },
     { kind: 'skill', name: 'save_reviewed_ref', description: 'custom save ref' },
@@ -81,24 +81,22 @@ function makeCatalog(): KernelTaskDefinition[] {
 }
 
 describe('session read model', () => {
-  test('buildReviewPlanSnapshot projects task states and review-domain progress', () => {
+  test('buildReviewPlanSnapshot projects task states and full review progress', () => {
     const catalog = makeCatalog();
     const checkpoint = makeCheckpoint({
       state: {
-        domainTasks: [{ domain: 'correctness' }, { domain: 'security' }],
-        completedDomains: ['correctness'],
+        reviewCompleted: false,
       },
       pendingTasks: [
         { kind: 'skill', name: 'prepare_workspace' },
         { kind: 'subagent', name: REVIEW_TRIAGE_SUBAGENT },
       ],
     });
-    const reviewDomainName = getReviewDomainSubagentId('security');
     const events = [
       makeEvent('task_started', { name: 'build_context', kind: 'skill' }, 'e1'),
       makeEvent(
         'task_started',
-        { name: reviewDomainName, kind: 'subagent', agentId: 'agent-123456' },
+        { name: REVIEW_FULL_REVIEW_SUBAGENT, kind: 'subagent', agentId: 'agent-123456' },
         'e2'
       ),
       makeEvent(
@@ -122,8 +120,8 @@ describe('session read model', () => {
     expect(byKey.get(REVIEW_TRIAGE_SUBAGENT)?.status).toBe('queued');
     expect(byKey.get('aggregate_findings')?.status).toBe('completed');
     expect(byKey.get('save_reviewed_ref')?.status).toBe('failed');
-    expect(byKey.get('review-domain')?.status).toBe('running');
-    expect(byKey.get('review-domain')?.progressText).toBe('1/2 domains');
+    expect(byKey.get(REVIEW_FULL_REVIEW_SUBAGENT)?.status).toBe('running');
+    expect(byKey.get(REVIEW_FULL_REVIEW_SUBAGENT)?.progressText).toBe('等待 full review');
   });
 
   test('buildReviewTimeline maps task and feedback events', () => {

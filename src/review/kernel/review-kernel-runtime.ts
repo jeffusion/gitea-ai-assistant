@@ -28,6 +28,7 @@ import type { ReviewRun } from '../types';
 import { ContextCompressionService } from './context-compression-service';
 import { createReviewBuiltInSubagents } from './review-built-in-subagents';
 import type { PendingFinding, ReviewKernelState } from './review-kernel-state';
+import { REVIEW_FULL_REVIEW_SUBAGENT } from './review-subagent-ids';
 
 interface LineCommentInput {
   path: string;
@@ -550,7 +551,7 @@ export class ReviewKernelRuntime {
       return [
         {
           kind: 'subagent',
-          name: this.requireReviewBridgeSubagent(),
+          name: REVIEW_FULL_REVIEW_SUBAGENT,
         },
       ];
     }
@@ -600,16 +601,6 @@ export class ReviewKernelRuntime {
     const agent = this.agentInvoker.filterByTag(tag)[0];
     if (!agent) {
       throw new Error(`Kernel subagent with tag '${tag}' not registered`);
-    }
-    return agent.name;
-  }
-
-  private requireReviewBridgeSubagent(): string {
-    const agent = this.agentInvoker
-      .filterByTag('domain-review')
-      .find((item) => item.tags?.includes('domain:correctness'));
-    if (!agent) {
-      throw new Error('Kernel temporary review bridge subagent not registered');
     }
     return agent.name;
   }

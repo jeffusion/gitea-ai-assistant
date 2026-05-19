@@ -13,7 +13,7 @@ import type { PullRequestReviewPayload, ReviewContext, ReviewRun } from '../../t
 import { kernelReviewEngine } from '../kernel-review-engine';
 import { ReviewKernelRuntime } from '../review-kernel-runtime';
 import type { ReviewKernelState } from '../review-kernel-state';
-import { REVIEW_TRIAGE_SUBAGENT, getReviewDomainSubagentId } from '../review-subagent-ids';
+import { REVIEW_FULL_REVIEW_SUBAGENT, REVIEW_TRIAGE_SUBAGENT } from '../review-subagent-ids';
 import { getReviewSessionScope } from '../session-scope';
 import {
   type KernelBoundaryRestorePoint,
@@ -843,7 +843,7 @@ describe('compression resumability and production canaries', () => {
       expect(persistedBeforeResume?.pendingTasks).toEqual([]);
       expect(invocationsBeforeResume.filter((item) => item.status === 'completed')).toHaveLength(2);
       expect(invocationsBeforeResume.map((item) => item.subagentName)).toEqual(
-        expect.arrayContaining([REVIEW_TRIAGE_SUBAGENT, getReviewDomainSubagentId('correctness')])
+        expect.arrayContaining([REVIEW_TRIAGE_SUBAGENT, REVIEW_FULL_REVIEW_SUBAGENT])
       );
       expect(plannerCallCount).toBe(2);
       expect(plannerPrompts[0]).toContain(compressedSummary);
