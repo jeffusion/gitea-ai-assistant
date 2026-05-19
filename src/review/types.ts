@@ -190,11 +190,15 @@ export interface AgentResult {
     scopedPaths?: string[];
     compactContextTokens?: number;
     iterations?: number;
+    stateSequence?: string[];
+    stopReason?: string;
+    toolCallCount?: number;
     toolCallNames?: string[];
     parsedFindingCount?: number;
     finalResponsePreview?: string;
     parseErrors?: string[];
     emptyResponseCount?: number;
+    consecutiveToolFailures?: number;
   };
 }
 
