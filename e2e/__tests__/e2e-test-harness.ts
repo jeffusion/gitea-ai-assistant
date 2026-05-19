@@ -88,6 +88,7 @@ interface Finding {
   line?: number;
   title?: string;
   detail?: string;
+  evidence?: string;
   category?: string;
   domain?: string;
   fingerprint?: string;
@@ -113,15 +114,34 @@ interface SessionDetail {
       completedDomains?: string[];
       findings?: Finding[];
       published?: boolean;
+      reviewedRefSaved?: boolean;
+      reviewCompleted?: boolean;
       reviewedRef?: string;
+      reviewDiagnostics?: {
+        toolCallNames?: string[];
+        toolCallCount?: number;
+        parsedFindingCount?: number;
+        stopReason?: string;
+      };
     };
   } | null;
   plan: Array<{ key: string; status: string; label: string }>;
   events: Array<{ eventType: string; payload: Record<string, JsonValue> }>;
   runDetails: {
     findings?: Finding[];
-    comments?: Array<{ status?: string; path?: string; body?: string; fingerprint?: string }>;
+    comments?: Array<{
+      status?: string;
+      path?: string;
+      line?: number;
+      body?: string;
+      fingerprint?: string;
+    }>;
   } | null;
+  subagentInvocations: Array<{
+    subagentName: string;
+    status: string;
+    result?: Record<string, JsonValue>;
+  }>;
 }
 
 interface GiteaTokenResponse {
@@ -426,8 +446,6 @@ export class E2ETestHarness {
       GITEA_ADMIN_TOKEN: this.requireToken(),
       WEBHOOK_SECRET,
       REVIEW_ENGINE: 'kernel',
-      REVIEW_ENABLE_HUMAN_GATE: 'false',
-      REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE: '0.1',
       REVIEW_WORKDIR: this.reviewWorkDir,
       REVIEW_COMMAND_TIMEOUT_MS: '30000',
       REVIEW_ALLOWED_COMMANDS: 'git,rg,cat,sed,wc',

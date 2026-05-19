@@ -75,23 +75,28 @@ function makeTool(name: string, execute: Tool['execute']): Tool {
   return {
     name,
     description: `Tool ${name}`,
-    parameters: z.object({ query: z.string().optional(), file_path: z.string().optional() }),
+    parameters: z.object({
+      query: z.string().optional(),
+      pattern: z.string().optional(),
+      file_path: z.string().optional(),
+    }),
     isConcurrencySafe: true,
     execute,
   };
 }
 
-function createMockGateway(responses: Array<() => LLMChatResponse>) {
+function createMockGateway(responses: Array<(call: ChatCall) => LLMChatResponse>) {
   let callIndex = 0;
   const calls: ChatCall[] = [];
 
   return {
     gateway: {
       chatForRole: async (role: ModelRole, request: Omit<LLMChatRequest, 'model'>) => {
-        calls.push({ role, ...request });
+        const call = { role, ...request };
+        calls.push(call);
         const responseFn = responses[callIndex] ?? responses[responses.length - 1];
         callIndex++;
-        return responseFn();
+        return responseFn(call);
       },
     },
     getCalls: () => calls,
@@ -184,6 +189,138 @@ describe('AutonomousReviewAgent', () => {
       'finalizing',
       'completed',
     ]);
+  });
+
+  test('cross-file investigation reads caller and callee before reporting autonomous finding', async () => {
+    const registry = new ToolRegistry();
+    const searchCode = mock(async () => ({
+      matches: [
+        {
+          path: 'src/caller.ts',
+          line: 4,
+          content: 'return normalizeToken(raw).trim();',
+        },
+        {
+          path: 'src/callee.ts',
+          line: 2,
+          content: 'return raw.length === 0 ? null : raw;',
+        },
+      ],
+      total: 2,
+    }));
+    const readFile = mock(async ({ file_path }: { file_path?: string }) => {
+      if (file_path === 'src/caller.ts') {
+        return {
+          path: 'src/caller.ts',
+          content:
+            "import { normalizeToken } from './callee';\n\nexport function buildHeader(raw: string) {\n  return normalizeToken(raw).trim();\n}",
+        };
+      }
+      if (file_path === 'src/callee.ts') {
+        return {
+          path: 'src/callee.ts',
+          content:
+            'export function normalizeToken(raw: string): string | null {\n  return raw.length === 0 ? null : raw;\n}',
+        };
+      }
+      return { path: file_path, error: 'unexpected file' };
+    });
+    registry.register(makeTool('search_code', searchCode));
+    registry.register(makeTool('read_file', readFile));
+
+    const finding = {
+      category: 'correctness' as const,
+      severity: 'high' as const,
+      confidence: 0.93,
+      path: 'src/caller.ts',
+      line: 4,
+      title: 'Caller trims nullable callee result',
+      detail:
+        'buildHeader calls trim() on normalizeToken(raw), but normalizeToken returns null for empty input in src/callee.ts.',
+      evidence:
+        'src/caller.ts: normalizeToken(raw).trim(); src/callee.ts: return raw.length === 0 ? null : raw;',
+      suggestion: 'Guard the nullable result or change normalizeToken to always return a string.',
+    };
+    const { gateway, getCalls } = createMockGateway([
+      () =>
+        toolCallResponse([
+          { id: 'call_1', name: 'search_code', args: { pattern: 'normalizeToken' } },
+        ]),
+      () =>
+        toolCallResponse([
+          { id: 'call_2', name: 'read_file', args: { file_path: 'src/caller.ts' } },
+        ]),
+      () =>
+        toolCallResponse([
+          { id: 'call_3', name: 'read_file', args: { file_path: 'src/callee.ts' } },
+        ]),
+      (call) => {
+        const toolMessages = call.messages.filter((message) => message.role === 'tool');
+        expect(toolMessages).toHaveLength(3);
+        expect(toolMessages.map((message) => message.content)).toEqual(
+          expect.arrayContaining([
+            expect.stringContaining('src/caller.ts'),
+            expect.stringContaining('src/callee.ts'),
+          ])
+        );
+        return jsonResponse({ findings: [finding] });
+      },
+    ]);
+
+    const result = await new AutonomousReviewAgent(
+      gateway as unknown as LLMGateway,
+      registry
+    ).review(
+      makeRun(),
+      makeContext({
+        diff: [
+          '--- a/src/caller.ts',
+          '+++ b/src/caller.ts',
+          '@@ -1,3 +1,5 @@',
+          "+import { normalizeToken } from './callee';",
+          '+export function buildHeader(raw: string) {',
+          '+  return normalizeToken(raw).trim();',
+          '+}',
+        ].join('\n'),
+        changedFiles: [{ path: 'src/caller.ts', status: 'M', additions: 4, deletions: 0 }],
+        parsedDiff: [
+          {
+            path: 'src/caller.ts',
+            changes: [
+              { lineNumber: 4, content: '  return normalizeToken(raw).trim();', type: 'add' },
+            ],
+          },
+        ],
+        fileContents: {
+          'src/caller.ts':
+            "import { normalizeToken } from './callee';\n\nexport function buildHeader(raw: string) {\n  return normalizeToken(raw).trim();\n}",
+        },
+      }),
+      makeTask({ suspectedEntrypoints: ['src/caller.ts'], maxTurns: 6, maxToolCalls: 6 })
+    );
+
+    expect(searchCode).toHaveBeenCalledTimes(1);
+    expect(readFile).toHaveBeenCalledTimes(2);
+    expect(readFile.mock.calls.map(([params]) => params.file_path)).toEqual([
+      'src/caller.ts',
+      'src/callee.ts',
+    ]);
+    expect(getCalls()).toHaveLength(4);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]).toMatchObject({
+      category: 'correctness',
+      severity: 'high',
+      path: 'src/caller.ts',
+      line: 4,
+      title: 'Caller trims nullable callee result',
+    });
+    expect(result.findings[0].detail).toContain('src/callee.ts');
+    expect(result.diagnostics).toMatchObject({
+      toolCallNames: ['search_code', 'read_file', 'read_file'],
+      toolCallCount: 3,
+      parsedFindingCount: 1,
+      stopReason: 'modelFinalized',
+    });
   });
 
   test('uses default light budget and synthesizes after maxTurns when task omits specific limits', async () => {

@@ -321,6 +321,14 @@ describe('ReviewKernelRuntime happy path', () => {
     expect(completedInvocations.map((item) => item.subagentName)).toEqual(
       expect.arrayContaining([REVIEW_TRIAGE_SUBAGENT, REVIEW_FULL_REVIEW_SUBAGENT])
     );
+    expect(
+      invocations.filter((invocation) => invocation.subagentName === REVIEW_FULL_REVIEW_SUBAGENT)
+    ).toHaveLength(1);
+    expect(
+      completedInvocations.filter(
+        (invocation) => invocation.subagentName === REVIEW_FULL_REVIEW_SUBAGENT
+      )
+    ).toHaveLength(1);
 
     const fullReviewSteps = runDetails?.steps.filter(
       (step) => step.stepName === 'kernel_review_full'

@@ -27,9 +27,39 @@ function expectPipelineStepsCompleted(detail: SessionDetail): void {
   expect(statusesByKey.get('prepare_workspace')).toBe('completed');
   expect(statusesByKey.get('build_context')).toBe('completed');
   expect(statusesByKey.get('review:triage')).toBe('completed');
+  expect(statusesByKey.get('review:full_review')).toBe('completed');
   expect(statusesByKey.get('aggregate_findings')).toBe('completed');
   expect(statusesByKey.get('publish_review')).toBe('completed');
   expect(statusesByKey.get('save_reviewed_ref')).toBe('completed');
+}
+
+function expectAutonomousFullReviewPipeline(detail: SessionDetail): void {
+  const fullReviewInvocations = detail.subagentInvocations.filter(
+    (invocation) => invocation.subagentName === 'review:full_review'
+  );
+  expect(fullReviewInvocations).toHaveLength(1);
+  expect(fullReviewInvocations[0].status).toBe('completed');
+  expect(detail.checkpoint?.state?.reviewCompleted).toBe(true);
+  expect(detail.checkpoint?.state?.published).toBe(true);
+  expect(detail.checkpoint?.state?.reviewedRefSaved).toBe(true);
+  expect(detail.checkpoint?.state?.reviewDiagnostics?.toolCallNames).toEqual([
+    'search_code',
+    'read_file',
+    'read_file',
+  ]);
+  expect(detail.checkpoint?.state?.reviewDiagnostics?.stopReason).toBe('modelFinalized');
+
+  const findings = detail.checkpoint?.state?.findings ?? [];
+  expect(findings.length).toBeGreaterThan(0);
+  expect(findings[0].detail).toContain('auth/user model');
+  expect(findings[0].evidence).toContain('src/auth.ts');
+
+  const publishedComments = detail.runDetails?.comments?.filter(
+    (comment) => comment.status === 'published'
+  );
+  expect(publishedComments?.length).toBeGreaterThan(0);
+  expect(publishedComments?.some((comment) => !comment.path)).toBe(true);
+  expect(publishedComments?.some((comment) => comment.path === 'src/user-handler.ts')).toBe(true);
 }
 
 describe('E2E Review Flow', () => {
@@ -44,7 +74,7 @@ describe('E2E Review Flow', () => {
     await harness.stop();
   });
 
-  test('核心链路验证: webhook → clone → triage → specialist → aggregate → publish → save ref → Gitea has comments', async () => {
+  test('核心链路验证: webhook → clone → triage → full_review → aggregate → publish → save ref → Gitea has comments', async () => {
     const { owner, repo, prNumber } = await harness.seedPR('simple-bug-pr');
 
     const webhookResponse = await harness.triggerWebhook(owner, repo, prNumber);
@@ -55,6 +85,7 @@ describe('E2E Review Flow', () => {
     expect(result.sessionState).toBe('completed');
     expectPipelineStepsCompleted(result.detail);
     expect(result.detail.checkpoint?.state?.published).toBe(true);
+    expectAutonomousFullReviewPipeline(result.detail);
 
     const comments = await harness.getGiteaComments(owner, repo, prNumber);
     expect(comments.length).toBeGreaterThan(0);
@@ -77,7 +108,7 @@ describe('E2E Review Flow', () => {
     expect(result.detail.summary.findingCount).toBe(harness.extractFindings(result.detail).length);
   }, 150_000);
 
-  test('Findings 质量: fixtures trigger expected triage modes, domains, and finding counts', async () => {
+  test('Findings 质量: fixtures trigger expected triage modes, autonomous full review, and finding counts', async () => {
     const fixtureNames = ['simple-bug-pr', 'minimal-change-pr'];
 
     for (const fixtureName of fixtureNames) {
@@ -91,10 +122,12 @@ describe('E2E Review Flow', () => {
         expect(triageMode).toBe(scenario.expectedTriageMode);
       }
 
-      const domains = harness.extractDomains(result.detail);
-      for (const expectedDomain of scenario.expectedDomains) {
-        expect(domains).toContain(expectedDomain);
-      }
+      expectPipelineStepsCompleted(result.detail);
+      expect(result.detail.subagentInvocations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ subagentName: 'review:full_review', status: 'completed' }),
+        ])
+      );
 
       assertFindingsMatchScenario(harness.extractFindings(result.detail), scenario);
     }

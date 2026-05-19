@@ -1,5 +1,5 @@
 import { llmGateway } from './gateway';
-import type { LLMChatRequest, LLMChatResponse, ModelRole } from './types';
+import type { LLMChatRequest, LLMChatResponse, LLMToolCall, ModelRole } from './types';
 
 type ChatForRoleFn = (
   role: ModelRole,
@@ -11,20 +11,22 @@ interface MockResponseConfig {
   usage: { promptTokens: number; completionTokens: number; totalTokens: number };
 }
 
-const MOCK_RESPONSES: Record<string, MockResponseConfig> = {
+const MOCK_RESPONSES: Record<ModelRole, MockResponseConfig> = {
   specialist: {
     content: JSON.stringify({
       findings: [
         {
           severity: 'high',
-          confidence: 0.95,
+          confidence: 0.96,
           path: 'src/user-handler.ts',
-          line: 3,
-          title: 'Missing null check on input parameter',
+          line: 16,
+          title: 'Caller dereferences nullable user profile fields',
           detail:
-            'The input parameter is not validated before accessing input.userId. This will throw a TypeError when input is null or undefined.',
-          evidence: 'const userId = input.userId;',
-          suggestion: 'Add a null/undefined guard: if (!input) return null;',
+            'getUserDisplayName accepts UserRecord | null but dereferences user.profile!.displayName! without guarding null or missing profile data. The companion auth/user model shows callers can pass absent users.',
+          evidence:
+            'src/user-handler.ts: return user.profile!.displayName!.toUpperCase(); src/auth.ts: authenticate(...) returns User | null',
+          suggestion:
+            'Return a safe fallback when user/profile/displayName is missing, or reject null before calling getUserDisplayName.',
         },
         {
           severity: 'medium',
@@ -50,28 +52,68 @@ const MOCK_RESPONSES: Record<string, MockResponseConfig> = {
     }),
     usage: { promptTokens: 500, completionTokens: 200, totalTokens: 700 },
   },
-  embedding: {
-    content: '',
-    usage: { promptTokens: 10, completionTokens: 0, totalTokens: 10 },
-  },
-  judge: {
-    content: JSON.stringify({
-      decision: 'request_changes',
-      rationale: 'High-severity findings require fixes before merge.',
-    }),
-    usage: { promptTokens: 300, completionTokens: 100, totalTokens: 400 },
-  },
 };
 
+function toolCall(id: string, name: string, args: Record<string, unknown>): LLMToolCall {
+  return { id, name, arguments: JSON.stringify(args) };
+}
+
+function toolCallResponse(toolCalls: LLMToolCall[]): LLMChatResponse {
+  return {
+    content: null,
+    toolCalls,
+    finishReason: 'tool_calls',
+    usage: { promptTokens: 300, completionTokens: 60, totalTokens: 360 },
+  };
+}
+
+function stopResponse(config: MockResponseConfig): LLMChatResponse {
+  return {
+    content: config.content,
+    toolCalls: [],
+    finishReason: 'stop',
+    usage: config.usage,
+  };
+}
+
+function createAutonomousSpecialistResponse(
+  request: Omit<LLMChatRequest, 'model'>
+): LLMChatResponse {
+  const toolResultCount = request.messages.filter((message) => message.role === 'tool').length;
+
+  if (toolResultCount === 0) {
+    return toolCallResponse([
+      toolCall('e2e_search_user_handler', 'search_code', {
+        pattern: 'getUserDisplayName|authenticate|findUserByEmail',
+        file_types: ['ts'],
+        max_results: 20,
+      }),
+    ]);
+  }
+
+  if (toolResultCount === 1) {
+    return toolCallResponse([
+      toolCall('e2e_read_caller', 'read_file', { file_path: 'src/user-handler.ts' }),
+    ]);
+  }
+
+  if (toolResultCount === 2) {
+    return toolCallResponse([
+      toolCall('e2e_read_callee', 'read_file', { file_path: 'src/auth.ts' }),
+    ]);
+  }
+
+  return stopResponse(MOCK_RESPONSES.specialist);
+}
+
 export function createMockChatForRole(): ChatForRoleFn {
-  return async (role, _request) => {
-    const config = MOCK_RESPONSES[role] ?? MOCK_RESPONSES.specialist;
-    return {
-      content: config.content,
-      toolCalls: [],
-      finishReason: 'stop',
-      usage: config.usage,
-    };
+  return async (role, request) => {
+    if (role === 'specialist' && request.tools?.length) {
+      return createAutonomousSpecialistResponse(request);
+    }
+
+    const config = MOCK_RESPONSES[role];
+    return stopResponse(config);
   };
 }
 
