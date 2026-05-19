@@ -45,7 +45,6 @@
 
 - 是否需要把 built-in subagent 的定义从 TypeScript 代码进一步外置为 YAML/JSON/插件目录。
 - 管理后台是否需要支持逐 subagent 的启用/禁用、版本选择与灰度策略。
-- `judge` 是否继续保持本地规则主导，还是未来切换为 LLM judge subagent。
 
 ---
 
@@ -53,7 +52,7 @@
 
 ### 1.1 背景
 
-早期审查系统采用固定流程编排：triage、specialist、debate、judge 等角色由运行时代码直接实例化和调用。该方案的问题是：
+早期审查系统采用固定流程编排：triage 后按审查域派生多个 specialist，再由额外阶段汇总。该方案的问题是：
 
 - 流程扩展需要修改 orchestrator/runtime 代码；
 - 角色能力与执行链路耦合，难以按能力标签选择代理；
@@ -114,7 +113,7 @@
 | 内置 Agent 表达方式 | TypeScript built-in definitions | 当前阶段需要强类型、低迁移成本；后续可迁移到 plugin loader |
 | Agent 调用入口 | `KernelAgentInvoker` 统一调用 | 统一 agentId、hook、invocation persistence、structured result |
 | 流程推进方式 | planner + session state | 避免静态任务数组；支持继续执行与人审恢复 |
-| Judge 实现 | 规则聚合 + publish policy | 当前 judge 主要做 finding 去重、发布策略与 gate，暂不强制 LLM judge |
+| Findings 处理 | 本地归一化、去重、排序与发布 | full review 只产出 findings；后续由 skill/本地逻辑保证确定性 |
 | 压缩策略 | planner 模型窗口 80% 触发 | 使用 tokenlens context window，预留 20% 冗余 |
 | 管理接口 | task/subagent/hook catalog + session detail | 让后台可解释当前能力目录与执行轨迹 |
 
@@ -147,11 +146,9 @@ flowchart TB
   Invoker --> Builtins[Review Built-in Subagents]
 
   Builtins --> Triage[review:triage]
-  Builtins --> Specialists[review:specialist:*]
-  Builtins --> Debate[review:debate]
-  Builtins --> Judge[review:judge]
+  Builtins --> FullReview[review:full_review]
 
-  Specialists --> ToolOrchestration[Tool Orchestration]
+  FullReview --> ToolOrchestration[Tool Orchestration]
   ToolOrchestration --> Permission[Permission Gating]
   ToolOrchestration --> Hooks[Pre/Post Tool Hooks]
 
@@ -169,7 +166,7 @@ flowchart TB
 | Runner | `src/agent-kernel/runtime/agent-kernel-runner.ts` | 按 planner 结果推进 skill/subagent task，写 checkpoint 与 task event |
 | Session repo | `src/agent-kernel/session/session-repository.ts` | 持久化 session、events、checkpoint、subagent invocations |
 | Review runtime | `src/review/kernel/review-kernel-runtime.ts` | 注册 skills/hooks/built-in subagents，提供 execute/continueExecution |
-| Built-in subagents | `src/review/kernel/review-built-in-subagents.ts` | 将 triage/specialist/debate/judge 转换为注册式 subagent definitions |
+| Built-in subagents | `src/review/kernel/review-built-in-subagents.ts` | 将 triage 与 full_review 转换为注册式 subagent definitions |
 | Subagent ids | `src/review/kernel/review-subagent-ids.ts` | 统一内置 subagent id 命名 |
 | Admin projection | `src/review/kernel/session-read-model.ts` | 将 session event/checkpoint/invocation 投影为后台视图 |
 
@@ -213,13 +210,8 @@ sequenceDiagram
 
 | Subagent ID | Source | Model Role | Tags | 职责 | 触发条件 |
 |---|---|---|---|---|---|
-| `review:triage` | `built-in` | `planner` | `review`, `planner`, `triage` | 根据 diff、文件、风险规划审查域和模式 | build context 完成且尚无 triage/domainTasks |
-| `review:specialist:correctness` | `built-in` | `specialist` | `review`, `specialist`, `domain-review`, `domain:correctness` | 检查业务逻辑、边界条件、空值、明显 bug | domainTasks 中存在 correctness 且未完成 |
-| `review:specialist:security` | `built-in` | `specialist` | `review`, `specialist`, `domain-review`, `domain:security` | 检查注入、权限绕过、敏感信息、输入校验 | domainTasks 中存在 security 且未完成 |
-| `review:specialist:reliability` | `built-in` | `specialist` | `review`, `specialist`, `domain-review`, `domain:reliability` | 检查错误处理、重试、幂等、并发一致性、资源释放 | domainTasks 中存在 reliability 且未完成 |
-| `review:specialist:maintainability` | `built-in` | `specialist` | `review`, `specialist`, `domain-review`, `domain:maintainability` | 检查可维护性、复杂度、接口风险、可测试性 | domainTasks 中存在 maintainability 且未完成 |
-| `review:debate` | `built-in` | `specialist` | `review`, `debate` | 对高风险 findings 做交叉辩论与收敛 | `enableDebate=true` 且存在可辩论 findings |
-| `review:judge` | `built-in` | `judge` | `review`, `judge` | 聚合 findings，应用 publish policy，写入 store | 所有 domain review/debate 完成且尚无 decision |
+| `review:triage` | `built-in` | `planner` | `review`, `planner`, `triage` | 根据 diff、文件、风险生成自主审查提示、模式和预算 | build context 完成且尚无 triage 结果 |
+| `review:full_review` | `built-in` | `specialist` | `review`, `specialist`, `full-review`, `autonomous-review` | 执行一次完整自主代码审查，模型自行选择工具和调查路径 | triage 完成且尚未完成 full review |
 
 ### 4.2 Subagent Definition 契约
 
@@ -261,15 +253,11 @@ flowchart TD
   D -- 是 --> BC[build_context skill]
   D -- 否 --> E{需要压缩?}
   E -- 是 --> CC[compress_context skill]
-  E -- 否 --> F{缺 triage/domainTasks?}
+  E -- 否 --> F{缺 triage?}
   F -- 是 --> T[按 tag=triage 选择 review:triage]
-  F -- 否 --> G{有未完成 domain?}
-  G -- 是 --> S[按 domain tag 选择 specialist]
-  G -- 否 --> H{需要 debate?}
-  H -- 是 --> DB[按 tag=debate 选择 review:debate]
-  H -- 否 --> I{缺 decision?}
-  I -- 是 --> J[按 tag=judge 选择 review:judge]
-  I -- 否 --> P{未 publish?}
+  F -- 否 --> G{full review 未完成?}
+  G -- 是 --> S[执行 review:full_review]
+  G -- 否 --> P{未 publish?}
   P -- 是 --> PR[publish_review skill]
   P -- 否 --> R{未保存 reviewed ref?}
   R -- 是 --> SR[save_reviewed_ref skill]
@@ -278,40 +266,39 @@ flowchart TD
 
 ### 4.4 Triage Agent
 
-`review:triage` 包装 `TriageAgent`，输出 `domainTasks`：
+`review:triage` 包装 `TriageAgent`，输出自主审查提示：
 
 - 使用 `planner` 模型角色；
 - 接收 `projectPrompt` 和 `compressedContext.summary`；
-- 当 triage 禁用或结果为空时，生成默认四域任务：correctness/security/reliability/maintainability；
-- 对重复 domain 任务做合并，合并 paths/riskTags/tokenBudget/maxIterations/allowTools 等配置。
+- 生成 `mode`、`reviewSize`、`riskTags`、`suspectedEntrypoints` 与预算提示；
+- 提示只影响 full review 的调查起点，不拆分审查任务。
 
-### 4.5 Specialist Agents
+### 4.5 Autonomous Full Review Agent
 
-四类 specialist 均包装 `ReflexionAgent`：
+`review:full_review` 包装 `AutonomousReviewAgent`：
 
-- 共享 `ToolRegistry`、`LearningSystem`、`KernelHookRegistry`；
-- 根据 `ReviewTask` 控制 scopePaths、allowTools、maxIterations、mode、tokenBudget；
+- 共享 `ToolRegistry` 与 `KernelHookRegistry`；
+- 根据 `ReviewTask` 控制 mode、reviewSize、riskTags、suspectedEntrypoints、maxTurns、maxToolCalls、maxElapsedMs、tokenBudget；
 - 支持压缩 summary 回注到 prompt；
-- 在非 trivial/full 场景下可使用 reflection；
+- 不预拆 correctness/security/quality 子任务，模型在一次自主循环内跨文件调查；
 - 工具调用统一经过 tool orchestration、permission gating、Pre/Post tool hooks。
 
-### 4.6 Debate Agent
+### 4.6 Aggregate Findings Skill
 
-`review:debate` 包装 `DebateOrchestrator`：
+`aggregate_findings` 是 full review 后的确定性本地步骤：
 
-- 仅在 `config.review.enableDebate=true` 且 triage mode 为 `full` 时参与；
-- trivial 或无 findings 时直接标记 `debateCompleted=true`；
-- 按 `debateThreshold` 选择 high/medium findings；
-- 根据 finding category 选择同域 specialist，并可引入 correctness/security 做交叉辩论。
+- 接收 `review:full_review` 产出的 findings；
+- 归一化 category/severity/confidence，补齐 fingerprint；
+- 按 fingerprint 去重，并按 severity/path/line/title 稳定排序；
+- 写回 checkpoint，供后续发布步骤使用。
 
-### 4.7 Judge Agent
+### 4.7 Publish and Save Skills
 
-`review:judge` 包装 `JudgeAgent` 与 `applyPublishPolicy`：
+`publish_review` 与 `save_reviewed_ref` 负责外部副作用：
 
-- 聚合所有 findings；
-- 根据 `autoPublishMinConfidence` 与 `enableHumanGate` 划分 publishable/gated；
-- 将可发布与待人工 gate 的 findings 写入 `FileReviewStore`；
-- 保留已有 `published` 状态，避免恢复后重复发布。
+- `publish_review` 生成确定性 summary，并发布 PR summary 与 line comments；
+- `save_reviewed_ref` 在本地 mirror 保存已审查 ref，用于后续增量审查；
+- 两个步骤分离，避免评论发布和 ref 保存互相污染，失败时依赖 checkpoint 重试。
 
 ---
 
@@ -420,31 +407,17 @@ private planTasks(context: KernelPlanningContext): KernelTask[] {
     return [{ kind: 'skill', name: 'compress_context' }];
   }
   
-  // 阶段3: Triage 决策（规划审查域）
+  // 阶段3: Triage 决策（生成自主审查提示）
   if (!context.state.triage) {
     return [{ kind: 'subagent', name: 'review:triage' }];
   }
-  
-  // 阶段4: Specialist 并发派生（按 domain）
-  const remainingDomains = getRemainingDomains(context);
-  if (remainingDomains.length > 0) {
-    return remainingDomains.map(domain => ({
-      kind: 'subagent',
-      name: `review:specialist:${domain}`  // correctness/security/reliability/maintainability
-    }));
+   
+  // 阶段4: 单次完整自主审查
+  if (!context.state.reviewCompleted) {
+    return [{ kind: 'subagent', name: 'review:full_review' }];
   }
-  
-  // 阶段5: Debate 决策（高风险收敛）
-  if (enableDebate && !debateCompleted) {
-    return [{ kind: 'subagent', name: 'review:debate' }];
-  }
-  
-  // 阶段6: Judge 决策（聚合发布）
-  if (!context.state.decision) {
-    return [{ kind: 'subagent', name: 'review:judge' }];
-  }
-  
-  // 阶段7: 发布与收尾
+   
+  // 阶段5: 发布与收尾
   if (!context.state.published) {
     return [{ kind: 'skill', name: 'publish_review' }];
   }
@@ -454,9 +427,9 @@ private planTasks(context: KernelPlanningContext): KernelTask[] {
 ```
 
 **决策依据**:
-- **当前 State**: `domainTasks`, `completedDomains`, `decision`, `published` 等字段
+- **当前 State**: `triage`, `reviewCompleted`, `findings`, `published`, `reviewedRefSaved` 等字段
 - **Tags/Capabilities**: 按标签选择 subagent（`filterByTag('triage')`），非硬编码
-- **Config 开关**: `enableDebate`, `autoPublishMinConfidence` 等
+- **Config 开关**: 审查引擎、工作区、命令白名单等运行配置
 
 ### 4.8.4 Skills 与 Subagents 调用机制
 
@@ -518,20 +491,20 @@ const result = await runWithKernelAgentContext(
 
 ### 4.8.5 Tools 调用机制
 
-**调用路径**（在 Subagent 内部，如 Specialist）:
+**调用路径**（在 `review:full_review` 内部）:
 
 ```mermaid
 sequenceDiagram
-    participant Specialist as SpecialistAgent
-    participant React as ReAct Loop
+    participant FullReview as AutonomousReviewAgent
+    participant Loop as Autonomous Loop
     participant Orchestration as ToolOrchestration
     participant Permission as Permission Gating
     participant Hook as PreToolUse Hook
     participant Tool as Tool.execute()
     participant PostHook as PostToolUse Hook
 
-    Specialist->>React: 决定调用 tool
-    React->>Orchestration: partitionToolCalls(tools)
+    FullReview->>Loop: 决定调用 tool
+    Loop->>Orchestration: partitionToolCalls(tools)
     Orchestration->>Permission: evaluateToolPermission(tool)
     Permission-->>Orchestration: allow/ask/deny
     Orchestration->>Hook: runKernelHooks(PreToolUse)
@@ -540,8 +513,8 @@ sequenceDiagram
     Tool-->>Orchestration: result
     Orchestration->>PostHook: runKernelHooks(PostToolUse)
     PostHook-->>Orchestration: -
-    Orchestration-->>React: toolResult
-    React-->>Specialist: 更新 state
+    Orchestration-->>Loop: toolResult
+    Loop-->>FullReview: 更新 diagnostics/findings
 ```
 
 **并发控制**:
@@ -573,13 +546,9 @@ build_context → 提取 diff、文件内容、构建 ReviewContext
   ↓
 compress_context (可选) → 大上下文自动压缩，生成 summary
   ↓
-review:triage → 规划审查域（correctness/security/reliability/maintainability）
+review:triage → 生成自主审查提示、模式和预算
   ↓
-review:specialist:* (并发) → 各域并发审查，生成 findings
-  ↓
-review:debate → 高风险 finding 交叉辩论收敛
-  ↓
-review:judge → 聚合 findings，应用发布策略
+review:full_review → 单个自主代理跨文件调查，生成 findings
   ↓
 publish_review → 发布 summary + line comments
   ↓
@@ -595,15 +564,9 @@ stateDiagram-v2
     build_context --> compress_context: 上下文过大
     build_context --> triage: 正常
     compress_context --> triage: 完成
-    triage --> specialist: 规划完成
-    specialist --> specialist: 其他 domain 并行
-    specialist --> debate: enableDebate
-    specialist --> judge: 直接完成
-    debate --> judge: 收敛完成
-    judge --> publish_review: decision 完成
-    publish_review --> awaiting_human_feedback: 有 gated findings
+    triage --> full_review: 提示生成完成
+    full_review --> publish_review: findings 聚合完成
     publish_review --> save_reviewed_ref: 直接完成
-    awaiting_human_feedback --> judge: 人工反馈后继续
     save_reviewed_ref --> [*]: completed
 ```
 
@@ -613,12 +576,12 @@ stateDiagram-v2
 
 | 维度 | Skills | Subagents |
 |------|--------|-----------|
-| **粒度** | 原子操作（准备环境、构建上下文、发布） | 复杂推理（规划、审查、辩论、判决） |
-| **模型** | 通常不涉及 LLM | 必须调用 LLM（planner/specialist/judge） |
-| **并发** | 顺序执行 | 可并发（如 4 个 specialist 同时审查） |
-| **状态** | 修改 state 字段 | 可修改 state，主要产出 findings/decision |
+| **粒度** | 原子操作（准备环境、构建上下文、发布） | 复杂推理（规划、完整审查） |
+| **模型** | 通常不涉及 LLM | 必须调用 LLM（planner/specialist） |
+| **并发** | 顺序执行 | 通过单个 full review 代理内部自主工具调用实现调查 |
+| **状态** | 修改 state 字段 | 可修改 state，主要产出 hints/findings/diagnostics |
 | **失败** | 阻断整个流程 | 可单独重试或降级 |
-| **示例** | prepare_workspace, publish_review | review:triage, review:specialist:* |
+| **示例** | prepare_workspace, publish_review | review:triage, review:full_review |
 
 **Runtime vs Runner 边界**:
 
@@ -631,10 +594,8 @@ stateDiagram-v2
 
 | Subagent | 输入 | 输出 | 边界限制 |
 |----------|------|------|----------|
-| **triage** | ReviewContext | domainTasks[] | 只规划，不审查 |
-| **specialist** | domain task + context | findings[] | 只审查指定域，不跨域 |
-| **debate** | findings[] | refined findings | 只在 enableDebate 时触发 |
-| **judge** | all findings | decision + policyResult | 只聚合判决，不生成新 findings |
+| **triage** | ReviewContext | review hints + budget | 只生成提示，不审查 |
+| **full_review** | ReviewTask + context | findings[] + diagnostics | 一次完整自主审查，不预拆域或文件 |
 
 **Hook 介入边界**:
 
@@ -687,10 +648,10 @@ PostToolUseFailure // 工具调用失败后
 | `context` | `ReviewContext`，包含 diff、changedFiles、fileContents 等 |
 | `projectPrompt` | 仓库级审查 prompt |
 | `compressedContext` | 自动压缩摘要及 token 元数据 |
-| `triage/domainTasks/completedDomains` | 任务规划与完成域 |
+| `triage/reviewTask/reviewCompleted` | 自主审查提示、预算与完成状态 |
 | `findings` | subagents 收集到的问题 |
-| `decision/policyResult` | judge 与发布策略结果 |
-| `debateCompleted/published/reviewedRefSaved` | 后续阶段状态位 |
+| `reviewDiagnostics` | full review 工具调用、停止原因、解析计数等诊断信息 |
+| `published/reviewedRefSaved` | 发布与审查快照保存状态位 |
 
 ### 5.3 Subagent Invocation
 
@@ -778,12 +739,12 @@ sequenceDiagram
 ```json
 {
   "kind": "subagent",
-  "name": "review:specialist:correctness",
+  "name": "review:full_review",
   "source": "built-in",
-  "description": "专项审查 correctness 域变更",
-  "whenToUse": "当 triage 或 planner 认为 correctness 是本轮 PR 的重点风险域时",
+  "description": "执行一次完整自主代码审查",
+  "whenToUse": "当 triage 生成审查提示后执行完整审查",
   "modelRole": "specialist",
-  "tags": ["review", "specialist", "domain-review", "domain:correctness"],
+  "tags": ["review", "specialist", "full-review", "autonomous-review"],
   "resumable": true
 }
 ```
@@ -793,7 +754,7 @@ sequenceDiagram
 管理后台应采用双层控制面：
 
 - 上层：Kernel Subagents 目录，展示 built-in/custom/plugin subagents；
-- 下层：模型角色路由，配置 `planner / specialist / judge / embedding` 到 provider/model。
+- 下层：模型角色路由，配置 `planner / specialist` 到 provider/model。
 
 展示字段建议：
 
@@ -832,7 +793,7 @@ sequenceDiagram
 ### 7.4 性能与容量
 
 - 大 diff 先经 diff extractor/token budget 裁剪，再由 compression service 做会话级摘要；
-- specialist 按 domain 分治，降低单次 prompt 复杂度；
+- `review:full_review` 在单个自主循环内使用工具逐步调查，避免运行时预拆 domain 或文件；
 - tool orchestration 可并发执行 read-only 工具，非并发安全工具串行；
 - session/event/checkpoint 使用 SQLite，适合当前单体部署；未来高并发可迁移到外部数据库。
 
@@ -897,7 +858,6 @@ bun test
 | 风险 | 影响 | 应对 |
 |---|---|---|
 | Built-in definitions 仍在代码中 | 扩展仍需发版 | 下一阶段引入 plugin/custom subagent loader |
-| Judge 主要由本地规则驱动 | `judge` modelRole 配置生效有限 | 明确 UI 文案；后续可增加 LLM judge implementation |
 | SQLite 单文件并发能力有限 | 高并发 session 下写入竞争 | 当前单体可接受；未来迁移外部 DB 或队列化写入 |
 | Compression summary 可能遗漏细节 | 后续 subagent 判断偏差 | 保留 recent context + summary；测试锁定关键事实不丢 |
 | Hook 阻断策略过强或过弱 | 工具误阻断或越权 | permission matrix 测试 + 审计 event + 管理后台策略展示 |
@@ -909,7 +869,6 @@ bun test
 3. **Attachment Reinjection**：压缩后恢复文件附件、计划附件和技能附件。
 4. **更细粒度权限模型**：支持仓库级、工具级、用户级策略配置。
 5. **Subagent 版本治理**：为 built-in/custom/plugin subagents 增加 version、enabled、rollout 字段。
-6. **LLM Judge 可插拔化**：将当前本地 judge policy 拆成 rule judge 与 LLM judge 两类可选 subagent。
 
 ### 9.3 评审清单
 
@@ -917,7 +876,7 @@ bun test
 - [ ] planner 是否按 tag/capability 选择 subagent？
 - [ ] 每次 subagent 调用是否有 invocation record？
 - [ ] feedback 后 continue 是否从 checkpoint 恢复？
-- [ ] 压缩 summary 是否持久化并回注 triage/specialist？
+- [ ] 压缩 summary 是否持久化并回注 triage/full_review？
 - [ ] 工具执行是否经过 permission/hook/orchestration？
 - [ ] 管理后台是否能展示 catalog、timeline、invocations？
 - [ ] 生产测试门禁是否覆盖 happy path、失败恢复、幂等和 canary？

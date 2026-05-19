@@ -37,12 +37,12 @@ describe('KernelSessionRepository subagent invocations', () => {
     const invocation = kernelSessionRepository.createSubagentInvocation({
       parentSessionId: session.id,
       parentRunId: 'run-101',
-      parentTaskName: 'review:specialist:security',
-      subagentName: 'review:specialist:security',
+      parentTaskName: 'custom:security-audit',
+      subagentName: 'custom:security-audit',
       agentId: 'agent-123',
       packet: {
         goal: 'Review security issues',
-        parentTaskName: 'review:specialist:security',
+        parentTaskName: 'custom:security-audit',
         input: { domain: 'security' },
         parentSessionId: session.id,
         parentRunId: 'run-101',
@@ -52,7 +52,7 @@ describe('KernelSessionRepository subagent invocations', () => {
 
     kernelSessionRepository.completeSubagentInvocation(invocation.id, 'completed', {
       agentId: 'agent-123',
-      agentType: 'review:specialist:security',
+      agentType: 'custom:security-audit',
       summary: 'security review done',
       totalDurationMs: 10,
       totalToolUseCount: 0,
@@ -62,7 +62,7 @@ describe('KernelSessionRepository subagent invocations', () => {
 
     const invocations = kernelSessionRepository.listSubagentInvocations(session.id);
     expect(invocations).toHaveLength(1);
-    expect(invocations[0]?.subagentName).toBe('review:specialist:security');
+    expect(invocations[0]?.subagentName).toBe('custom:security-audit');
     expect(invocations[0]?.result?.summary).toBe('security review done');
   });
 });

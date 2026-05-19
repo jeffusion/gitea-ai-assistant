@@ -6,7 +6,7 @@ import { initializeFeedbackSystem } from '../../../controllers/feedback';
 import { modelRoleRepo } from '../../../db/repositories/model-role-repo';
 import { llmGateway } from '../../../llm/gateway';
 import { giteaService } from '../../../services/gitea';
-import { SpecialistAgent } from '../../agents/specialist-agent';
+import { AutonomousReviewAgent } from '../../agents/autonomous-review-agent';
 import { tokenCounter } from '../../context/token-counter';
 import { ToolRegistry } from '../../tools/registry';
 import type { PullRequestReviewPayload, ReviewContext, ReviewRun } from '../../types';
@@ -276,7 +276,6 @@ describe('compression resumability and production canaries', () => {
           complexity: 'standard',
           review_size: 'medium',
           mode: 'light',
-          relevant_domains: ['correctness'],
           risk_tags: [],
           rationale: '需要 correctness 审查',
         });
@@ -496,7 +495,7 @@ describe('compression resumability and production canaries', () => {
       expect(lineCommentCalls[0]?.[0]).toMatchObject({ path: 'src/index.ts', line: 2 });
     });
 
-    test('permission deny canary keeps specialist chain recoverable', async () => {
+    test('permission deny canary keeps autonomous review chain recoverable', async () => {
       let deniedToolExecuted = false;
       const toolRegistry = new ToolRegistry();
       toolRegistry.register({
@@ -511,13 +510,7 @@ describe('compression resumability and production canaries', () => {
       });
 
       let callCount = 0;
-      const specialist = new SpecialistAgent(
-        llmGateway as any,
-        'correctness',
-        'Permission Canary Specialist',
-        'optional input handling',
-        toolRegistry
-      );
+      const autonomousAgent = new AutonomousReviewAgent(llmGateway as any, toolRegistry);
 
       llmGateway.chatForRole = async (_role, request) => {
         callCount += 1;
@@ -558,7 +551,7 @@ describe('compression resumability and production canaries', () => {
         });
       };
 
-      const result = await specialist.reviewWithOptions(
+      const result = await autonomousAgent.reviewWithOptions(
         {
           id: 'permission-deny-run',
           owner: 'acme',
@@ -576,7 +569,15 @@ describe('compression resumability and production canaries', () => {
           updatedAt: new Date().toISOString(),
         } as ReviewRun,
         createReviewContext('small', '/tmp/workspace', '/tmp/mirror.git'),
-        { allowTools: true, mode: 'full', maxIterations: 2 }
+        {
+          mode: 'light',
+          reviewSize: 'small',
+          riskTags: ['permission-deny-canary'],
+          maxTurns: 2,
+          maxToolCalls: 2,
+          maxElapsedMs: 60_000,
+          tokenBudget: 8_000,
+        }
       );
 
       expect(deniedToolExecuted).toBe(false);
@@ -744,7 +745,6 @@ describe('compression resumability and production canaries', () => {
             complexity: 'standard',
             review_size: 'medium',
             mode: 'light',
-            relevant_domains: ['correctness'],
             risk_tags: [],
             rationale: 'need correctness review',
           });

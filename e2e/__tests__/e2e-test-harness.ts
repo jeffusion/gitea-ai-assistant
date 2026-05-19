@@ -110,8 +110,6 @@ interface SessionDetail {
         domains?: string[];
       };
       triageMode?: string;
-      domainTasks?: Array<{ domain: string }>;
-      completedDomains?: string[];
       findings?: Finding[];
       published?: boolean;
       reviewedRefSaved?: boolean;
@@ -435,8 +433,7 @@ export class E2ETestHarness {
 
   extractDomains(detail: SessionDetail): string[] {
     const triageDomains = detail.checkpoint?.state?.triage?.domains;
-    if (triageDomains && triageDomains.length > 0) return triageDomains;
-    return detail.checkpoint?.state?.domainTasks?.map((task) => task.domain) ?? [];
+    return triageDomains ?? [];
   }
 
   private async configureAssistant(): Promise<void> {

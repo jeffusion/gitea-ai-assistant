@@ -84,12 +84,12 @@ describe('RoleAssignment', () => {
       },
       {
         kind: 'subagent',
-        name: 'review:specialist:security',
+        name: 'review:full_review',
         source: 'built-in',
-        description: '专项审查 security 域变更',
-        whenToUse: '当 security 风险域被命中时',
+        description: '执行一次完整自主代码审查',
+        whenToUse: '当 triage 生成审查提示后执行完整审查',
         modelRole: 'specialist',
-        tags: ['review', 'specialist', 'domain-review', 'domain:security'],
+        tags: ['review', 'specialist', 'full-review', 'autonomous-review'],
         resumable: true,
       },
     ]);
