@@ -4,6 +4,7 @@ import config from '../../config';
 import { llmGateway } from '../../llm/gateway';
 import { SpecialistAgent } from '../agents/specialist-agent';
 import { TriageAgent } from '../agents/triage-agent';
+import type { TriageResult } from '../agents/triage-agent';
 import type { FileReviewStore } from '../store/file-review-store';
 import { ToolRegistry } from '../tools/registry';
 import type { FindingCategory, ReviewRun, ReviewTask } from '../types';
@@ -73,6 +74,41 @@ function mergeDomainTasks(tasks: ReviewTask[]): ReviewTask[] {
   }
 
   return [...byDomain.values()];
+}
+
+function buildTemporaryLegacyBridgeTasks(
+  triageResult: TriageResult | null,
+  state: ReviewKernelState
+): LegacyDomainReviewTask[] {
+  if (!triageResult) {
+    return buildDefaultTasks(state);
+  }
+
+  if (triageResult.mode === 'skip') {
+    return [];
+  }
+
+  const fallbackPaths = state.context?.changedFiles.map((file) => file.path) ?? [];
+  const paths = triageResult.suspectedEntrypoints.length
+    ? triageResult.suspectedEntrypoints
+    : fallbackPaths;
+
+  return [
+    {
+      domain: 'correctness',
+      paths,
+      riskTags: triageResult.riskTags,
+      mode: triageResult.mode,
+      reviewSize: triageResult.reviewSize,
+      suspectedEntrypoints: triageResult.suspectedEntrypoints,
+      tokenBudget: triageResult.budgetHints.tokenBudget,
+      maxTurns: triageResult.budgetHints.maxTurns,
+      maxToolCalls: triageResult.budgetHints.maxToolCalls,
+      maxElapsedMs: triageResult.budgetHints.maxElapsedMs,
+      maxIterations: triageResult.budgetHints.maxTurns,
+      allowTools: triageResult.mode === 'full',
+    },
+  ];
 }
 
 interface ReviewBuiltInSubagentDeps {
@@ -154,7 +190,9 @@ export function createReviewBuiltInSubagents(
         });
       }
 
-      const reviewTasks = mergeDomainTasks(triageResult?.tasks ?? buildDefaultTasks(context.state));
+      const reviewTasks = mergeDomainTasks(
+        buildTemporaryLegacyBridgeTasks(triageResult, context.state)
+      );
       const reviewTask = reviewTasks[0];
 
       return {
@@ -192,8 +230,9 @@ export function createReviewBuiltInSubagents(
           throw new Error('缺少审查上下文');
         }
 
-        const legacyReviewTask = asLegacyDomainTasks(
-          context.state.triage?.tasks ?? buildDefaultTasks(context.state)
+        const legacyReviewTask = buildTemporaryLegacyBridgeTasks(
+          context.state.triage ?? null,
+          context.state
         ).find((item) => item.domain === domain);
         const agent = specialistMap[domain];
         if (!legacyReviewTask || !agent) {

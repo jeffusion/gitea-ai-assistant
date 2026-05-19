@@ -1,11 +1,10 @@
 /**
  * Triage Agent — lightweight intent recognition using the 'planner' model role.
  *
- * Analyzes the change summary (file list + basic stats) to determine:
- *   1. Change complexity (trivial / standard / complex)
- *   2. Which specialist domains are relevant
+ * Analyzes the change summary (file list + basic stats) to determine review
+ * planning hints for the autonomous review loop.
  *
- * This avoids wasting tokens by running all specialist agents on trivial changes
+ * This avoids wasting tokens by running deep review on trivial changes
  * (e.g. README typo fixes, string-only edits, pure documentation changes).
  */
 
@@ -16,28 +15,36 @@ import { mergeReviewPrompts, withCoreGlobalPrompt } from '../../utils/global-pro
 import { logger } from '../../utils/logger';
 import type {
   ChangedFile,
-  FindingCategory,
   ReviewBudgetPolicy,
   ReviewContext,
+  ReviewExecutionBudget,
   ReviewMode,
   ReviewSize,
-  ReviewTask,
 } from '../types';
+import { REVIEW_DEFAULT_BUDGETS } from '../types';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type TriageComplexity = 'trivial' | 'standard' | 'complex';
+export interface TriageBudgetHints extends ReviewExecutionBudget {
+  tokenBudget: number;
+}
+
+export interface TriageChangedFileSummary {
+  totalFiles: number;
+  totalAdditions: number;
+  totalDeletions: number;
+  files: string[];
+}
 
 export interface TriageResult {
-  /** How complex the change is — drives how many agents to dispatch. */
-  complexity: TriageComplexity;
   reviewSize: ReviewSize;
   mode: ReviewMode;
-  tasks: ReviewTask[];
   riskTags: string[];
-  /** Brief rationale from the planner model. */
+  suspectedEntrypoints: string[];
+  budgetHints: TriageBudgetHints;
+  changedFileSummary: TriageChangedFileSummary;
   rationale: string;
 }
 
@@ -45,9 +52,6 @@ export interface TriageOptions {
   projectPrompt?: string;
   contextSummary?: string;
 }
-
-/** All valid finding categories. */
-const ALL_DOMAINS: FindingCategory[] = ['correctness', 'security', 'quality'];
 
 const DOCUMENTATION_EXTENSIONS = new Set([
   '.md',
@@ -166,17 +170,31 @@ function getTokenBudget(reviewSize: ReviewSize, policy: ReviewBudgetPolicy): num
   return policy.tokenBudgetLarge;
 }
 
-function toComplexity(mode: ReviewMode, reviewSize: ReviewSize): TriageComplexity {
+function getBudgetHints(
+  mode: ReviewMode,
+  reviewSize: ReviewSize,
+  policy: ReviewBudgetPolicy
+): TriageBudgetHints {
   if (mode === 'skip') {
-    return 'trivial';
+    return {
+      maxTurns: 0,
+      maxToolCalls: 0,
+      maxElapsedMs: 0,
+      tokenBudget: 0,
+    };
   }
-  if (reviewSize === 'small') {
-    return mode === 'full' ? 'standard' : 'trivial';
-  }
-  if (reviewSize === 'large') {
-    return 'complex';
-  }
-  return 'standard';
+
+  const executionBudget =
+    mode === 'light'
+      ? REVIEW_DEFAULT_BUDGETS.light
+      : reviewSize === 'large'
+        ? REVIEW_DEFAULT_BUDGETS.largeFull
+        : REVIEW_DEFAULT_BUDGETS.full;
+
+  return {
+    ...executionBudget,
+    tokenBudget: getTokenBudget(reviewSize, policy),
+  };
 }
 
 function collectRiskTags(changedFiles: ChangedFile[]): string[] {
@@ -231,83 +249,43 @@ function isSkipFriendlyChange(changedFiles: ChangedFile[], riskTags: string[]): 
   });
 }
 
-function buildDomainPaths(changedFiles: ChangedFile[], domain: FindingCategory): string[] {
-  const candidatePaths = changedFiles
-    .filter((file) => file.status !== 'D')
-    .map((file) => file.path);
-  if (candidatePaths.length === 0) {
-    return [];
-  }
-
-  if (domain === 'security') {
-    const scoped = candidatePaths.filter((filePath) =>
-      hasPattern(filePath, SECURITY_SENSITIVE_PATTERNS)
-    );
-    return scoped.length > 0 ? scoped : candidatePaths;
-  }
-
-  if (domain === 'quality') {
-    const scoped = candidatePaths.filter(
-      (filePath) =>
-        hasPattern(filePath, RELIABILITY_PATTERNS) || hasPattern(filePath, MAINTAINABILITY_PATTERNS)
-    );
-    return scoped.length > 0 ? scoped : candidatePaths;
-  }
-
-  return candidatePaths;
+function summarizeChangedFiles(changedFiles: ChangedFile[]): TriageChangedFileSummary {
+  return {
+    totalFiles: changedFiles.length,
+    totalAdditions: changedFiles.reduce((sum, file) => sum + file.additions, 0),
+    totalDeletions: changedFiles.reduce((sum, file) => sum + file.deletions, 0),
+    files: changedFiles
+      .slice(0, 12)
+      .map((file) => `${file.status} ${file.path} (+${file.additions} -${file.deletions})`),
+  };
 }
 
-function buildTasks(
-  domains: FindingCategory[],
+function collectSuspectedEntrypoints(changedFiles: ChangedFile[]): string[] {
+  return changedFiles
+    .filter((file) => file.status !== 'D')
+    .filter((file) => !DOCUMENTATION_EXTENSIONS.has(getFileExtension(file.path)))
+    .slice(0, 12)
+    .map((file) => file.path);
+}
+
+function buildTriageResult(
   changedFiles: ChangedFile[],
   reviewSize: ReviewSize,
   mode: ReviewMode,
   riskTags: string[],
-  policy: ReviewBudgetPolicy
-): ReviewTask[] {
-  if (mode === 'skip') {
-    return [];
-  }
-
-  const tokenBudget = getTokenBudget(reviewSize, policy);
-  const maxIterations = mode === 'light' ? 1 : 2;
-
-  return domains.map((domain) => {
-    const scopedPaths = buildDomainPaths(changedFiles, domain);
-    return {
-      domain,
-      paths: scopedPaths,
-      riskTags,
-      mode,
-      tokenBudget,
-      maxIterations,
-      allowTools: mode === 'full',
-    };
-  });
-}
-
-function decideDomains(
-  changedFiles: ChangedFile[],
-  riskTags: string[],
-  reviewSize: ReviewSize
-): FindingCategory[] {
-  const domains: FindingCategory[] = ['correctness'];
-
-  const hasSecurityFiles = riskTags.includes('security-sensitive');
-  const hasQualityFiles = riskTags.includes('quality-sensitive');
-
-  if (hasSecurityFiles) {
-    domains.push('security');
-  }
-  if (hasQualityFiles || changedFiles.length >= 4 || reviewSize === 'large') {
-    domains.push('quality');
-  }
-
-  if (reviewSize === 'large') {
-    return [...ALL_DOMAINS];
-  }
-
-  return [...new Set(domains)];
+  rationale: string,
+  policy: ReviewBudgetPolicy,
+  suspectedEntrypoints = collectSuspectedEntrypoints(changedFiles)
+): TriageResult {
+  return {
+    reviewSize,
+    mode,
+    riskTags,
+    suspectedEntrypoints,
+    budgetHints: getBudgetHints(mode, reviewSize, policy),
+    changedFileSummary: summarizeChangedFiles(changedFiles),
+    rationale,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -329,9 +307,10 @@ export class TriageAgent {
     const heuristicResult = this.heuristicTriage(context.changedFiles);
     if (heuristicResult) {
       logger.info('Triage: 使用启发式规则快速分流', {
-        complexity: heuristicResult.complexity,
-        tasks: heuristicResult.tasks.length,
         mode: heuristicResult.mode,
+        reviewSize: heuristicResult.reviewSize,
+        riskTags: heuristicResult.riskTags,
+        suspectedEntrypoints: heuristicResult.suspectedEntrypoints,
         rationale: heuristicResult.rationale,
       });
       return heuristicResult;
@@ -341,24 +320,19 @@ export class TriageAgent {
     try {
       return await this.llmTriage(context, options);
     } catch (error) {
-      logger.warn('Triage: LLM 调用失败，回退到启发式全量派发', {
+      logger.warn('Triage: LLM 调用失败，回退到启发式 full 模式提示', {
         error: error instanceof Error ? error.message : String(error),
       });
-      return {
-        complexity: 'complex',
-        reviewSize: 'large',
-        mode: 'full',
-        tasks: buildTasks(
-          [...ALL_DOMAINS],
-          context.changedFiles,
-          'large',
-          'full',
-          collectRiskTags(context.changedFiles),
-          getReviewBudgetPolicy()
-        ),
-        riskTags: collectRiskTags(context.changedFiles),
-        rationale: 'Triage LLM 调用失败，使用默认全量审查',
-      };
+      const policy = getReviewBudgetPolicy();
+      const reviewSize = classifyReviewSize(context.changedFiles, policy);
+      return buildTriageResult(
+        context.changedFiles,
+        reviewSize,
+        'full',
+        collectRiskTags(context.changedFiles),
+        'Triage LLM 调用失败，使用默认 full 模式审查提示',
+        policy
+      );
     }
   }
 
@@ -370,14 +344,7 @@ export class TriageAgent {
     const policy = getReviewBudgetPolicy();
 
     if (changedFiles.length === 0) {
-      return {
-        complexity: 'trivial',
-        reviewSize: 'small',
-        mode: 'skip',
-        tasks: [],
-        riskTags: [],
-        rationale: '无变更文件',
-      };
+      return buildTriageResult(changedFiles, 'small', 'skip', [], '无变更文件', policy);
     }
 
     const riskTags = collectRiskTags(changedFiles);
@@ -385,56 +352,53 @@ export class TriageAgent {
     const totalChanges = changedFiles.reduce((sum, f) => sum + f.additions + f.deletions, 0);
 
     if (isSkipFriendlyChange(changedFiles, riskTags)) {
-      return {
-        complexity: 'trivial',
+      return buildTriageResult(
+        changedFiles,
         reviewSize,
-        mode: 'skip',
-        tasks: [],
+        'skip',
         riskTags,
-        rationale: '文档/资源/锁文件或纯重命名变更，启用 skip 模式',
-      };
+        '文档/资源/锁文件或纯重命名变更，启用 skip 模式',
+        policy
+      );
     }
 
     if (changedFiles.length === 1 && totalChanges <= 3) {
-      const domains = ['correctness'] as FindingCategory[];
-      return {
-        complexity: 'trivial',
-        reviewSize: 'small',
-        mode: 'light',
-        tasks: buildTasks(domains, changedFiles, 'small', 'light', riskTags, policy),
+      return buildTriageResult(
+        changedFiles,
+        'small',
+        'light',
         riskTags,
-        rationale: `单文件微量变更（${totalChanges} 行）`,
-      };
+        `单文件微量变更（${totalChanges} 行）`,
+        policy
+      );
     }
 
     if (reviewSize === 'large') {
-      const domains = [...ALL_DOMAINS];
-      return {
-        complexity: 'complex',
+      return buildTriageResult(
+        changedFiles,
         reviewSize,
-        mode: 'full',
-        tasks: buildTasks(domains, changedFiles, reviewSize, 'full', riskTags, policy),
+        'full',
         riskTags,
-        rationale: `大规模变更（${changedFiles.length} 文件, ${totalChanges} 行），全量任务审查`,
-      };
+        `大规模变更（${changedFiles.length} 文件, ${totalChanges} 行），提供 full 模式预算提示`,
+        policy
+      );
     }
 
-    const domains = decideDomains(changedFiles, riskTags, reviewSize);
     const hasSensitiveRisk =
       riskTags.includes('security-sensitive') || riskTags.includes('runtime-config-change');
     const mode: ReviewMode = hasSensitiveRisk || reviewSize === 'medium' ? 'full' : 'light';
 
     if (hasSensitiveRisk || reviewSize === 'small') {
-      return {
-        complexity: toComplexity(mode, reviewSize),
+      return buildTriageResult(
+        changedFiles,
         reviewSize,
         mode,
-        tasks: buildTasks(domains, changedFiles, reviewSize, mode, riskTags, policy),
         riskTags,
-        rationale: hasSensitiveRisk
-          ? '命中安全/运行时敏感风险，提升到 full 模式并限制到相关路径'
-          : '小型代码变更，使用 light 模式快速审查',
-      };
+        hasSensitiveRisk
+          ? '命中安全/运行时敏感风险，提升到 full 模式并提供相关入口提示'
+          : '小型代码变更，使用 light 模式快速审查提示',
+        policy
+      );
     }
 
     // Inconclusive — let LLM decide
@@ -458,7 +422,7 @@ export class TriageAgent {
       ? `\n压缩上下文摘要（优先参考）：\n${options.contextSummary}\n`
       : '';
 
-    const prompt = `你是代码审查分流专家。分析以下变更并判断其复杂度、审查模式和审查领域。${compressedSummarySection}
+    const prompt = `你是代码审查分流专家。分析以下变更并返回给自治审查器使用的上下文提示。${compressedSummarySection}
 
 变更文件列表：
 ${fileSummary}
@@ -471,15 +435,15 @@ ${diffPreview}
 - **mode=light**: 小范围可执行代码改动，低风险，最小深度审查
 - **mode=full**: 安全/配置/跨模块/中大型改动，需要完整审查
 
-可选领域：correctness（逻辑正确性）, security（安全）, quality（可靠性、可维护性与可测试性）
+只返回规划提示，不要拆分任务，不要选择审查领域，不要生成子任务。
+suspected_entrypoints 只是帮助审查器优先理解上下文的入口提示，不是强制文件范围。
 
 返回 JSON：
 {
-  "complexity": "trivial" | "standard" | "complex",
   "review_size": "small" | "medium" | "large",
   "mode": "skip" | "light" | "full",
-  "relevant_domains": ["correctness", ...],
   "risk_tags": ["security-sensitive", ...],
+  "suspected_entrypoints": ["src/example.ts", ...],
   "rationale": "简要理由"
 }`;
 
@@ -508,10 +472,6 @@ ${diffPreview}
     const parsed = JSON.parse(content);
 
     // Validate and normalize
-    const complexity = (['trivial', 'standard', 'complex'] as const).includes(parsed.complexity)
-      ? (parsed.complexity as TriageComplexity)
-      : 'standard';
-
     const reviewSize = (['small', 'medium', 'large'] as const).includes(parsed.review_size)
       ? (parsed.review_size as ReviewSize)
       : classifyReviewSize(context.changedFiles, policy);
@@ -522,45 +482,29 @@ ${diffPreview}
         ? 'light'
         : 'full';
 
-    const relevantDomains: FindingCategory[] =
-      mode === 'skip'
-        ? []
-        : Array.isArray(parsed.relevant_domains)
-          ? (parsed.relevant_domains.filter((d: string) =>
-              ALL_DOMAINS.includes(d as FindingCategory)
-            ) as FindingCategory[])
-          : [...ALL_DOMAINS];
-
-    // Ensure at least correctness is always included
-    if (mode !== 'skip' && !relevantDomains.includes('correctness')) {
-      relevantDomains.unshift('correctness');
-    }
-
     const normalizedRiskTags = Array.isArray(parsed.risk_tags)
       ? parsed.risk_tags.filter((tag: unknown) => typeof tag === 'string')
       : riskTags;
 
-    const result: TriageResult = {
-      complexity,
+    const parsedEntrypoints = Array.isArray(parsed.suspected_entrypoints)
+      ? parsed.suspected_entrypoints.filter((entrypoint: unknown) => typeof entrypoint === 'string')
+      : collectSuspectedEntrypoints(context.changedFiles);
+
+    const result = buildTriageResult(
+      context.changedFiles,
       reviewSize,
       mode,
-      tasks: buildTasks(
-        relevantDomains,
-        context.changedFiles,
-        reviewSize,
-        mode,
-        normalizedRiskTags,
-        policy
-      ),
-      riskTags: normalizedRiskTags,
-      rationale: parsed.rationale || '',
-    };
+      normalizedRiskTags,
+      parsed.rationale || '',
+      policy,
+      parsedEntrypoints.slice(0, 12)
+    );
 
     logger.info('Triage: LLM 分流完成', {
-      complexity: result.complexity,
       reviewSize: result.reviewSize,
       mode: result.mode,
-      tasks: result.tasks.length,
+      riskTags: result.riskTags,
+      suspectedEntrypoints: result.suspectedEntrypoints,
       rationale: result.rationale,
     });
 

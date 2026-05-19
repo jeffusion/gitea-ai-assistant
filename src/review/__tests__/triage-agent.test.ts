@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import type { LLMGateway } from '../../llm/gateway';
-import type { LLMChatResponse, ModelRole } from '../../llm/types';
+import type { LLMChatRequest, LLMChatResponse, ModelRole } from '../../llm/types';
 import { TriageAgent } from '../agents/triage-agent';
-import type { ChangedFile, FindingCategory, ReviewContext } from '../types';
+import type { ChangedFile, ReviewContext } from '../types';
 
 function makeChangedFile(overrides: Partial<ChangedFile> = {}): ChangedFile {
   return {
@@ -37,58 +37,68 @@ function makeChatResponse(content: string | null): LLMChatResponse {
 
 type ChatCall = {
   role: ModelRole;
-  request: any;
+  request: Omit<LLMChatRequest, 'model'>;
 };
 
 function createMockGateway(
-  implementation: (role: ModelRole, request: any) => Promise<LLMChatResponse>
+  implementation: (
+    role: ModelRole,
+    request: Omit<LLMChatRequest, 'model'>
+  ) => Promise<LLMChatResponse>
 ) {
   const calls: ChatCall[] = [];
+  const gateway: Pick<LLMGateway, 'chatForRole'> = {
+    chatForRole: async (role: ModelRole, request: Omit<LLMChatRequest, 'model'>) => {
+      calls.push({ role, request });
+      return implementation(role, request);
+    },
+  };
 
   return {
-    gateway: {
-      chatForRole: async (role: ModelRole, request: any) => {
-        calls.push({ role, request });
-        return implementation(role, request);
-      },
-    },
+    gateway,
     getCalls: () => calls,
   };
 }
 
-describe('TriageAgent task-based routing', () => {
-  test('heuristic: empty changedFiles -> skip mode with no tasks', async () => {
+describe('TriageAgent hint-based planning', () => {
+  test('heuristic: empty changedFiles -> skip mode with hints only', async () => {
     const { gateway, getCalls } = createMockGateway(async () =>
       makeChatResponse(
         JSON.stringify({
-          complexity: 'complex',
           review_size: 'large',
           mode: 'full',
-          relevant_domains: ['correctness', 'security', 'quality'],
+          suspected_entrypoints: ['src/ignored.ts'],
         })
       )
     );
-    const agent = new TriageAgent(gateway as any);
+    const agent = new TriageAgent(gateway as unknown as LLMGateway);
 
     const result = await agent.analyze(makeContext({ changedFiles: [] }));
 
     expect(result.mode).toBe('skip');
-    expect(result.tasks).toHaveLength(0);
+    expect('tasks' in result).toBe(false);
+    expect(result.suspectedEntrypoints).toEqual([]);
+    expect(result.budgetHints).toEqual({
+      maxTurns: 0,
+      maxToolCalls: 0,
+      maxElapsedMs: 0,
+      tokenBudget: 0,
+    });
+    expect(result.changedFileSummary.totalFiles).toBe(0);
     expect(getCalls()).toHaveLength(0);
   });
 
-  test('heuristic: docs/assets only -> skip mode with no tasks', async () => {
+  test('heuristic: docs/assets only -> skip mode with hints only', async () => {
     const { gateway, getCalls } = createMockGateway(async () =>
       makeChatResponse(
         JSON.stringify({
-          complexity: 'complex',
           review_size: 'large',
           mode: 'full',
-          relevant_domains: ['correctness', 'security', 'quality'],
+          suspected_entrypoints: ['src/ignored.ts'],
         })
       )
     );
-    const agent = new TriageAgent(gateway as any);
+    const agent = new TriageAgent(gateway as unknown as LLMGateway);
 
     const result = await agent.analyze(
       makeContext({
@@ -101,13 +111,15 @@ describe('TriageAgent task-based routing', () => {
     );
 
     expect(result.mode).toBe('skip');
-    expect(result.tasks).toHaveLength(0);
+    expect('tasks' in result).toBe(false);
+    expect(result.suspectedEntrypoints).toEqual([]);
+    expect(result.changedFileSummary.files).toContain('M README.md (+1 -1)');
     expect(getCalls()).toHaveLength(0);
   });
 
-  test('heuristic: tiny single-file code change -> light correctness task', async () => {
+  test('heuristic: tiny single-file code change -> light hints only', async () => {
     const { gateway, getCalls } = createMockGateway(async () => makeChatResponse(null));
-    const agent = new TriageAgent(gateway as any);
+    const agent = new TriageAgent(gateway as unknown as LLMGateway);
 
     const result = await agent.analyze(
       makeContext({
@@ -116,16 +128,24 @@ describe('TriageAgent task-based routing', () => {
     );
 
     expect(result.mode).toBe('light');
-    expect(result.tasks).toHaveLength(1);
-    expect(result.tasks[0].domain).toBe('correctness');
-    expect(result.tasks[0].allowTools).toBe(false);
-    expect(result.tasks[0].maxIterations).toBe(1);
+    expect('tasks' in result).toBe(false);
+    expect(result.suspectedEntrypoints).toEqual(['src/app.ts']);
+    expect(result.budgetHints).toMatchObject({
+      maxTurns: 4,
+      maxToolCalls: 4,
+      maxElapsedMs: 60_000,
+    });
+    expect(result.changedFileSummary).toMatchObject({
+      totalFiles: 1,
+      totalAdditions: 1,
+      totalDeletions: 2,
+    });
     expect(getCalls()).toHaveLength(0);
   });
 
-  test('heuristic: security-sensitive small change -> full correctness+security tasks', async () => {
+  test('heuristic: security-sensitive small change -> full hints only', async () => {
     const { gateway, getCalls } = createMockGateway(async () => makeChatResponse(null));
-    const agent = new TriageAgent(gateway as any);
+    const agent = new TriageAgent(gateway as unknown as LLMGateway);
 
     const result = await agent.analyze(
       makeContext({
@@ -137,15 +157,20 @@ describe('TriageAgent task-based routing', () => {
     );
 
     expect(result.mode).toBe('full');
-    const domains = result.tasks.map((task) => task.domain);
-    expect(domains).toContain('correctness');
-    expect(domains).toContain('security');
+    expect('tasks' in result).toBe(false);
+    expect(result.riskTags).toContain('security-sensitive');
+    expect(result.suspectedEntrypoints).toEqual(['src/auth/service.ts', 'src/user/profile.ts']);
+    expect(result.budgetHints).toMatchObject({
+      maxTurns: 10,
+      maxToolCalls: 12,
+      maxElapsedMs: 180_000,
+    });
     expect(getCalls()).toHaveLength(0);
   });
 
-  test('heuristic: large PR by file count -> full mode with all domains', async () => {
+  test('heuristic: large PR by file count -> large full budget hints', async () => {
     const { gateway, getCalls } = createMockGateway(async () => makeChatResponse(null));
-    const agent = new TriageAgent(gateway as any);
+    const agent = new TriageAgent(gateway as unknown as LLMGateway);
 
     const changedFiles = Array.from({ length: 21 }, (_, index) =>
       makeChangedFile({ path: `src/file-${index}.ts`, additions: 2, deletions: 1 })
@@ -155,26 +180,30 @@ describe('TriageAgent task-based routing', () => {
 
     expect(result.mode).toBe('full');
     expect(result.reviewSize).toBe('large');
-    expect(result.complexity).toBe('complex');
-    const expectedDomains: FindingCategory[] = ['correctness', 'quality', 'security'];
-    expect(result.tasks.map((task) => task.domain).sort()).toEqual(expectedDomains.sort());
+    expect('tasks' in result).toBe(false);
+    expect(result.budgetHints).toMatchObject({
+      maxTurns: 12,
+      maxToolCalls: 16,
+      maxElapsedMs: 240_000,
+    });
+    expect(result.suspectedEntrypoints).toHaveLength(12);
+    expect(result.changedFileSummary.files).toHaveLength(12);
     expect(getCalls()).toHaveLength(0);
   });
 
-  test('LLM fallback: inconclusive change uses planner and normalizes tasks', async () => {
+  test('LLM fallback: inconclusive change uses planner and normalizes hints', async () => {
     const { gateway, getCalls } = createMockGateway(async () =>
       makeChatResponse(
         JSON.stringify({
-          complexity: 'standard',
           review_size: 'medium',
           mode: 'light',
-          relevant_domains: ['security', 'quality'],
           risk_tags: ['security-sensitive'],
+          suspected_entrypoints: ['src/service/order.ts', 'src/controller/order.ts'],
           rationale: '跨文件业务逻辑调整',
         })
       )
     );
-    const agent = new TriageAgent(gateway as any);
+    const agent = new TriageAgent(gateway as unknown as LLMGateway);
 
     const result = await agent.analyze(
       makeContext({
@@ -192,11 +221,20 @@ describe('TriageAgent task-based routing', () => {
     expect(calls[0].role).toBe('planner');
     expect(calls[0].request.temperature).toBe(0);
     expect(calls[0].request.responseFormat).toBe('json');
+    const plannerMessages = calls[0].request.messages as Array<{ role: string; content: string }>;
+    const plannerUserMessage = plannerMessages.find((message) => message.role === 'user');
+    expect(plannerUserMessage?.content).not.toContain('relevant_domains');
+    expect(plannerUserMessage?.content).not.toContain('"tasks"');
+    expect(plannerUserMessage?.content).not.toContain('可选领域');
 
     expect(result.reviewSize).toBe('medium');
     expect(result.mode).toBe('light');
-    expect(result.tasks.map((task) => task.domain)).toContain('correctness');
-    expect(result.tasks.map((task) => task.domain)).toContain('security');
+    expect('tasks' in result).toBe(false);
+    expect(result.suspectedEntrypoints).toEqual([
+      'src/service/order.ts',
+      'src/controller/order.ts',
+    ]);
+    expect(result.riskTags).toEqual(['security-sensitive']);
     expect(result.rationale).toBe('跨文件业务逻辑调整');
   });
 
@@ -205,11 +243,10 @@ describe('TriageAgent task-based routing', () => {
     const { gateway, getCalls } = createMockGateway(async () =>
       makeChatResponse(
         JSON.stringify({
-          complexity: 'standard',
           review_size: 'medium',
           mode: 'light',
-          relevant_domains: ['correctness'],
           risk_tags: ['quality-sensitive'],
+          suspected_entrypoints: ['src/service/order.ts'],
           rationale: '需要模型判断',
         })
       )
@@ -238,11 +275,11 @@ describe('TriageAgent task-based routing', () => {
     expect(plannerSystemMessage?.content).toContain(longProjectPrompt);
   });
 
-  test('LLM fallback: planner throws -> default full review with all domains', async () => {
+  test('LLM fallback: planner throws -> default full review hints', async () => {
     const { gateway, getCalls } = createMockGateway(async () => {
       throw new Error('planner unavailable');
     });
-    const agent = new TriageAgent(gateway as any);
+    const agent = new TriageAgent(gateway as unknown as LLMGateway);
 
     const result = await agent.analyze(
       makeContext({
@@ -258,8 +295,13 @@ describe('TriageAgent task-based routing', () => {
 
     expect(getCalls()).toHaveLength(1);
     expect(result.mode).toBe('full');
-    const expectedDomains: FindingCategory[] = ['correctness', 'quality', 'security'];
-    expect(result.tasks.map((task) => task.domain).sort()).toEqual(expectedDomains.sort());
+    expect('tasks' in result).toBe(false);
+    expect(result.suspectedEntrypoints).toContain('src/service/foo.ts');
+    expect(result.budgetHints).toMatchObject({
+      maxTurns: 10,
+      maxToolCalls: 12,
+      maxElapsedMs: 180_000,
+    });
     expect(result.rationale).toContain('LLM');
   });
 });
