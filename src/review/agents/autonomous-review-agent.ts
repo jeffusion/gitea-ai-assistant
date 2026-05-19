@@ -83,24 +83,11 @@ function resolveBudget(task: ReviewTask): ResolvedBudget {
 }
 
 function toCompactContext(context: ReviewContext, task: ReviewTask): string {
-  const scopedPaths = task.suspectedEntrypoints?.length ? new Set(task.suspectedEntrypoints) : null;
-  const scopedChangedFiles = scopedPaths
-    ? context.changedFiles.filter((file) => scopedPaths.has(file.path))
-    : context.changedFiles;
-  const scopedParsedDiff = scopedPaths
-    ? context.parsedDiff.filter((file) => scopedPaths.has(file.path))
-    : context.parsedDiff;
-  const scopedFileContents = scopedPaths
-    ? Object.fromEntries(
-        Object.entries(context.fileContents).filter(([filePath]) => scopedPaths.has(filePath))
-      )
-    : context.fileContents;
-
   const payload = JSON.stringify(
     {
-      changedFiles: scopedChangedFiles,
-      diffSnippets: scopedParsedDiff,
-      fileContents: scopedFileContents,
+      changedFiles: context.changedFiles,
+      diffSnippets: context.parsedDiff,
+      fileContents: context.fileContents,
     },
     null,
     2
@@ -130,7 +117,9 @@ ${toolList}
 2. 不要按文件孤立审查；需要跨文件确认 API 持久化、状态流、权限、错误分支、边界条件和相似实现。
 3. 仅报告有明确证据、会导致真实功能/安全/可靠性问题的 finding。
 4. 当需要更多信息时直接调用工具；当调查完成时输出最终 JSON：{"findings":[...]}。无问题返回 {"findings":[]}。
-5. 每个 finding 必须包含 severity、confidence、path、line、title、detail、evidence、suggestion，可选 category 为 correctness/security/quality。`,
+5. 每个 finding 必须包含 severity、confidence、path、line、title、detail、evidence、suggestion，可选 category 为 correctness/security/quality。
+6. suspectedEntrypoints 只是调查优先级提示，不是范围过滤；请仍然审查所有变更文件、diff 片段和可用文件内容。`,
+
     mergeReviewPrompts(config.review.globalPrompt, projectPrompt)
   );
 }

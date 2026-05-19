@@ -323,6 +323,52 @@ describe('AutonomousReviewAgent', () => {
     });
   });
 
+  test('compact context keeps changed files and file contents outside suspectedEntrypoints', async () => {
+    const { gateway, getCalls } = createMockGateway([() => jsonResponse({ findings: [] })]);
+    const agent = new AutonomousReviewAgent(gateway as unknown as LLMGateway);
+
+    await agent.review(
+      makeRun(),
+      makeContext({
+        diff: [
+          '--- a/src/entry.ts',
+          '+++ b/src/entry.ts',
+          '@@ -1,2 +1,3 @@',
+          '+export const entry = true;',
+          '--- a/src/other.ts',
+          '+++ b/src/other.ts',
+          '@@ -1,2 +1,3 @@',
+          '+export const other = true;',
+        ].join('\n'),
+        changedFiles: [
+          { path: 'src/entry.ts', status: 'M', additions: 1, deletions: 0 },
+          { path: 'src/other.ts', status: 'M', additions: 1, deletions: 0 },
+        ],
+        parsedDiff: [
+          {
+            path: 'src/entry.ts',
+            changes: [{ lineNumber: 1, content: 'export const entry = true;', type: 'add' }],
+          },
+          {
+            path: 'src/other.ts',
+            changes: [{ lineNumber: 1, content: 'export const other = true;', type: 'add' }],
+          },
+        ],
+        fileContents: {
+          'src/entry.ts': 'export const entry = true;',
+          'src/other.ts': 'export const other = true;',
+        },
+      }),
+      makeTask({ suspectedEntrypoints: ['src/entry.ts'] })
+    );
+
+    const userPrompt = getCalls()[0].messages.find((message) => message.role === 'user');
+    expect(userPrompt?.content).toContain('suspectedEntrypoints: src/entry.ts');
+    expect(userPrompt?.content).toContain('src/other.ts');
+    expect(userPrompt?.content).toContain('export const other = true;');
+    expect(userPrompt?.content).toContain('changedFiles');
+  });
+
   test('uses default light budget and synthesizes after maxTurns when task omits specific limits', async () => {
     const registry = new ToolRegistry();
     registry.register(makeTool('search_code', async () => ({ results: [] })));
