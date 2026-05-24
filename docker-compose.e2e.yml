@@ -1,14 +1,8 @@
-version: '3.8'
-
 # E2E 测试环境：Gitea + gitea-assistant
 # 用法:
-#   docker compose -f docker-compose.e2e.yml up -d
-#   # 等待服务启动后运行 seed 脚本:
-#   ./e2e/seed.sh
-#   # 运行 E2E 测试:
-#   ./e2e/test.sh
-#   # 清理:
-#   docker compose -f docker-compose.e2e.yml down -v
+# docker compose -f docker-compose.e2e.yml up -d
+# ./e2e/seed.sh
+# docker compose -f docker-compose.e2e.yml down -v
 
 services:
   gitea:
@@ -47,8 +41,15 @@ services:
       - GITEA_API_URL=http://gitea:3000/api/v1
       - GITEA_ACCESS_TOKEN=${E2E_GITEA_TOKEN:-placeholder}
       - PORT=5174
+      - ENCRYPTION_KEY=5752fac0e57d00e9b7954863faef878693420e6b06bc20d710897587e802668a
+      - REVIEW_ENGINE=kernel
+      - REVIEW_WORKDIR=/tmp/e2e-review
+      - DATABASE_PATH=/data/assistant.db
+      - E2E_MOCK_LLM=1
     ports:
       - "3334:5174"
+    volumes:
+      - assistant-data:/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5174/api/health"]
       interval: 5s
@@ -58,3 +59,4 @@ services:
 
 volumes:
   gitea-data:
+  assistant-data:

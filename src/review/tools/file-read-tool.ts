@@ -7,6 +7,8 @@ export function createFileReadTool(): Tool {
   return {
     name: 'read_file',
     description: '读取指定文件的完整内容，用于深入分析代码逻辑。',
+    isConcurrencySafe: true,
+    permissionScope: 'read',
     parameters: z.object({
       file_path: z.string().describe('相对文件路径'),
       start_line: z.number().optional().describe('起始行号（可选）'),

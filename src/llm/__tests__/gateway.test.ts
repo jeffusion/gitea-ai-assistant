@@ -157,20 +157,6 @@ describe('LLMGateway', () => {
     });
   });
 
-  // ─── embedForRole: Error Cases ────────────────────────────────────
-
-  describe('embedForRole() — error handling', () => {
-    test('throws LLMNoProviderError when embedding role not assigned', async () => {
-      try {
-        await gateway.embedForRole(['text']);
-        expect(true).toBe(false);
-      } catch (e: any) {
-        expect(e.name).toBe('LLMNoProviderError');
-        expect(e.role).toBe('embedding');
-      }
-    });
-  });
-
   // ─── Cache invalidation ──────────────────────────────────────────
 
   describe('cache management', () => {

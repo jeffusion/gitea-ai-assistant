@@ -4,7 +4,12 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { RoleAssignment } from '../RoleAssignment';
-import { fetchProviders, fetchRoles, setRole } from '@/services/llmProviderService';
+import {
+  fetchKernelSubagents,
+  fetchProviders,
+  fetchRoles,
+  setRole,
+} from '@/services/llmProviderService';
 
 vi.mock('sonner', () => ({
   toast: {
@@ -18,6 +23,7 @@ vi.mock('@/services/llmProviderService', async () => {
   return {
     ...actual,
     fetchProviders: vi.fn(),
+    fetchKernelSubagents: vi.fn(),
     fetchRoles: vi.fn(),
     setRole: vi.fn(),
     fetchModelSuggestions: vi.fn().mockResolvedValue({
@@ -40,7 +46,7 @@ function renderWithQuery(ui: ReactNode) {
 }
 
 describe('RoleAssignment', () => {
-  it('renders role cards and supports provider/model editing', async () => {
+  it('renders subagent directory and model role routing', async () => {
     vi.mocked(fetchProviders).mockResolvedValueOnce([
       {
         id: 'p1',
@@ -65,6 +71,29 @@ describe('RoleAssignment', () => {
       },
     ]);
 
+    vi.mocked(fetchKernelSubagents).mockResolvedValueOnce([
+      {
+        kind: 'subagent',
+        name: 'review:triage',
+        source: 'built-in',
+        description: '根据变更范围决定 review 域与审查模式',
+        whenToUse: '当需要规划任务时',
+        modelRole: 'planner',
+        tags: ['review', 'planner', 'triage'],
+        resumable: true,
+      },
+      {
+        kind: 'subagent',
+        name: 'review:full_review',
+        source: 'built-in',
+        description: '执行一次完整自主代码审查',
+        whenToUse: '当 triage 生成审查提示后执行完整审查',
+        modelRole: 'specialist',
+        tags: ['review', 'specialist', 'full-review', 'autonomous-review'],
+        resumable: true,
+      },
+    ]);
+
     vi.mocked(setRole).mockResolvedValue({
       role: 'planner',
       providerId: 'p1',
@@ -76,11 +105,12 @@ describe('RoleAssignment', () => {
     const user = userEvent.setup();
     renderWithQuery(<RoleAssignment />);
 
-    expect(await screen.findByText('角色分配')).toBeInTheDocument();
-    expect(await screen.findByText('规划器 Planner')).toBeInTheDocument();
+    expect(await screen.findByText('Subagents 与模型路由')).toBeInTheDocument();
+    expect((await screen.findAllByText('review:triage')).length).toBeGreaterThan(0);
+    expect(screen.getByText('模型角色路由')).toBeInTheDocument();
+    expect(screen.getByText('Planner')).toBeInTheDocument();
+    expect(screen.getByText('Specialist')).toBeInTheDocument();
 
-    // Radix Select renders placeholder in a span with pointer-events: none.
-    // Click the trigger button (parent) instead of the placeholder text.
     const providerPlaceholders = screen.getAllByText('选择提供商');
     const triggerButton = providerPlaceholders[0].closest('button')!;
     await user.click(triggerButton);

@@ -31,8 +31,19 @@ export class LocalRepoManager {
     if (!this.giteaToken) {
       return [];
     }
-    // 使用Authorization header，不会持久化到.git/config
     return ['-c', `http.extraHeader=Authorization: token ${this.giteaToken}`];
+  }
+
+  private embedTokenInUrl(cloneUrl: string, owner: string): string {
+    if (!this.giteaToken) return cloneUrl;
+    try {
+      const url = new URL(cloneUrl);
+      url.username = owner;
+      url.password = this.giteaToken;
+      return url.toString();
+    } catch {
+      return cloneUrl;
+    }
   }
 
   /**
@@ -93,7 +104,7 @@ export class LocalRepoManager {
         logger.info('创建本地 mirror 仓库', { owner, repo, mirrorPath });
         await this.sandboxExec.run(
           'git',
-          [...authArgs, 'clone', '--mirror', cloneUrl, mirrorPath],
+          [...authArgs, 'clone', '--mirror', this.embedTokenInUrl(cloneUrl, owner), mirrorPath],
           {
             cwd: this.workDir,
             timeoutMs: this.commandTimeoutMs,

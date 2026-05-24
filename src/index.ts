@@ -9,14 +9,21 @@ import { llmConfigRouter } from './controllers/llm-config';
 import { handleGiteaWebhook } from './controllers/review';
 import { initMasterKey } from './crypto/secrets';
 import { initDatabase } from './db/database';
+import { installE2EMockLLMGateway } from './llm/e2e-mock';
+import { llmGateway } from './llm/gateway';
 import { cleanupScheduler } from './review/cleanup-scheduler';
-import { codexEngine } from './review/codex/codex-engine';
 import { mcpRouter } from './review/codex/mcp-handler';
-import { reviewEngine } from './review/engine';
+import { getActiveReviewEngine } from './review/review-engine-provider';
 
 initMasterKey();
 initDatabase();
 configManager.seedDefaults();
+installE2EMockLLMGateway();
+
+llmGateway.updateResilienceConfig(config.review.llmMaxConcurrentCalls, {
+  maxAttempts: config.review.llmRetryMaxAttempts,
+  baseDelayMs: config.review.llmRetryBaseDelayMs,
+});
 
 // 创建Hono应用实例
 const app = new Hono();
@@ -77,26 +84,21 @@ app.get('*', serveStatic({ path: './public/index.html' }));
 const port = config.app.port;
 console.log(`⚡️ 服务启动在 http://localhost:${port}`);
 
-// 启动审查引擎（根据配置选择）
-reviewEngine.start().catch((error) => {
-  console.error('❌ 启动Agent Review Engine失败', error);
-});
-codexEngine.start().catch((error) => {
-  console.error('❌ 启动Codex Review Engine失败', error);
-});
+// 启动当前配置的审查引擎，避免非 active 引擎产生副作用。
+getActiveReviewEngine()
+  .start()
+  .catch((error) => {
+    console.error('❌ 启动 Review Engine 失败', error);
+  });
 
 // 启动清理调度器（定期清理过期 mirror/workspace 目录）
 cleanupScheduler.start();
 
-// 初始化反馈系统（总是初始化，记忆系统可选）
-const reviewStore = reviewEngine.getStore();
+// 初始化反馈系统
+const reviewStore = getActiveReviewEngine().getStore();
 initializeFeedbackSystem(reviewStore);
 
-if (config.review.enableMemory) {
-  console.log('✅ 反馈系统已初始化（含向量记忆）');
-} else {
-  console.log('✅ 反馈系统已初始化（不含向量记忆）');
-}
+console.log('✅ 反馈系统已初始化');
 
 export default {
   port,

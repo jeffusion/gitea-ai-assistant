@@ -91,30 +91,6 @@ export class LLMGateway {
   }
 
   /**
-   * Embedding via the provider assigned to the 'embedding' role.
-   */
-  async embedForRole(texts: string[]): Promise<number[][]> {
-    const assignment = modelRoleRepo.getByRole('embedding');
-    if (!assignment) throw new LLMNoProviderError('embedding');
-
-    return withResilience(
-      this.semaphore,
-      () => {
-        const provider = this.getOrCreateProvider(assignment.provider_id);
-        if (!provider.embed) {
-          throw new LLMError(
-            `Provider '${provider.type}' does not support embeddings`,
-            provider.type
-          );
-        }
-        return provider.embed(texts);
-      },
-      this.retryOptions,
-      'embedding'
-    );
-  }
-
-  /**
    * Invalidate cached provider instance (call when config/key changes via UI).
    */
   invalidateProvider(providerId: string): void {

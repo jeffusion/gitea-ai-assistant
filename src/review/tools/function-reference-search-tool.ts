@@ -12,6 +12,9 @@ export function createFunctionReferenceSearchTool(sandbox: SandboxExec): Tool {
     name: 'search_function_references',
     description:
       '搜索指定函数、方法或类的所有引用和定义（支持所有编程语言）。用于理解代码影响范围和调用关系。',
+    isConcurrencySafe: true,
+    timeoutMs: 15000,
+    permissionScope: 'read',
     parameters: z.object({
       identifier: z.string().describe('要搜索的标识符（函数名、类名、方法名等）'),
       file_types: z

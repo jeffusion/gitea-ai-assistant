@@ -160,7 +160,7 @@ describe('llm-config controller', () => {
 
       const { data: roles } = await jsonRequest(app, 'GET', '/roles');
       const assignedRoles = roles.filter((r: any) => r.providerId !== null);
-      expect(assignedRoles).toHaveLength(4);
+      expect(assignedRoles).toHaveLength(2);
     });
 
     test('rejects missing required fields', async () => {
@@ -326,7 +326,7 @@ describe('llm-config controller', () => {
     test('returns all MODEL_ROLES with null assignments when unassigned', async () => {
       const { status, data } = await jsonRequest(app, 'GET', '/roles');
       expect(status).toBe(200);
-      expect(data).toHaveLength(4);
+      expect(data).toHaveLength(2);
       expect(data[0]).toHaveProperty('role');
       expect(data[0]).toHaveProperty('providerId');
     });

@@ -1,4 +1,4 @@
-export type ReviewEngineMode = 'agent' | 'codex';
+export type ReviewEngineMode = 'codex' | 'kernel';
 
 export type ReviewEventType = 'pull_request' | 'commit_status';
 
@@ -6,22 +6,52 @@ export type ReviewRunStatus = 'queued' | 'in_progress' | 'succeeded' | 'failed' 
 
 export type FindingSeverity = 'high' | 'medium' | 'low';
 
-export type FindingCategory = 'correctness' | 'security' | 'reliability' | 'maintainability';
+export type FindingCategory = 'correctness' | 'security' | 'quality';
 
 export type ReviewMode = 'skip' | 'light' | 'full';
 
 export type ReviewSize = 'small' | 'medium' | 'large';
 
+export interface ReviewExecutionBudget {
+  maxTurns: number;
+  maxToolCalls: number;
+  maxElapsedMs: number;
+}
+
+export const REVIEW_DEFAULT_BUDGETS = {
+  light: {
+    maxTurns: 4,
+    maxToolCalls: 4,
+    maxElapsedMs: 60_000,
+  },
+  full: {
+    maxTurns: 10,
+    maxToolCalls: 12,
+    maxElapsedMs: 180_000,
+  },
+  largeFull: {
+    maxTurns: 12,
+    maxToolCalls: 16,
+    maxElapsedMs: 240_000,
+  },
+} as const satisfies Record<string, ReviewExecutionBudget>;
+
 export interface ReviewTask {
-  domain: FindingCategory;
-  paths: string[];
-  riskTags: string[];
   mode: ReviewMode;
+  reviewSize?: ReviewSize;
+  riskTags: string[];
+  suspectedEntrypoints?: string[];
+  maxTurns?: number;
+  maxToolCalls?: number;
+  maxElapsedMs?: number;
   tokenBudget: number;
-  maxIterations: number;
-  allowTools: boolean;
-  allowReflection: boolean;
-  allowDebate: boolean;
+}
+
+export interface ReviewHint {
+  source: 'triage' | 'heuristic' | 'runtime';
+  message: string;
+  riskTags?: string[];
+  suspectedEntrypoints?: string[];
 }
 
 export interface ReviewBudgetPolicy {
@@ -156,6 +186,20 @@ export interface ReviewContext {
 export interface AgentResult {
   agentName: string;
   findings: Omit<Finding, 'id' | 'runId' | 'published'>[];
+  diagnostics?: {
+    scopedPaths?: string[];
+    compactContextTokens?: number;
+    iterations?: number;
+    stateSequence?: string[];
+    stopReason?: string;
+    toolCallCount?: number;
+    toolCallNames?: string[];
+    parsedFindingCount?: number;
+    finalResponsePreview?: string;
+    parseErrors?: string[];
+    emptyResponseCount?: number;
+    consecutiveToolFailures?: number;
+  };
 }
 
 export interface ReviewDecision {

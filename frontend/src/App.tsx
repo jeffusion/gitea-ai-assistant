@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { LoginPage } from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
+import ReviewSessionsPage from './pages/ReviewSessionsPage';
 import { RepositoryManager } from './components/RepositoryManager';
 import { ConfigManager } from './components/ConfigManager';
 import { NotificationConfigPage } from './components/NotificationConfigPage';
@@ -49,12 +50,13 @@ function AppContent() {
             </AuthGuard>
           }
         >
-          <Route index element={<Navigate to="/repos" replace />} />
+          <Route index element={<Navigate to="/sessions" replace />} />
+          <Route path="sessions" element={<ReviewSessionsPage />} />
           <Route path="repos" element={<RepositoryManager />} />
           <Route path="config" element={<ConfigManager />} />
           <Route path="notifications" element={<NotificationConfigPage />} />
           <Route path="review-config" element={<ReviewConfigPage />} />
-          <Route path="*" element={<Navigate to="/repos" replace />} />
+          <Route path="*" element={<Navigate to="/sessions" replace />} />
         </Route>
       </Routes>
       <Toaster theme={resolvedTheme === 'dark' ? 'dark' : 'light'} />

@@ -1,0 +1,9 @@
+{
+  "name": "duplicate-webhook-pr",
+  "description": "重复webhook幂等性测试",
+  "expectedTriageMode": "light",
+  "expectedDomains": ["correctness"],
+  "minFindings": 1,
+  "minHighSeverity": 0,
+  "testIdempotency": true
+}

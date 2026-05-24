@@ -6,6 +6,9 @@ export function createCodeSearchTool(sandbox: SandboxExec): Tool {
   return {
     name: 'search_code',
     description: '在代码库中搜索匹配给定模式的代码，支持正则表达式。用于发现相似问题或影响范围。',
+    isConcurrencySafe: true,
+    timeoutMs: 10000,
+    permissionScope: 'read',
     parameters: z.object({
       pattern: z.string().describe('要搜索的正则表达式模式'),
       file_types: z.array(z.string()).optional().describe('限制搜索的文件类型，如["ts", "js"]'),

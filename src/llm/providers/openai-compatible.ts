@@ -76,6 +76,52 @@ function extractToolCalls(choice: OpenAI.ChatCompletion.Choice): LLMToolCall[] {
   }));
 }
 
+type OpenAIToolChoice = NonNullable<OpenAI.ChatCompletionCreateParamsNonStreaming['tool_choice']>;
+
+function isNamedToolChoice(value: unknown): value is {
+  type: 'function';
+  function: { name: string };
+} {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.type !== 'function') return false;
+  const fn = candidate.function;
+  return Boolean(
+    fn && typeof fn === 'object' && typeof (fn as Record<string, unknown>).name === 'string'
+  );
+}
+
+function toOpenAIToolChoice(value: unknown): OpenAIToolChoice | undefined {
+  if (value === 'auto' || value === 'none' || value === 'required') {
+    return value;
+  }
+  if (isNamedToolChoice(value)) {
+    return {
+      type: 'function',
+      function: {
+        name: value.function.name,
+      },
+    };
+  }
+  return undefined;
+}
+
+export function buildOpenAICompatibleChatParams(
+  request: LLMChatRequest,
+  model: string
+): OpenAI.ChatCompletionCreateParamsNonStreaming {
+  const toolChoice = toOpenAIToolChoice(request.providerOptions?.tool_choice);
+  return {
+    model,
+    messages: toOpenAIMessages(request.messages),
+    ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+    ...(request.maxTokens !== undefined ? { max_tokens: request.maxTokens } : {}),
+    ...(request.responseFormat === 'json' ? { response_format: { type: 'json_object' } } : {}),
+    ...(request.tools?.length ? { tools: toOpenAITools(request.tools) } : {}),
+    ...(toolChoice ? { tool_choice: toolChoice } : {}),
+  };
+}
+
 class OpenAICompatibleProvider implements LLMProvider {
   readonly type = TYPE;
   readonly capabilities: ProviderCapabilities;
@@ -101,15 +147,7 @@ class OpenAICompatibleProvider implements LLMProvider {
 
   async chat(request: LLMChatRequest): Promise<LLMChatResponse> {
     const model = request.model || this.defaultModel;
-
-    const params: OpenAI.ChatCompletionCreateParamsNonStreaming = {
-      model,
-      messages: toOpenAIMessages(request.messages),
-      ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
-      ...(request.maxTokens !== undefined ? { max_tokens: request.maxTokens } : {}),
-      ...(request.responseFormat === 'json' ? { response_format: { type: 'json_object' } } : {}),
-      ...(request.tools?.length ? { tools: toOpenAITools(request.tools) as any } : {}),
-    };
+    const params = buildOpenAICompatibleChatParams(request, model);
 
     try {
       const response = await this.client.chat.completions.create(params);

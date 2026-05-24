@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { LogOut, Bot, FolderGit2, Sliders, Bell, Menu, X, PanelLeftClose, PanelLeftOpen, FileSearch, Sun, Moon, Palette } from 'lucide-react';
+import { LogOut, Bot, FolderGit2, Sliders, Bell, Menu, X, PanelLeftClose, PanelLeftOpen, FileSearch, Sun, Moon, Palette, Waypoints } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { isColorPalette, useColorPalette } from '@/hooks/useColorPalette';
 
 const navItems = [
+  { path: '/sessions', label: '审查会话', icon: Waypoints },
   { path: '/repos', label: '仓库管理', icon: FolderGit2 },
   { path: '/config', label: '系统配置', icon: Sliders },
   { path: '/notifications', label: '通知管理', icon: Bell },

@@ -11,9 +11,52 @@ function createInconsistentMigrationState(dbPath: string): void {
   db.exec('PRAGMA foreign_keys = ON');
   db.exec(`
     CREATE TABLE IF NOT EXISTS _migrations (
-      version    INTEGER PRIMARY KEY,
-      name       TEXT NOT NULL,
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
       applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE llm_providers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      base_url TEXT,
+      default_model TEXT NOT NULL,
+      is_enabled INTEGER NOT NULL DEFAULT 1,
+      extra_config TEXT DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE llm_secrets (
+      provider_id TEXT PRIMARY KEY REFERENCES llm_providers(id) ON DELETE CASCADE,
+      ciphertext BLOB NOT NULL,
+      iv BLOB NOT NULL,
+      auth_tag BLOB NOT NULL,
+      key_version INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE model_role_assignments (
+      role TEXT PRIMARY KEY CHECK (role IN ('planner','specialist','judge','embedding')),
+      provider_id TEXT NOT NULL REFERENCES llm_providers(id),
+      model TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE system_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      is_sensitive INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
 

@@ -443,7 +443,8 @@ export const giteaService: GiteaService = {
       });
 
       const totalCount = Number.parseInt(response.headers['x-total-count'] || '0', 10);
-      return { repos: response.data.data, totalCount };
+      const repos = Array.isArray(response.data?.data) ? response.data.data : [];
+      return { repos, totalCount };
     } catch (error: unknown) {
       let rawResponseProbe: Record<string, unknown> | null = null;
 

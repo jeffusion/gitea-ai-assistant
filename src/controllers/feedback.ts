@@ -1,33 +1,22 @@
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { kernelSessionRepository } from '../agent-kernel/session/session-repository';
 import config from '../config';
-import { LearningSystem } from '../review/learning/learning-system';
-import { VectorMemoryStore } from '../review/memory/vector-store';
+import { kernelReviewEngine } from '../review/kernel/kernel-review-engine';
+import { getReviewSessionScope } from '../review/kernel/session-scope';
 import { FileReviewStore } from '../review/store/file-review-store';
 import { giteaService } from '../services/gitea';
 
 const feedbackRouter = new Hono();
 
 // 全局实例
-let memoryStore: VectorMemoryStore | null = null;
-let learningSystem: LearningSystem | null = null;
 let reviewStore: FileReviewStore | null = null;
 
 // 初始化反馈系统（记忆系统可选）
 export function initializeFeedbackSystem(store: FileReviewStore): void {
   // 保存store实例以供handlers重用，避免多实例状态不同步
   reviewStore = store;
-
-  // 记忆系统为可选功能
-  if (config.review.qdrantUrl && config.review.enableMemory) {
-    memoryStore = new VectorMemoryStore(config.review.qdrantUrl);
-    learningSystem = new LearningSystem(memoryStore, reviewStore);
-
-    memoryStore.initialize().catch((err) => {
-      console.error('Failed to initialize memory store:', err);
-    });
-  }
 }
 
 // 提交人工反馈
@@ -62,6 +51,10 @@ feedbackRouter.post(
       return c.json({ error: 'Run not found' }, 404);
     }
 
+    const session = kernelSessionRepository.getSessionByScopeKey(
+      getReviewSessionScope(runDetails.run).scopeKey
+    );
+
     const { owner, repo } = runDetails.run;
 
     // 原子幂等性保护：先标记finding为published（原子check-and-set）
@@ -87,7 +80,6 @@ feedbackRouter.post(
           success: true,
           message: '该finding已处理过',
           alreadyProcessed: true,
-          learningApplied: false,
           published: true,
         });
       }
@@ -104,32 +96,6 @@ feedbackRouter.post(
     }
 
     // 以下代码只会被第一个请求执行（wasUnpublished=true）
-
-    let learningApplied = false;
-
-    // 如果记忆系统启用，尝试执行学习和向量存储（可选功能，失败不阻止审批流程）
-    if (memoryStore && learningSystem) {
-      try {
-        await memoryStore.storeFeedback(findingId, approved, reason || '', owner, repo);
-
-        if (approved) {
-          await learningSystem.learnFromApproval(finding, owner, repo);
-        } else {
-          await learningSystem.learnFromFalsePositive(
-            finding,
-            reason || '人工标记为误报',
-            owner,
-            repo
-          );
-        }
-
-        learningApplied = true;
-      } catch (memoryError) {
-        // 记忆系统故障不应阻止人工审批操作
-        console.error('Memory system operation failed (non-fatal):', memoryError);
-        learningApplied = false;
-      }
-    }
 
     try {
       // 如果批准，发布到Gitea（人工审批通过的问题应该通知开发者）
@@ -210,11 +176,29 @@ _此问题已通过人工审批确认_`;
       }
 
       // finding已在开头原子标记为published，处理成功则保持published状态
+      if (session) {
+        kernelSessionRepository.appendEvent(session.id, 'human_feedback_processed', {
+          runId: finding.runId,
+          findingId,
+          approved,
+          reason: reason || null,
+          published: approved,
+        });
+
+        if (config.review.engine === 'kernel') {
+          const latestRunDetails = await reviewStore.getRunDetails(finding.runId);
+          const hasRemainingPendingFindings =
+            latestRunDetails?.findings.some((item) => !item.published) ?? false;
+
+          if (!hasRemainingPendingFindings) {
+            await kernelReviewEngine.continueSession(session.id);
+          }
+        }
+      }
 
       return c.json({
         success: true,
         message: approved ? '已标记为有效问题并发布到Gitea' : '已标记为误报',
-        learningApplied,
         published: approved,
       });
     } catch (error) {

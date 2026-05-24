@@ -1,0 +1,8 @@
+{
+  "name": "security-pr",
+  "description": "安全相关变更",
+  "expectedTriageMode": "light",
+  "expectedDomains": ["correctness"],
+  "minFindings": 1,
+  "minHighSeverity": 0
+}

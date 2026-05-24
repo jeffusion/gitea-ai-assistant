@@ -1,0 +1,9 @@
+{
+  "name": "minimal-change-pr",
+  "description": "单文件微量变更",
+  "expectedTriageMode": "light",
+  "expectedDomains": ["correctness"],
+  "minFindings": 0,
+  "maxFindings": 3,
+  "minHighSeverity": 0
+}

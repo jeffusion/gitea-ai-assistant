@@ -78,7 +78,7 @@ describe('model-role-repo', () => {
     });
 
     test('can assign different roles', () => {
-      const roles: ModelRole[] = ['planner', 'specialist', 'judge', 'embedding'];
+      const roles: ModelRole[] = ['planner', 'specialist'];
       for (const role of roles) {
         modelRoleRepo.set(role, providerId, `model-for-${role}`);
       }
@@ -125,7 +125,6 @@ describe('model-role-repo', () => {
 
     test('results are ordered by role', () => {
       modelRoleRepo.set('specialist', providerId, 'model-a');
-      modelRoleRepo.set('embedding', providerId, 'model-b');
       modelRoleRepo.set('planner', providerId, 'model-c');
 
       const all = modelRoleRepo.list();
@@ -158,13 +157,11 @@ describe('model-role-repo', () => {
     test('returns all roles assigned to a provider', () => {
       modelRoleRepo.set('specialist', providerId, 'gpt-4o-mini');
       modelRoleRepo.set('planner', providerId, 'gpt-4o');
-      modelRoleRepo.set('judge', providerId, 'gpt-4o');
 
       const roles = modelRoleRepo.getRolesByProvider(providerId);
-      expect(roles).toHaveLength(3);
+      expect(roles).toHaveLength(2);
       expect(roles).toContain('specialist');
       expect(roles).toContain('planner');
-      expect(roles).toContain('judge');
     });
 
     test('does not return roles assigned to other providers', () => {

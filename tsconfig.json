@@ -4,7 +4,12 @@
 		"module": "commonjs",
 		"moduleResolution": "node",
 		"lib": [
-			"es2022"
+			"es2022",
+			"dom"
+		],
+		"types": [
+			"node",
+			"bun"
 		],
 
 		"rootDir": "src",

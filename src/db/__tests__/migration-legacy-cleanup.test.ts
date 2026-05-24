@@ -116,7 +116,7 @@ describe('migration 002 remove legacy review mode', () => {
     const engineRow = db
       .query('SELECT value FROM system_settings WHERE key = ?')
       .get('REVIEW_ENGINE') as { value: string } | null;
-    expect(engineRow?.value).toBe('agent');
+    expect(engineRow?.value).toBe('kernel');
 
     const roles = db
       .query('SELECT role FROM model_role_assignments ORDER BY role ASC')

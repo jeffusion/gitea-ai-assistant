@@ -23,6 +23,17 @@ export interface RoleAssignmentDto {
   model: string | null;
 }
 
+export interface KernelSubagentDto {
+  kind: 'subagent';
+  name: string;
+  source: 'built-in' | 'custom' | 'plugin';
+  description: string;
+  whenToUse: string;
+  modelRole?: string;
+  tags: string[];
+  resumable?: boolean;
+}
+
 export interface TestResult {
   success: boolean;
   latencyMs?: number;
@@ -83,6 +94,11 @@ export const fetchRoles = async (): Promise<RoleAssignmentDto[]> => {
 export const setRole = async (role: string, providerId: string | null, model: string | null): Promise<RoleAssignmentDto> => {
   const response = await api.put<RoleAssignmentDto>(`/llm/roles/${role}`, { providerId, model });
   return response.data;
+};
+
+export const fetchKernelSubagents = async (): Promise<KernelSubagentDto[]> => {
+  const response = await api.get<{ data: KernelSubagentDto[] }>('/review/kernel/subagents');
+  return response.data.data;
 };
 
 export const testProvider = async (id: string): Promise<TestResult> => {

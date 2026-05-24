@@ -5,7 +5,16 @@
 
 import type { LLMToolDefinition } from './types';
 
-export function toOpenAITools(tools: LLMToolDefinition[]): object[] {
+export interface OpenAIToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
+export function toOpenAITools(tools: LLMToolDefinition[]): OpenAIToolDefinition[] {
   return tools.map((tool) => ({
     type: 'function' as const,
     function: {

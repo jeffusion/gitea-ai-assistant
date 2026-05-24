@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 const findingItemSchema = z.object({
-  category: z.enum(['correctness', 'security', 'reliability', 'maintainability']).optional(),
+  category: z.enum(['correctness', 'security', 'quality']).optional(),
   severity: z.enum(['high', 'medium', 'low']),
   confidence: z.number().min(0).max(1),
   path: z.string().min(1),
