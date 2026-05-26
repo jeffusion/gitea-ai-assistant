@@ -1,3 +1,16 @@
+# [1.4.0](https://github.com/jeffusion/gitea-ai-assistant/compare/v1.3.1...v1.4.0) (2026-05-26)
+
+
+### Bug Fixes
+
+* **agent-kernel:** address Oracle review round 2 findings ([27f4ac6](https://github.com/jeffusion/gitea-ai-assistant/commit/27f4ac6a18ec3510575f9234486e2fd5fc72de3c))
+* **review-agent:** complete fingerprint migration — dual-index all three keys ([2ee9f57](https://github.com/jeffusion/gitea-ai-assistant/commit/2ee9f570c4e43f6fa2901e6a1ff10d79826b7d60))
+
+
+### Features
+
+* **agent-kernel:** cherry-pick high-value components from PR [#15](https://github.com/jeffusion/gitea-ai-assistant/issues/15) ([44d52cd](https://github.com/jeffusion/gitea-ai-assistant/commit/44d52cddc5e5301b9ec4ae8ca11ba926dd709cd3)), closes [hi#value](https://github.com/hi/issues/value)
+
 ## [1.3.1](https://github.com/jeffusion/gitea-ai-assistant/compare/v1.3.0...v1.3.1) (2026-03-26)
 
 
