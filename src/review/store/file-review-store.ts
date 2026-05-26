@@ -281,6 +281,32 @@ export class FileReviewStore {
     await this.persist();
   }
 
+  async getPendingComments(runId: string): Promise<ReviewCommentRecord[]> {
+    await this.ensureInitialized();
+    return this.data.comments.filter((c) => c.runId === runId && c.status === 'pending');
+  }
+
+  async markCommentPublished(commentId: string, giteaCommentId?: number): Promise<void> {
+    await this.ensureInitialized();
+    const comment = this.data.comments.find((c) => c.id === commentId);
+    if (comment) {
+      comment.status = 'published';
+      if (giteaCommentId !== undefined) {
+        comment.giteaCommentId = giteaCommentId;
+      }
+      await this.persist();
+    }
+  }
+
+  async markCommentFailed(commentId: string): Promise<void> {
+    await this.ensureInitialized();
+    const comment = this.data.comments.find((c) => c.id === commentId);
+    if (comment) {
+      comment.status = 'failed';
+      await this.persist();
+    }
+  }
+
   async listRuns(limit = 50): Promise<ReviewRun[]> {
     await this.ensureInitialized();
 
@@ -394,6 +420,8 @@ export class FileReviewStore {
 
     this.writeChain = this.writeChain.then(async () => {
       try {
+        // 确保目标目录存在（/tmp 可能在容器重启后被清理）
+        await mkdir(path.dirname(this.statePath), { recursive: true });
         // 原子写入：先写临时文件，再 rename 覆盖目标文件
         // POSIX rename 是原子操作，即使进程在 rename 中间崩溃，文件也不会损坏
         const tempPath = `${this.statePath}.tmp`;

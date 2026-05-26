@@ -6,7 +6,6 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { initMasterKey } from '../../crypto/secrets';
 import { closeDatabase, initDatabase } from '../../db/database';
-import { modelRoleRepo } from '../../db/repositories/model-role-repo';
 import { providerRepo } from '../../db/repositories/provider-repo';
 import { secretRepo } from '../../db/repositories/secret-repo';
 import { llmConfigRouter } from '../llm-config';
@@ -150,19 +149,6 @@ describe('llm-config controller', () => {
       expect(data.hasKey).toBe(true);
     });
 
-    test('auto-binds all roles when first provider is created', async () => {
-      await jsonRequest(app, 'POST', '/providers', {
-        name: 'First Provider',
-        type: 'gemini',
-        defaultModel: 'gemini-pro',
-        apiKey: 'test-key',
-      });
-
-      const { data: roles } = await jsonRequest(app, 'GET', '/roles');
-      const assignedRoles = roles.filter((r: any) => r.providerId !== null);
-      expect(assignedRoles).toHaveLength(4);
-    });
-
     test('rejects missing required fields', async () => {
       const { status, data } = await jsonRequest(app, 'POST', '/providers', {
         name: 'Missing Type',
@@ -239,7 +225,7 @@ describe('llm-config controller', () => {
   });
 
   describe('DELETE /providers/:id', () => {
-    test('deletes provider without role assignments', async () => {
+    test('deletes provider', async () => {
       const created = providerRepo.create({
         name: 'ToDelete',
         type: 'anthropic',
@@ -249,7 +235,6 @@ describe('llm-config controller', () => {
       const { status, data } = await jsonRequest(app, 'DELETE', `/providers/${created.id}`);
       expect(status).toBe(200);
       expect(data.success).toBe(true);
-      expect(data.removedRoleAssignments).toEqual([]);
     });
 
     test('returns 404 for non-existent provider', async () => {
@@ -320,73 +305,17 @@ describe('llm-config controller', () => {
     });
   });
 
-  // ─── Role Assignments ────────────────────────────────────────────
-
-  describe('GET /roles', () => {
-    test('returns all MODEL_ROLES with null assignments when unassigned', async () => {
-      const { status, data } = await jsonRequest(app, 'GET', '/roles');
-      expect(status).toBe(200);
-      expect(data).toHaveLength(4);
-      expect(data[0]).toHaveProperty('role');
-      expect(data[0]).toHaveProperty('providerId');
+  describe('removed legacy model binding API', () => {
+    test('returns 404 for old role list endpoint', async () => {
+      const legacyRolePath = ['/', 'roles'].join('');
+      const { status } = await jsonRequest(app, 'GET', legacyRolePath);
+      expect(status).toBe(404);
     });
 
-    test('returns assigned role info when set', async () => {
-      const provider = providerRepo.create({
-        name: 'RoleTest',
-        type: 'openai_compatible',
-        baseUrl: 'https://api.example.com/v1',
-        defaultModel: 'gpt-4o-mini',
-      });
-      modelRoleRepo.set('planner', provider.id, 'gpt-4o');
-
-      const { data } = await jsonRequest(app, 'GET', '/roles');
-      const planner = data.find((r: any) => r.role === 'planner');
-      expect(planner.providerId).toBe(provider.id);
-      expect(planner.providerName).toBe('RoleTest');
-      expect(planner.model).toBe('gpt-4o');
-    });
-  });
-
-  describe('PUT /roles/:role', () => {
-    test('assigns a role to a provider+model', async () => {
-      const provider = providerRepo.create({
-        name: 'AssignTarget',
-        type: 'anthropic',
-        defaultModel: 'claude-3',
-      });
-
-      const { status, data } = await jsonRequest(app, 'PUT', '/roles/planner', {
-        providerId: provider.id,
-        model: 'claude-3-5-sonnet',
-      });
-
-      expect(status).toBe(200);
-      expect(data.role).toBe('planner');
-      expect(data.providerId).toBe(provider.id);
-      expect(data.model).toBe('claude-3-5-sonnet');
-    });
-
-    test('rejects invalid role name', async () => {
-      const { status, data } = await jsonRequest(app, 'PUT', '/roles/invalid_role', {
+    test('returns 404 for old role update endpoint', async () => {
+      const legacyRolePath = ['/', 'roles', '/', 'old-role'].join('');
+      const { status } = await jsonRequest(app, 'PUT', legacyRolePath, {
         providerId: 'some-id',
-        model: 'model',
-      });
-      expect(status).toBe(400);
-      expect(data.message).toContain('Invalid role');
-    });
-
-    test('rejects missing providerId or model', async () => {
-      const { status, data } = await jsonRequest(app, 'PUT', '/roles/planner', {
-        providerId: 'some-id',
-      });
-      expect(status).toBe(400);
-      expect(data.message).toContain('providerId and model are required');
-    });
-
-    test('returns 404 for non-existent provider', async () => {
-      const { status } = await jsonRequest(app, 'PUT', '/roles/planner', {
-        providerId: 'non-existent',
         model: 'model',
       });
       expect(status).toBe(404);

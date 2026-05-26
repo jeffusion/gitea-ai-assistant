@@ -18,3 +18,5 @@ public/
 
 # Lock files (frontend has its own)
 frontend/package-lock.json
+.omo/
+.opencode/

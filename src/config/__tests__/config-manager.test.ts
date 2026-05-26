@@ -86,7 +86,6 @@ describe('ConfigManager (DB backend)', () => {
       expect(cfg.notification.feishu.webhookSecret).toBeUndefined();
       expect(cfg.notification.wecom.webhookUrl).toBeUndefined();
       expect(cfg.admin.giteaAdminToken).toBeUndefined();
-      expect(cfg.review.qdrantUrl).toBeUndefined();
     });
 
     test('returns review size thresholds and token budget defaults', () => {
@@ -98,6 +97,12 @@ describe('ConfigManager (DB backend)', () => {
       expect(cfg.review.tokenBudgetSmall).toBe(12000);
       expect(cfg.review.tokenBudgetMedium).toBe(45000);
       expect(cfg.review.tokenBudgetLarge).toBe(120000);
+    });
+
+    test('returns runtime agent model defaults', () => {
+      const cfg = configManager.getCurrent();
+      expect(cfg.review.agentMainModel).toBe('gpt-4.1');
+      expect(cfg.review.agentDefaultSubagentModel).toBe('gpt-4.1-mini');
     });
   });
 
@@ -195,16 +200,6 @@ describe('ConfigManager (DB backend)', () => {
   // ─── 5. Type conversions ─────────────────────────────────────────────────
 
   describe('type conversions in getCurrent()', () => {
-    test('boolean field "true" → true', async () => {
-      await configManager.setOverrides({ REVIEW_ENABLE_HUMAN_GATE: 'true' });
-      expect(configManager.getCurrent().review.enableHumanGate).toBe(true);
-    });
-
-    test('boolean field "false" → false', async () => {
-      await configManager.setOverrides({ REVIEW_ENABLE_HUMAN_GATE: 'false' });
-      expect(configManager.getCurrent().review.enableHumanGate).toBe(false);
-    });
-
     test('number field is parsed correctly', async () => {
       await configManager.setOverrides({ REVIEW_MAX_PARALLEL_RUNS: '4' });
       expect(configManager.getCurrent().review.maxParallelRuns).toBe(4);
@@ -218,6 +213,17 @@ describe('ConfigManager (DB backend)', () => {
 
       expect(configManager.getCurrent().review.smallMaxFiles).toBe(5);
       expect(configManager.getCurrent().review.tokenBudgetSmall).toBe(22222);
+    });
+
+    test('agent model fields are read from overrides', async () => {
+      await configManager.setOverrides({
+        AGENT_MAIN_MODEL: 'main-override-model',
+        AGENT_DEFAULT_SUBAGENT_MODEL: 'subagent-override-model',
+      });
+
+      const cfg = configManager.getCurrent();
+      expect(cfg.review.agentMainModel).toBe('main-override-model');
+      expect(cfg.review.agentDefaultSubagentModel).toBe('subagent-override-model');
     });
 
     test('comma-separated REVIEW_ALLOWED_COMMANDS parsed to array', async () => {

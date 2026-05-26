@@ -12,7 +12,6 @@ This project keeps the root `README.md` concise and moves implementation/deploym
 
 ## Architecture & design
 
-- [Pluggable LLM providers](./design/pluggable-llm-providers.md)
 - [Notification service refactoring](./design/notification-service-refactoring.md)
 - [UI theme language](./design/ui-theme-language.md)
 

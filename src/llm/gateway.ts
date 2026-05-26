@@ -2,17 +2,15 @@
  * LLM Gateway — the sole entry point for all business-layer LLM calls.
  *
  * Responsibilities:
- *   1. Look up model_role_assignments → provider_id + model for a given role
- *   2. Load (or cache) LLMProvider instances with decrypted API keys
- *   3. Route chat() calls to the correct adapter
- *   4. Invalidate cache when provider config changes via UI
- *   5. Concurrency control + retry-with-backoff for resilience
+ *   1. Load (or cache) LLMProvider instances with decrypted API keys
+ *   2. Route chat() calls to the correct adapter
+ *   3. Invalidate cache when provider config changes via UI
+ *   4. Concurrency control + retry-with-backoff for resilience
  */
 
-import { type ModelRole, modelRoleRepo } from '../db/repositories/model-role-repo';
 import { providerRepo } from '../db/repositories/provider-repo';
 import { secretRepo } from '../db/repositories/secret-repo';
-import { LLMAuthError, LLMError, LLMNoProviderError } from './errors';
+import { LLMAuthError, LLMError } from './errors';
 import { createAnthropicProvider } from './providers/anthropic';
 import type { LLMProvider } from './providers/base';
 import { createGeminiProvider } from './providers/gemini';
@@ -54,28 +52,6 @@ export class LLMGateway {
   }
 
   /**
-   * Call LLM by business role. The role determines which provider + model to use.
-   * The `model` field in the request is ignored — it's resolved from the DB assignment.
-   */
-  async chatForRole(
-    role: ModelRole,
-    request: Omit<LLMChatRequest, 'model'>
-  ): Promise<LLMChatResponse> {
-    const assignment = modelRoleRepo.getByRole(role);
-    if (!assignment) throw new LLMNoProviderError(role);
-
-    return withResilience(
-      this.semaphore,
-      () => {
-        const provider = this.getOrCreateProvider(assignment.provider_id);
-        return provider.chat({ ...request, model: assignment.model });
-      },
-      this.retryOptions,
-      role
-    );
-  }
-
-  /**
    * Direct call to a specific provider (used for connection testing).
    */
   async chatDirect(providerId: string, request: LLMChatRequest): Promise<LLMChatResponse> {
@@ -87,30 +63,6 @@ export class LLMGateway {
       },
       this.retryOptions,
       `direct:${providerId}`
-    );
-  }
-
-  /**
-   * Embedding via the provider assigned to the 'embedding' role.
-   */
-  async embedForRole(texts: string[]): Promise<number[][]> {
-    const assignment = modelRoleRepo.getByRole('embedding');
-    if (!assignment) throw new LLMNoProviderError('embedding');
-
-    return withResilience(
-      this.semaphore,
-      () => {
-        const provider = this.getOrCreateProvider(assignment.provider_id);
-        if (!provider.embed) {
-          throw new LLMError(
-            `Provider '${provider.type}' does not support embeddings`,
-            provider.type
-          );
-        }
-        return provider.embed(texts);
-      },
-      this.retryOptions,
-      'embedding'
     );
   }
 

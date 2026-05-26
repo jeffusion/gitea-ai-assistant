@@ -49,7 +49,9 @@ openssl rand -hex 32
 ## 3) LLM
 
 - Provider：OpenAI Compatible / OpenAI Responses / Anthropic / Gemini
-- 角色模型：planner、specialist、judge、embedding
+- Agent 运行时模型：
+  - `AGENT_MAIN_MODEL`：在没有更具体模型配置时，Agent 运行时使用的主模型名称。默认值为 `gpt-4.1`。
+  - `AGENT_DEFAULT_SUBAGENT_MODEL`：当子代理（Subagent）未声明模型且 spawn 未覆盖时，使用的默认模型名称。默认值为 `gpt-4.1-mini`。
 
 ## 4) 通知
 
@@ -59,7 +61,7 @@ openssl rand -hex 32
 ## 5) 审查
 
 - 引擎模式：`agent` / `codex`
-- Triage 开关
+- Triage 规模分类与路由提示
 - 规模阈值（`small`/`medium`/`large`）
 - 执行模式（`skip`/`light`/`full`）
 - Token 预算与并发限制
@@ -69,10 +71,15 @@ openssl rand -hex 32
 > - `small/medium/large`：变更规模分类
 > - `skip/light/full`：审查执行深度
 
-## 6) 记忆与学习（可选）
+## Agent 定义
 
-- `ENABLE_MEMORY`（默认 `false`）
-- Qdrant URL
-- Reflection / Debate 开关
+项目的 Agent 定义以带有 Frontmatter 的 Markdown 文件形式存储在仓库中：
+- 路径：`.gitea-assistant/agents/*.md`
 
-仅在开启记忆能力时需要 Qdrant。
+这些文件定义了每个 Agent 的系统提示词、元数据和执行参数。
+
+## 工具权限
+
+工具权限直接在每个 Agent 的定义文件中进行控制：
+- `tools`：允许该 Agent 调用的工具名称白名单。如果列表为空，则不授予任何工具权限。
+- `disallowedTools`：显式禁止该 Agent 调用的工具名称黑名单。黑名单的优先级高于白名单。

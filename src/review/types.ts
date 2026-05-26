@@ -12,18 +12,6 @@ export type ReviewMode = 'skip' | 'light' | 'full';
 
 export type ReviewSize = 'small' | 'medium' | 'large';
 
-export interface ReviewTask {
-  domain: FindingCategory;
-  paths: string[];
-  riskTags: string[];
-  mode: ReviewMode;
-  tokenBudget: number;
-  maxIterations: number;
-  allowTools: boolean;
-  allowReflection: boolean;
-  allowDebate: boolean;
-}
-
 export interface ReviewBudgetPolicy {
   smallMaxFiles: number;
   smallMaxChangedLines: number;

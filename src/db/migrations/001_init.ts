@@ -4,7 +4,6 @@
  * Creates tables:
  *   - llm_providers: Provider instance configuration
  *   - llm_secrets: Encrypted API key storage
- *   - model_role_assignments: Business role → provider+model mapping
  *   - system_settings: Generic KV settings store
  */
 
@@ -48,22 +47,6 @@ export const migration001Init: Migration = {
       )
     `);
 
-    // ── Table 3: model_role_assignments ─────────────────────────────────
-    db.exec(`
-      CREATE TABLE model_role_assignments (
-        role          TEXT PRIMARY KEY CHECK (role IN (
-                        'planner',
-                        'specialist',
-                        'judge',
-                        'embedding'
-                      )),
-        provider_id   TEXT NOT NULL REFERENCES llm_providers(id),
-        model         TEXT NOT NULL,
-        updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
-      )
-    `);
-
-    // ── Table 4: system_settings ────────────────────────────────────────
     db.exec(`
       CREATE TABLE system_settings (
         key           TEXT PRIMARY KEY,

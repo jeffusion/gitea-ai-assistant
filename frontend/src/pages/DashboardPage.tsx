@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { LogOut, Bot, FolderGit2, Sliders, Bell, Menu, X, PanelLeftClose, PanelLeftOpen, FileSearch, Sun, Moon, Palette } from 'lucide-react';
+import { LogOut, Bot, FolderGit2, Sliders, Bell, Menu, X, PanelLeftClose, PanelLeftOpen, FileSearch, Sun, Moon, Palette, Layers } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { isColorPalette, useColorPalette } from '@/hooks/useColorPalette';
@@ -11,6 +11,7 @@ const navItems = [
   { path: '/config', label: '系统配置', icon: Sliders },
   { path: '/notifications', label: '通知管理', icon: Bell },
   { path: '/review-config', label: '审查配置', icon: FileSearch },
+  { path: '/review-runs', label: '审查任务', icon: Layers },
 ] as const;
 
 export default function DashboardPage() {

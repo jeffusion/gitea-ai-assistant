@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-AI-powered code review assistant for Gitea. It receives webhooks, runs staged AI review workflows, and posts summary + line-level feedback back to Gitea.
+AI-powered code review assistant for Gitea. It receives webhooks, runs AI review workflows, and posts summary + line-level feedback back to Gitea.
 
 - English docs: [./docs/README.md](./docs/README.md)
 - 中文文档: [./docs/README.zh-CN.md](./docs/README.zh-CN.md)
@@ -10,7 +10,7 @@ AI-powered code review assistant for Gitea. It receives webhooks, runs staged AI
 ## Why this project
 
 - 🤖 **Automated PR + commit review** via webhook events (`pull_request`, `status`)
-- 🧠 **Two review engines**: `agent` (staged tasks) and `codex` (Codex CLI pipeline)
+- 🧠 **Two review engines**: `agent` (native Agent pipeline) and `codex` (Codex CLI pipeline)
 - 🧵 **Pluggable LLM providers**: OpenAI Compatible, OpenAI Responses API, Anthropic, Gemini
 - 📍 **Actionable output**: summary comments and line-level findings
 - 🎛️ **Web Admin UI** for runtime configuration (providers, models, webhook, review policy)

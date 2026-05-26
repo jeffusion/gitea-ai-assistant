@@ -6,5 +6,4 @@ namespace: gitea-assistant
 resources:
   - namespace.yaml
   - secret.yaml
-  - qdrant.yaml
   - gitea-assistant.yaml

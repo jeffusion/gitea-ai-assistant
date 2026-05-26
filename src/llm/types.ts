@@ -6,21 +6,6 @@
  */
 
 // ---------------------------------------------------------------------------
-// Model Role
-// ---------------------------------------------------------------------------
-
-/** Business role that maps to a specific provider + model via DB config. */
-export type ModelRole = 'planner' | 'specialist' | 'judge' | 'embedding';
-
-/** All valid model roles. */
-export const MODEL_ROLES: readonly ModelRole[] = [
-  'planner',
-  'specialist',
-  'judge',
-  'embedding',
-] as const;
-
-// ---------------------------------------------------------------------------
 // Provider Type
 // ---------------------------------------------------------------------------
 

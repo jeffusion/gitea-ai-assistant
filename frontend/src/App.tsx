@@ -6,6 +6,7 @@ import { RepositoryManager } from './components/RepositoryManager';
 import { ConfigManager } from './components/ConfigManager';
 import { NotificationConfigPage } from './components/NotificationConfigPage';
 import { ReviewConfigPage } from './components/ReviewConfigPage';
+import ReviewSessionsPage from './pages/ReviewSessionsPage';
 import { Toaster } from "@/components/ui/sonner"
 import { useTheme } from 'next-themes'
 import { ColorPaletteProvider } from './hooks/useColorPalette';
@@ -54,6 +55,7 @@ function AppContent() {
           <Route path="config" element={<ConfigManager />} />
           <Route path="notifications" element={<NotificationConfigPage />} />
           <Route path="review-config" element={<ReviewConfigPage />} />
+          <Route path="review-runs" element={<ReviewSessionsPage />} />
           <Route path="*" element={<Navigate to="/repos" replace />} />
         </Route>
       </Routes>

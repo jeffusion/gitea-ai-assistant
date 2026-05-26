@@ -46,7 +46,7 @@ class CodexEngine {
   }
 
   async start(): Promise<void> {
-    if (this.started) {
+    if (this.started || config.review.engine !== 'codex') {
       return;
     }
 

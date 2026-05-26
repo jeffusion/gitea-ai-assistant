@@ -195,24 +195,6 @@ const configResponse = {
         },
       ],
     },
-    {
-      key: 'memory',
-      label: '记忆设置',
-      description: '控制上下文记忆与保留策略。',
-      icon: 'database',
-      fields: [
-        {
-          envKey: 'MEMORY_ENABLED',
-          label: '启用记忆',
-          description: '是否启用长期记忆',
-          type: 'boolean',
-          sensitive: false,
-          value: true,
-          hasValue: true,
-          source: 'db',
-        },
-      ],
-    },
   ],
 };
 
@@ -240,23 +222,6 @@ const providers = [
     extraConfig: {},
     createdAt: '2026-03-01T00:00:00.000Z',
     updatedAt: '2026-03-02T00:00:00.000Z',
-  },
-];
-
-const roles = [
-  {
-    role: 'planner',
-    providerId: 'provider-openai',
-    providerName: 'OpenAI',
-    providerType: 'openai_responses',
-    model: 'gpt-4o-mini',
-  },
-  {
-    role: 'specialist',
-    providerId: 'provider-deepseek',
-    providerName: 'DeepSeek',
-    providerType: 'openai_compatible',
-    model: 'deepseek-chat',
   },
 ];
 
@@ -373,14 +338,6 @@ export async function installVisualApiMocks(page: Page) {
 
     if (method === 'DELETE' && /\/admin\/api\/llm\/providers\/[^/]+\/key$/.test(path)) {
       return route.fulfill({ status: 204, body: '' });
-    }
-
-    if (method === 'GET' && path.endsWith('/admin/api/llm/roles')) {
-      return json(route, roles);
-    }
-
-    if (method === 'PUT' && /\/admin\/api\/llm\/roles\/[^/]+$/.test(path)) {
-      return json(route, roles[0]);
     }
 
     if (method === 'POST' && /\/admin\/api\/llm\/providers\/[^/]+\/test$/.test(path)) {

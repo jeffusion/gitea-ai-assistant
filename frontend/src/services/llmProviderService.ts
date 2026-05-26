@@ -15,14 +15,6 @@ export interface ProviderDto {
   updatedAt?: string;
 }
 
-export interface RoleAssignmentDto {
-  role: string;
-  providerId: string | null;
-  providerName: string | null;
-  providerType: string | null;
-  model: string | null;
-}
-
 export interface TestResult {
   success: boolean;
   latencyMs?: number;
@@ -73,16 +65,6 @@ export const setApiKey = async (id: string, apiKey: string): Promise<void> => {
 
 export const deleteApiKey = async (id: string): Promise<void> => {
   await api.delete(`/llm/providers/${id}/key`);
-};
-
-export const fetchRoles = async (): Promise<RoleAssignmentDto[]> => {
-  const response = await api.get<RoleAssignmentDto[]>('/llm/roles');
-  return response.data;
-};
-
-export const setRole = async (role: string, providerId: string | null, model: string | null): Promise<RoleAssignmentDto> => {
-  const response = await api.put<RoleAssignmentDto>(`/llm/roles/${role}`, { providerId, model });
-  return response.data;
 };
 
 export const testProvider = async (id: string): Promise<TestResult> => {
