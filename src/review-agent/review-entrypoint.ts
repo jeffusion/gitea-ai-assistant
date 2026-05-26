@@ -11,15 +11,18 @@ import config from '../config';
 import { DiffExtractor } from '../review/context/diff-extractor';
 import type { LocalRepoPaths } from '../review/context/local-repo-manager';
 import { LocalRepoManager } from '../review/context/local-repo-manager';
+import { tokenCounter } from '../review/context/token-counter';
 import { FileReviewStore } from '../review/store/file-review-store';
 import type { Finding, ReviewContext, ReviewRun } from '../review/types';
 import { logger } from '../utils/logger';
 import { applyDeterministicPublishAdapter } from './deterministic-publish-adapter';
+import { buildRepairPrompt, parseFindingResponse } from './schema';
 import {
   type ReviewToolState,
   type SubmittedReviewFindings,
   createReviewTaskTools,
   normalizeSubmission,
+  parseSubmissionFromText,
 } from './tools';
 
 export interface ReviewAgentRepositoryContext {
@@ -88,18 +91,27 @@ function buildSessionScope(run: ReviewRun): string {
 function tryParseFinalSubmission(text?: string): SubmittedReviewFindings | null {
   if (!text) return null;
   try {
-    return normalizeSubmission(JSON.parse(text));
-  } catch {
-    return null;
-  }
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === 'object') {
+      const result = normalizeSubmission(parsed);
+      if (result.findings.length > 0) return result;
+    }
+  } catch {}
+  return parseSubmissionFromText(text);
 }
 
-function buildReviewPrompt(context: ReviewAgentRunContext): string {
+function buildReviewPrompt(context: ReviewAgentRunContext, model?: string): string {
   const changedFiles = context.diffSummary?.changedFiles ?? [];
   const fileSummary = changedFiles
     .map((file) => `- ${file.status} ${file.path} (+${file.additions}/-${file.deletions})`)
     .join('\n');
-  const diff = context.diffSummary?.diff?.trim() || '(diff omitted)';
+  const rawDiff = context.diffSummary?.diff?.trim() || '(diff omitted)';
+
+  const usableBudget = model ? tokenCounter.getUsableBudget(model) : 124_000;
+  const reservedForPrompt = 4000;
+  const diffBudget = Math.max(1000, usableBudget - reservedForPrompt);
+  const diff =
+    tokenCounter.count(rawDiff) > diffBudget ? tokenCounter.clip(rawDiff, diffBudget) : rawDiff;
 
   return [
     'You are the main code review agent for Gitea AI Assistant.',
@@ -271,6 +283,33 @@ export class ReviewAgentEntrypoint {
     return snapshot.headSha;
   }
 
+  private async repairFindingsWithLLM(
+    rawText: string,
+    messages: Array<{ role: string; content: string; toolCalls?: unknown }>,
+    maxAttempts = 2
+  ): Promise<string> {
+    let current = rawText;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const outcome = parseFindingResponse(current);
+      if (outcome.ok) return current;
+      const repairPrompt = buildRepairPrompt(outcome.error);
+      messages.push({ role: 'assistant', content: current });
+      messages.push({ role: 'user', content: repairPrompt });
+      const response = await this.modelClient.chat({
+        messages: messages as import('../llm/types').LLMMessage[],
+        model: this.model,
+        temperature: 0,
+        responseFormat: 'json',
+      });
+      current = response.content ?? '{"findings":[]}';
+      logger.info('LLM finding repair attempt', {
+        attempt: attempt + 1,
+        error: outcome.error.slice(0, 100),
+      });
+    }
+    return current;
+  }
+
   private async runMainAgent(
     run: ReviewRun,
     reviewContext: ReviewContext
@@ -320,10 +359,13 @@ export class ReviewAgentEntrypoint {
     const agentResult = await runner.run({
       agentType: 'review-main-agent',
       model: this.model,
-      userMessage: buildReviewPrompt(runContext),
+      userMessage: buildReviewPrompt(runContext, this.model),
       maxTurns: 8,
       maxToolCalls: 4,
+      maxSubagents: 3,
       timeoutMs: config.review.commandTimeoutMs,
+      maxEmptyResponses: 2,
+      maxConsecutiveToolFailures: 3,
       session: {
         agentType: 'review-main-agent',
         metadata: {
@@ -343,7 +385,20 @@ export class ReviewAgentEntrypoint {
 
     const submitted =
       reviewToolState.submittedReview ?? tryParseFinalSubmission(agentResult.finalText);
-    const submission = submitted ?? { summaryMarkdown: agentResult.finalText ?? '', findings: [] };
+    let submission: SubmittedReviewFindings;
+
+    if (submitted) {
+      submission = submitted;
+    } else if (agentResult.finalText) {
+      const repaired = await this.repairFindingsWithLLM(
+        agentResult.finalText,
+        agentResult.messages
+      );
+      const repairedSubmission = tryParseFinalSubmission(repaired);
+      submission = repairedSubmission ?? { summaryMarkdown: agentResult.finalText, findings: [] };
+    } else {
+      submission = { summaryMarkdown: '', findings: [] };
+    }
     const adapted = await applyDeterministicPublishAdapter({
       store: this.store,
       runId: run.id,

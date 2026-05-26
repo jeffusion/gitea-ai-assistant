@@ -1,8 +1,8 @@
+import { createHash } from 'node:crypto';
 import type { MainAgentTool } from '../../agent-kernel/loop/types';
 import type { Finding, ReviewContext } from '../../review/types';
-
-const VALID_CATEGORIES = ['correctness', 'security', 'reliability', 'maintainability'] as const;
-const VALID_SEVERITIES = ['high', 'medium', 'low'] as const;
+import type { FindingItem } from '../schema';
+import { parseFindingResponse } from '../schema';
 
 export type ReviewAgentFinding = Omit<Finding, 'id' | 'runId' | 'published'>;
 
@@ -51,45 +51,46 @@ function requireObject(value: unknown, message: string): Record<string, unknown>
   return value as Record<string, unknown>;
 }
 
-function requireString(input: Record<string, unknown>, key: string): string {
-  const value = readString(input, key);
-  if (!value) throw new Error(`Finding ${key} must be a non-empty string`);
-  return value;
+function buildFingerprint(category: string, path: string, line: number, title: string): string {
+  return createHash('sha256')
+    .update(JSON.stringify([category, path, line, title]))
+    .digest('hex')
+    .slice(0, 24);
+}
+
+function findingItemToReviewAgent(item: FindingItem): ReviewAgentFinding {
+  const category = item.category ?? 'correctness';
+  return {
+    fingerprint: item.fingerprint || buildFingerprint(category, item.path, item.line, item.title),
+    category,
+    severity: item.severity,
+    confidence: item.confidence ?? 0.8,
+    path: item.path,
+    line: item.line,
+    title: item.title,
+    detail: item.detail,
+    evidence: item.evidence ?? '',
+    suggestion: item.suggestion ?? '',
+  };
+}
+
+/** Parse raw JSON text into validated SubmittedReviewFindings using Zod schema. */
+export function parseSubmissionFromText(raw: string): SubmittedReviewFindings | null {
+  const outcome = parseFindingResponse(raw);
+  if (!outcome.ok) return null;
+  return {
+    summaryMarkdown: '',
+    findings: outcome.findings.map(findingItemToReviewAgent),
+  };
 }
 
 function normalizeFinding(value: unknown): ReviewAgentFinding {
-  const input = requireObject(value, 'Each finding must be an object');
-
-  const category = readString(input, 'category');
-  if (!category || !VALID_CATEGORIES.includes(category as (typeof VALID_CATEGORIES)[number])) {
-    throw new Error(
-      'Finding category must be correctness, security, reliability, or maintainability'
-    );
+  const outcome = parseFindingResponse(JSON.stringify({ findings: [value] }));
+  if (outcome.ok && outcome.findings.length > 0) {
+    return findingItemToReviewAgent(outcome.findings[0]);
   }
-
-  const severity = readString(input, 'severity');
-  if (!severity || !VALID_SEVERITIES.includes(severity as (typeof VALID_SEVERITIES)[number])) {
-    throw new Error('Finding severity must be high, medium, or low');
-  }
-
-  const path = requireString(input, 'path');
-  const line = readNumber(input, 'line');
-  if (line === undefined) throw new Error('Finding line must be a number');
-  const title = requireString(input, 'title');
-  const detail = requireString(input, 'detail');
-
-  return {
-    fingerprint: readString(input, 'fingerprint') || `${category}:${path}:${line}:${title}`,
-    category,
-    severity,
-    confidence: readNumber(input, 'confidence') ?? 0.8,
-    path,
-    line,
-    title,
-    detail,
-    evidence: readString(input, 'evidence') ?? '',
-    suggestion: readString(input, 'suggestion') ?? '',
-  } as ReviewAgentFinding;
+  const detail = !outcome.ok ? outcome.error : 'no valid findings in response';
+  throw new Error(`Finding validation failed: ${detail}`);
 }
 
 export function normalizeSubmission(value: unknown): SubmittedReviewFindings {

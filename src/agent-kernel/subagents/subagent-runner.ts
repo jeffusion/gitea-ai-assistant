@@ -97,6 +97,7 @@ export class SubagentRunner implements SpawnSubagentExecutor {
       availableTools: this.tools,
       allowedToolNames: input.agentDefinition.tools,
       disallowedToolNames: input.agentDefinition.disallowedTools,
+      allowListSpecified: true,
     });
 
     const invocation = this.transcriptRepository.createInvocation({

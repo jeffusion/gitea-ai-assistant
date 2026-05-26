@@ -76,7 +76,9 @@ export class TokenCounter {
     if (text.length <= maxChars) {
       return text;
     }
-    return `${text.slice(0, maxChars)}\n... [truncated, exceeded ${maxTokens} token budget]`;
+    const lastNewline = text.lastIndexOf('\n', maxChars);
+    const cutPoint = lastNewline > maxChars * 0.5 ? lastNewline : maxChars;
+    return `${text.slice(0, cutPoint)}\n... [truncated, exceeded ${maxTokens} token budget]`;
   }
 
   // -------------------------------------------------------------------------

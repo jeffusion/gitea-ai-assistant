@@ -16,7 +16,10 @@ export type MainAgentTerminalStatus =
   | 'completed'
   | 'max_turns_reached'
   | 'max_tool_calls_reached'
-  | 'timeout_reached';
+  | 'max_subagents_reached'
+  | 'timeout_reached'
+  | 'max_empty_responses'
+  | 'max_consecutive_tool_failures';
 
 export interface MainAgentModelClient {
   chat(request: LLMChatRequest): Promise<LLMChatResponse>;
@@ -29,8 +32,19 @@ export interface MainAgentToolContext {
   turn: number;
 }
 
+export type ToolPermissionScope =
+  | 'read'
+  | 'write'
+  | 'command'
+  | 'network'
+  | 'git_write'
+  | 'cross_session';
+
+export type ToolPermissionBehavior = 'allow' | 'deny';
+
 export interface MainAgentTool {
   definition: LLMToolDefinition;
+  permissionScope?: ToolPermissionScope;
   execute(argumentsValue: unknown, context: MainAgentToolContext): Promise<unknown> | unknown;
 }
 
@@ -79,7 +93,10 @@ export interface MainAgentRunInput {
   providerOptions?: Record<string, unknown>;
   maxTurns: number;
   maxToolCalls: number;
+  maxSubagents?: number;
   timeoutMs: number;
+  maxEmptyResponses?: number;
+  maxConsecutiveToolFailures?: number;
 }
 
 export interface MainAgentRunResult {
