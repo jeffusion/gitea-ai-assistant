@@ -204,4 +204,13 @@ describe('review task tools', () => {
     expect(result).toMatchObject({ accepted: false });
     expect(state.submittedReview).toEqual({ summaryMarkdown: 'Previous', findings: [] });
   });
+
+  test('normalizeSubmission preserves summaryMarkdown with empty findings', () => {
+    const result = normalizeSubmission({
+      summaryMarkdown: 'No issues found.',
+      findings: [],
+    });
+    expect(result.summaryMarkdown).toBe('No issues found.');
+    expect(result.findings).toEqual([]);
+  });
 });

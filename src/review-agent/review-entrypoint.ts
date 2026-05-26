@@ -94,7 +94,7 @@ function tryParseFinalSubmission(text?: string): SubmittedReviewFindings | null 
     const parsed = JSON.parse(text);
     if (parsed && typeof parsed === 'object') {
       const result = normalizeSubmission(parsed);
-      if (result.findings.length > 0) return result;
+      if (result.findings.length > 0 || result.summaryMarkdown) return result;
     }
   } catch {}
   return parseSubmissionFromText(text);

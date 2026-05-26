@@ -34,6 +34,18 @@ function buildFingerprint(category: string, path: string, line: number, title: s
     .slice(0, 24);
 }
 
+function buildLegacyFingerprint(
+  category: string,
+  path: string,
+  line: number,
+  title: string
+): string {
+  return createHash('sha256')
+    .update(`${category}:${path}:${line}:${title}`)
+    .digest('hex')
+    .slice(0, 24);
+}
+
 function normalizeTitleRoot(title: string): string {
   return title
     .toLowerCase()
@@ -129,6 +141,15 @@ export async function applyDeterministicPublishAdapter(params: {
   const existingPublished = new Map<string, boolean>();
   for (const finding of details?.findings ?? []) {
     existingPublished.set(finding.fingerprint, finding.published);
+    const legacy = buildLegacyFingerprint(
+      finding.category,
+      finding.path,
+      finding.line,
+      finding.title
+    );
+    if (legacy !== finding.fingerprint) {
+      existingPublished.set(legacy, finding.published);
+    }
   }
 
   const findings: Finding[] = normalized.map((finding) => ({

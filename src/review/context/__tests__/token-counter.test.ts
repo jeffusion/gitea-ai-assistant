@@ -121,4 +121,21 @@ describe('TokenCounter dynamic catalog', () => {
     // Should not throw
     counter.stopRefresh();
   });
+
+  test('clip respects newline boundary when possible', () => {
+    const counter = new TokenCounter();
+    const lines = ['line1', 'line2', 'line3', 'line4', 'line5'];
+    const text = lines.join('\n');
+    const budget = 3;
+    const clipped = counter.clip(text, budget);
+    expect(clipped).toContain('... [truncated');
+    expect(clipped.includes('\n')).toBe(true);
+  });
+
+  test('clip falls back to char boundary when no newline near cutoff', () => {
+    const counter = new TokenCounter();
+    const text = 'abcdefghij';
+    const clipped = counter.clip(text, 2);
+    expect(clipped).toContain('... [truncated');
+  });
 });

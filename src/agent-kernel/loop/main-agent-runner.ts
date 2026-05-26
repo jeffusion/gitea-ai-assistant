@@ -209,16 +209,6 @@ export class MainAgentRunner {
           consecutiveToolFailures = 0;
         }
 
-        if (!result.ok && consecutiveToolFailures >= maxConsecutiveToolFailures) {
-          return this.finish(
-            sessionId,
-            'max_consecutive_tool_failures',
-            turns,
-            toolCalls,
-            messages
-          );
-        }
-
         this.transcriptRepository.appendToolCall({
           sessionId,
           messageId: assistantRecord.id,
@@ -244,6 +234,16 @@ export class MainAgentRunner {
             result,
           },
         });
+
+        if (!result.ok && consecutiveToolFailures >= maxConsecutiveToolFailures) {
+          return this.finish(
+            sessionId,
+            'max_consecutive_tool_failures',
+            turns,
+            toolCalls,
+            messages
+          );
+        }
       }
     }
   }
