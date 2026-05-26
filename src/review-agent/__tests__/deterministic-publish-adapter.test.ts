@@ -114,4 +114,59 @@ describe('applyDeterministicPublishAdapter deduplication', () => {
       .slice(0, 24);
     expect(legacy).not.toBe(modern);
   });
+
+  it('preserves published=true when migrating from legacy to modern fingerprint', async () => {
+    const legacy = createHash('sha256')
+      .update('security:src/auth.ts:42:SQL injection')
+      .digest('hex')
+      .slice(0, 24);
+
+    const store = {
+      getRunDetails: async () => ({
+        findings: [
+          {
+            id: 'old-1',
+            runId: 'run-migrate',
+            category: 'security',
+            severity: 'high',
+            path: 'src/auth.ts',
+            line: 42,
+            title: 'SQL injection',
+            detail: 'Use parameterized queries.',
+            evidence: '',
+            suggestion: '',
+            confidence: 0.9,
+            fingerprint: legacy,
+            published: true,
+          },
+        ],
+        comments: [],
+      }),
+      addFindings: async () => {},
+      addCommentRecord: async () => {},
+    } as any;
+
+    const result = await applyDeterministicPublishAdapter({
+      store,
+      runId: 'run-migrate',
+      submission: {
+        summaryMarkdown: 'Found SQL injection.',
+        findings: [
+          {
+            category: 'security',
+            severity: 'high',
+            path: 'src/auth.ts',
+            line: 42,
+            title: 'SQL injection',
+            detail: 'Use parameterized queries.',
+            evidence: '',
+            suggestion: '',
+            confidence: 0.9,
+            fingerprint: '',
+          },
+        ],
+      },
+    });
+    expect(result.findings[0].published).toBe(true);
+  });
 });
