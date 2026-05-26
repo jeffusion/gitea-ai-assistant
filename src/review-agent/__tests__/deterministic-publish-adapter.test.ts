@@ -98,4 +98,20 @@ describe('applyDeterministicPublishAdapter deduplication', () => {
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0].severity).toBe('high');
   });
+
+  it('fingerprint migration: legacy colon-format matches new JSON tuple format', () => {
+    const category = 'security';
+    const path = 'src/auth.ts';
+    const line = 42;
+    const title = 'SQL injection';
+    const legacy = createHash('sha256')
+      .update(`${category}:${path}:${line}:${title}`)
+      .digest('hex')
+      .slice(0, 24);
+    const modern = createHash('sha256')
+      .update(JSON.stringify([category, path, line, title]))
+      .digest('hex')
+      .slice(0, 24);
+    expect(legacy).not.toBe(modern);
+  });
 });
