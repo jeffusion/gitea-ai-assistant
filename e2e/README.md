@@ -153,6 +153,7 @@ cat > /tmp/webhook_payload.json << EOF
   },
   "repository": {
     "full_name": "e2e-admin/e2e-test-repo",
+    "name": "e2e-test-repo",
     "owner": { "login": "e2e-admin" },
     "clone_url": "http://gitea:3000/e2e-admin/e2e-test-repo.git"
   },
@@ -160,15 +161,15 @@ cat > /tmp/webhook_payload.json << EOF
 }
 EOF
 
-# 计算 HMAC 签名
-PAYLOAD=$(cat /tmp/webhook_payload.json)
-SIG=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "e2e-test-secret" -binary | xxd -p -c 256)
+# 计算 HMAC 签名（注意：必须基于文件内容计算，避免 shell 变量传递时改变内容）
+SIG=$(cat /tmp/webhook_payload.json | openssl dgst -sha256 -hmac "e2e-test-secret" | awk '{print $NF}')
 
-# 发送 webhook
+# 发送 webhook（⚠️ 必须用 --data-binary 而非 -d，否则换行符被剥离导致签名不匹配）
 curl -s -X POST "http://localhost:3334/webhook/gitea" \
   -H "Content-Type: application/json" \
+  -H "X-Gitea-Event: pull_request" \
   -H "X-Gitea-Signature: ${SIG}" \
-  -d "$PAYLOAD"
+  --data-binary @/tmp/webhook_payload.json
 ```
 
 ### 6. 验证审查结果

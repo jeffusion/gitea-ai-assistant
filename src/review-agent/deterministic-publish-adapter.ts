@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { applyPublishPolicy } from '../review/policy/publish-policy';
 import type { FileReviewStore } from '../review/store/file-review-store';
 import type { Finding, ReviewCommentRecord } from '../review/types';
@@ -27,6 +27,13 @@ function rankFinding(finding: ReviewAgentFinding): number {
   return severityWeight(finding.severity) * 1000 + Math.round(finding.confidence * 100);
 }
 
+function buildFingerprint(category: string, path: string, line: number, title: string): string {
+  return createHash('sha256')
+    .update(JSON.stringify([category, path, line, title]))
+    .digest('hex')
+    .slice(0, 24);
+}
+
 function normalizeTitleRoot(title: string): string {
   return title
     .toLowerCase()
@@ -40,8 +47,11 @@ function similarityKey(finding: ReviewAgentFinding): string {
 }
 
 function dedupeFindings(candidates: ReviewAgentFinding[]): ReviewAgentFinding[] {
+  const ensured = candidates.map((f) =>
+    f.fingerprint ? f : { ...f, fingerprint: buildFingerprint(f.category, f.path, f.line, f.title) }
+  );
   const byFingerprint = new Map<string, ReviewAgentFinding>();
-  for (const finding of candidates) {
+  for (const finding of ensured) {
     const existing = byFingerprint.get(finding.fingerprint);
     if (!existing || rankFinding(finding) > rankFinding(existing)) {
       byFingerprint.set(finding.fingerprint, finding);

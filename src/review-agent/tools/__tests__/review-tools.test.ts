@@ -111,21 +111,7 @@ describe('review task tools', () => {
   });
 
   test('normalizeSubmission fills defaults and generated fingerprint', () => {
-    expect(
-      normalizeSubmission({
-        summaryMarkdown: 'Summary',
-        findings: [
-          {
-            category: 'maintainability',
-            severity: 'medium',
-            path: 'src/app.ts',
-            line: 2,
-            title: 'Extract helper',
-            detail: 'The logic is duplicated.',
-          },
-        ],
-      })
-    ).toEqual({
+    const result = normalizeSubmission({
       summaryMarkdown: 'Summary',
       findings: [
         {
@@ -135,12 +121,22 @@ describe('review task tools', () => {
           line: 2,
           title: 'Extract helper',
           detail: 'The logic is duplicated.',
-          confidence: 0.8,
-          evidence: '',
-          suggestion: '',
-          fingerprint: 'maintainability:src/app.ts:2:Extract helper',
         },
       ],
+    });
+    expect(result.summaryMarkdown).toBe('Summary');
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]).toMatchObject({
+      category: 'maintainability',
+      severity: 'medium',
+      path: 'src/app.ts',
+      line: 2,
+      title: 'Extract helper',
+      detail: 'The logic is duplicated.',
+      confidence: 0.8,
+      evidence: '',
+      suggestion: '',
+      fingerprint: 'd90c88d5929c2859b8591d69',
     });
   });
 
@@ -171,7 +167,7 @@ describe('review task tools', () => {
       confidence: 0.8,
       evidence: '',
       suggestion: '',
-      fingerprint: 'reliability:src/app.ts:2:Token may be undefined',
+      fingerprint: 'f226057a37399d83b53cbeed',
     });
   });
 

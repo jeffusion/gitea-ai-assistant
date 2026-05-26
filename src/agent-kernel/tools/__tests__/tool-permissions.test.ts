@@ -1,64 +1,101 @@
 import { describe, expect, test } from 'bun:test';
 import type { MainAgentTool } from '../../loop';
-import { resolveAgentTools } from '../tool-permissions';
+import type { ToolPermissionScope } from '../../loop/types';
+import {
+  DEFAULT_SCOPE_POLICY,
+  evaluateToolPermission,
+  resolveAgentTools,
+} from '../tool-permissions';
 
-function tool(name: string): MainAgentTool {
+function tool(name: string, scope?: ToolPermissionScope): MainAgentTool {
   return {
     definition: {
       name,
       description: `${name} tool`,
       parameters: { type: 'object' },
     },
+    permissionScope: scope,
     execute: () => ({ name }),
   };
 }
 
-describe('resolveAgentTools', () => {
-  const availableTools = [tool('read_file'), tool('write_file'), tool('lookup')];
+describe('evaluateToolPermission', () => {
+  test('allows read scope', () => {
+    expect(evaluateToolPermission(tool('read_file', 'read')).behavior).toBe('allow');
+  });
 
-  test('returns the explicitly allowed subset', () => {
+  test('denies write scope', () => {
+    expect(evaluateToolPermission(tool('write_file', 'write')).behavior).toBe('deny');
+  });
+
+  test('denies command scope', () => {
+    expect(evaluateToolPermission(tool('run_bash', 'command')).behavior).toBe('deny');
+  });
+
+  test('denies network scope', () => {
+    expect(evaluateToolPermission(tool('http_request', 'network')).behavior).toBe('deny');
+  });
+
+  test('defaults to read scope when unspecified', () => {
+    expect(evaluateToolPermission(tool('search_code')).behavior).toBe('allow');
+  });
+});
+
+describe('resolveAgentTools', () => {
+  const readTool = tool('read_file', 'read');
+  const writeTool = tool('write_file', 'write');
+  const searchTool = tool('search_code', 'read');
+
+  test('includes allowed tool names regardless of scope', () => {
     const resolved = resolveAgentTools({
-      availableTools,
-      allowedToolNames: ['lookup', 'read_file'],
+      availableTools: [writeTool],
+      allowedToolNames: ['write_file'],
       disallowedToolNames: [],
     });
-
-    expect(resolved.tools.map((item) => item.definition.name)).toEqual(['read_file', 'lookup']);
-    expect(resolved.deniedToolNames).toEqual(['write_file']);
-    expect(resolved.unknownAllowedToolNames).toEqual([]);
+    expect(resolved.tools).toHaveLength(1);
+    expect(resolved.tools[0].definition.name).toBe('write_file');
   });
 
-  test('removes disallowed tools even when they are explicitly allowed', () => {
+  test('excludes disallowed tool names regardless of scope', () => {
     const resolved = resolveAgentTools({
-      availableTools,
-      allowedToolNames: ['read_file', 'write_file'],
-      disallowedToolNames: ['write_file'],
+      availableTools: [readTool],
+      allowedToolNames: ['read_file'],
+      disallowedToolNames: ['read_file'],
     });
-
-    expect(resolved.tools.map((item) => item.definition.name)).toEqual(['read_file']);
-    expect(resolved.deniedToolNames).toEqual(['write_file', 'lookup']);
+    expect(resolved.tools).toHaveLength(0);
+    expect(resolved.deniedToolNames).toContain('read_file');
   });
 
-  test('treats an empty allow-list as no tools allowed', () => {
+  test('filters by scope policy when not in allowed/disallowed lists', () => {
     const resolved = resolveAgentTools({
-      availableTools,
+      availableTools: [readTool, writeTool, searchTool],
       allowedToolNames: [],
       disallowedToolNames: [],
     });
-
-    expect(resolved.tools).toEqual([]);
-    expect(resolved.deniedToolNames).toEqual(['read_file', 'write_file', 'lookup']);
+    const names = resolved.tools.map((t) => t.definition.name);
+    expect(names).toContain('read_file');
+    expect(names).toContain('search_code');
+    expect(names).not.toContain('write_file');
   });
 
-  test('reports unknown allow-list names without granting tools', () => {
+  test('reports unknown allowed/disallowed names', () => {
     const resolved = resolveAgentTools({
-      availableTools,
-      allowedToolNames: ['lookup', 'missing_tool'],
-      disallowedToolNames: ['unknown_deny'],
+      availableTools: [readTool],
+      allowedToolNames: ['missing_tool'],
+      disallowedToolNames: ['ghost_tool'],
     });
+    expect(resolved.unknownAllowedToolNames).toContain('missing_tool');
+    expect(resolved.unknownDisallowedToolNames).toContain('ghost_tool');
+  });
+});
 
-    expect(resolved.tools.map((item) => item.definition.name)).toEqual(['lookup']);
-    expect(resolved.unknownAllowedToolNames).toEqual(['missing_tool']);
-    expect(resolved.unknownDisallowedToolNames).toEqual(['unknown_deny']);
+describe('DEFAULT_SCOPE_POLICY', () => {
+  test('only allows read scope', () => {
+    expect(DEFAULT_SCOPE_POLICY.read).toBe('allow');
+    expect(DEFAULT_SCOPE_POLICY.write).toBe('deny');
+    expect(DEFAULT_SCOPE_POLICY.command).toBe('deny');
+    expect(DEFAULT_SCOPE_POLICY.network).toBe('deny');
+    expect(DEFAULT_SCOPE_POLICY.git_write).toBe('deny');
+    expect(DEFAULT_SCOPE_POLICY.cross_session).toBe('deny');
   });
 });

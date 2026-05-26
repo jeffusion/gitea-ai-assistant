@@ -1,4 +1,8 @@
-export { createReviewTaskTools, normalizeSubmission } from './review-tools';
+export {
+  createReviewTaskTools,
+  normalizeSubmission,
+  parseSubmissionFromText,
+} from './review-tools';
 export type {
   CreateReviewTaskToolsOptions,
   ReviewToolState,

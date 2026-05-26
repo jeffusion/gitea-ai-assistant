@@ -84,9 +84,23 @@ export class MainAgentRunner {
 
     let turns = 0;
     let toolCalls = 0;
+    let subagentCount = 0;
+    let emptyResponseCount = 0;
+    let consecutiveToolFailures = 0;
+    const maxSubagents = input.maxSubagents ?? Number.POSITIVE_INFINITY;
+    const maxEmptyResponses = input.maxEmptyResponses ?? 3;
+    const maxConsecutiveToolFailures = input.maxConsecutiveToolFailures ?? 5;
 
     while (true) {
-      const budgetStatus = this.getBudgetStatus(input, startedAt, turns);
+      const budgetStatus = this.getBudgetStatus(
+        input,
+        startedAt,
+        turns,
+        emptyResponseCount,
+        consecutiveToolFailures,
+        maxEmptyResponses,
+        maxConsecutiveToolFailures
+      );
       if (budgetStatus) {
         return this.finish(sessionId, budgetStatus, turns, toolCalls, messages);
       }
@@ -102,6 +116,20 @@ export class MainAgentRunner {
       });
 
       turns += 1;
+
+      if (!response.content?.trim() && response.toolCalls.length === 0) {
+        emptyResponseCount += 1;
+        messages.push({ role: 'assistant', content: '' });
+        this.transcriptRepository.appendMessage({
+          sessionId,
+          role: 'assistant',
+          content: { text: '' },
+        });
+        continue;
+      }
+
+      emptyResponseCount = 0;
+
       const assistantMessage: LLMMessage = {
         role: 'assistant',
         content: response.content ?? '',
@@ -139,8 +167,57 @@ export class MainAgentRunner {
           return this.finish(sessionId, 'max_tool_calls_reached', turns, toolCalls, messages);
         }
 
+        if (toolCall.name === 'spawn_subagent') {
+          if (subagentCount >= maxSubagents) {
+            const refusalMessage: LLMMessage = {
+              role: 'tool',
+              toolCallId: toolCall.id,
+              content: JSON.stringify({
+                ok: false,
+                error: {
+                  name: 'BudgetExceeded',
+                  message: `Subagent limit reached (${maxSubagents}). Please summarize your findings instead.`,
+                },
+              }),
+            };
+            messages.push(refusalMessage);
+            this.transcriptRepository.appendMessage({
+              sessionId,
+              role: 'tool',
+              content: {
+                toolCallId: toolCall.id,
+                toolName: toolCall.name,
+                result: {
+                  ok: false,
+                  error: {
+                    name: 'BudgetExceeded',
+                    message: `Subagent limit reached (${maxSubagents})`,
+                  },
+                },
+              },
+            });
+            continue;
+          }
+          subagentCount += 1;
+        }
+
         const result = await this.executeTool(toolCall, sessionId, input.model, turns);
         toolCalls += 1;
+        if (!result.ok) {
+          consecutiveToolFailures += 1;
+        } else {
+          consecutiveToolFailures = 0;
+        }
+
+        if (!result.ok && consecutiveToolFailures >= maxConsecutiveToolFailures) {
+          return this.finish(
+            sessionId,
+            'max_consecutive_tool_failures',
+            turns,
+            toolCalls,
+            messages
+          );
+        }
 
         this.transcriptRepository.appendToolCall({
           sessionId,
@@ -174,10 +251,17 @@ export class MainAgentRunner {
   private getBudgetStatus(
     input: MainAgentRunInput,
     startedAt: number,
-    turns: number
+    turns: number,
+    emptyResponseCount: number,
+    consecutiveToolFailures: number,
+    maxEmptyResponses: number,
+    maxConsecutiveToolFailures: number
   ): MainAgentTerminalStatus | undefined {
     if (this.isTimedOut(input, startedAt)) return 'timeout_reached';
     if (turns >= input.maxTurns) return 'max_turns_reached';
+    if (emptyResponseCount >= maxEmptyResponses) return 'max_empty_responses';
+    if (consecutiveToolFailures >= maxConsecutiveToolFailures)
+      return 'max_consecutive_tool_failures';
     return undefined;
   }
 

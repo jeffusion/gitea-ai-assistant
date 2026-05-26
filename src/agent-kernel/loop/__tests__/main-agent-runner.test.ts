@@ -243,4 +243,116 @@ describe('MainAgentRunner', () => {
       JSON.stringify({ ok: false, error: { name: 'Error', message: 'lookup failed' } })
     );
   });
+
+  test('stops on maxEmptyResponses', async () => {
+    const modelClient = new FakeModelClient([
+      response({ content: '' }),
+      response({ content: '' }),
+      response({ content: 'should not reach' }),
+    ]);
+    const runner = new MainAgentRunner({
+      modelClient,
+      transcriptRepository: agentSessionRepository,
+      tools: [],
+    });
+
+    const result = await runner.run({
+      model: 'mock-model',
+      userMessage: 'test empty responses',
+      maxTurns: 10,
+      maxToolCalls: 10,
+      timeoutMs: 60_000,
+      maxEmptyResponses: 2,
+    });
+
+    expect(result.status).toBe('max_empty_responses');
+    expect(result.turns).toBe(2);
+  });
+
+  test('stops on maxConsecutiveToolFailures', async () => {
+    const failTool: MainAgentTool = {
+      definition: {
+        name: 'fail_tool',
+        description: 'Always fails.',
+        parameters: { type: 'object' },
+      },
+      execute: () => {
+        throw new Error('boom');
+      },
+    };
+    const modelClient = new FakeModelClient([
+      response({
+        finishReason: 'tool_calls',
+        toolCalls: [{ id: 'c1', name: 'fail_tool', arguments: '{}' }],
+      }),
+      response({
+        finishReason: 'tool_calls',
+        toolCalls: [{ id: 'c2', name: 'fail_tool', arguments: '{}' }],
+      }),
+      response({
+        finishReason: 'tool_calls',
+        toolCalls: [{ id: 'c3', name: 'fail_tool', arguments: '{}' }],
+      }),
+      response({ content: 'should not reach' }),
+    ]);
+    const runner = new MainAgentRunner({
+      modelClient,
+      transcriptRepository: agentSessionRepository,
+      tools: [failTool],
+    });
+
+    const result = await runner.run({
+      model: 'mock-model',
+      userMessage: 'test tool failures',
+      maxTurns: 10,
+      maxToolCalls: 10,
+      timeoutMs: 60_000,
+      maxConsecutiveToolFailures: 3,
+    });
+
+    expect(result.status).toBe('max_consecutive_tool_failures');
+  });
+
+  test('refuses subagent spawn beyond maxSubagents and allows summary', async () => {
+    const subagentTool: MainAgentTool = {
+      definition: {
+        name: 'spawn_subagent',
+        description: 'Spawn a subagent.',
+        parameters: { type: 'object' },
+      },
+      execute: () => ({ status: 'completed' }),
+    };
+    const modelClient = new FakeModelClient([
+      response({
+        finishReason: 'tool_calls',
+        toolCalls: [{ id: 'c1', name: 'spawn_subagent', arguments: '{}' }],
+      }),
+      response({
+        finishReason: 'tool_calls',
+        toolCalls: [{ id: 'c2', name: 'spawn_subagent', arguments: '{}' }],
+      }),
+      response({
+        finishReason: 'tool_calls',
+        toolCalls: [{ id: 'c3', name: 'spawn_subagent', arguments: '{}' }],
+      }),
+      response({ content: 'review complete with 2 subagents' }),
+    ]);
+    const runner = new MainAgentRunner({
+      modelClient,
+      transcriptRepository: agentSessionRepository,
+      tools: [subagentTool],
+    });
+
+    const result = await runner.run({
+      model: 'mock-model',
+      userMessage: 'test subagent limit',
+      maxTurns: 10,
+      maxToolCalls: 10,
+      timeoutMs: 60_000,
+      maxSubagents: 2,
+    });
+
+    expect(result.status).toBe('completed');
+    expect(result.finalText).toBe('review complete with 2 subagents');
+  });
 });
