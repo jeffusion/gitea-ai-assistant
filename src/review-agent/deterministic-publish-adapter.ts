@@ -139,17 +139,20 @@ export async function applyDeterministicPublishAdapter(params: {
   const normalized = dedupeFindings(params.submission.findings);
   const details = await params.store.getRunDetails(params.runId);
   const existingPublished = new Map<string, boolean>();
+  function rememberPublished(key: string, published: boolean): void {
+    existingPublished.set(key, (existingPublished.get(key) ?? false) || published);
+  }
   for (const finding of details?.findings ?? []) {
-    existingPublished.set(finding.fingerprint, finding.published);
+    const modern = buildFingerprint(finding.category, finding.path, finding.line, finding.title);
     const legacy = buildLegacyFingerprint(
       finding.category,
       finding.path,
       finding.line,
       finding.title
     );
-    if (legacy !== finding.fingerprint) {
-      existingPublished.set(legacy, finding.published);
-    }
+    rememberPublished(finding.fingerprint, finding.published);
+    rememberPublished(modern, finding.published);
+    rememberPublished(legacy, finding.published);
   }
 
   const findings: Finding[] = normalized.map((finding) => ({
