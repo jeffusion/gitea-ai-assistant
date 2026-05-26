@@ -12,7 +12,6 @@
 
 ## 架构与设计
 
-- [可插拔 LLM 提供商设计](./design/pluggable-llm-providers.md)
 - [通知服务重构设计](./design/notification-service-refactoring.md)
 - [UI 主题语言设计](./design/ui-theme-language.md)
 

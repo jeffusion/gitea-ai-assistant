@@ -79,7 +79,7 @@ function createLegacySchema(dbPath: string): void {
   db.close();
 }
 
-describe('migration 002 remove legacy review mode', () => {
+describe('legacy review and model role cleanup migrations', () => {
   let dbPath: string;
   const savedDbPath = process.env.DATABASE_PATH;
 
@@ -109,7 +109,7 @@ describe('migration 002 remove legacy review mode', () => {
     } catch {}
   });
 
-  test('normalizes REVIEW_ENGINE and drops legacy model-role rows', () => {
+  test('normalizes REVIEW_ENGINE and drops the old model-role assignment table', () => {
     initDatabase();
     const db = getDatabase();
 
@@ -118,15 +118,9 @@ describe('migration 002 remove legacy review mode', () => {
       .get('REVIEW_ENGINE') as { value: string } | null;
     expect(engineRow?.value).toBe('agent');
 
-    const roles = db
-      .query('SELECT role FROM model_role_assignments ORDER BY role ASC')
-      .all() as Array<{ role: string }>;
-    expect(roles.map((row) => row.role)).toEqual(['planner']);
-
-    expect(() => {
-      db.query(
-        'INSERT INTO model_role_assignments (role, provider_id, model) VALUES (?, ?, ?)'
-      ).run('legacy', 'provider-1', 'gpt-4o');
-    }).toThrow();
+    const roleTable = db
+      .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .get('model_role_assignments') as { name: string } | null;
+    expect(roleTable).toBeNull();
   });
 });

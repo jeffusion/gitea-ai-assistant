@@ -1,15 +1,18 @@
 import config from '../config';
+import { providerRepo } from '../db/repositories/provider-repo';
 import { llmGateway } from '../llm/gateway';
+import { RuntimeE2EMockLLM } from '../llm/runtime-e2e-mock';
+import { ReviewAgentEntrypoint } from '../review-agent';
+import { giteaService } from '../services/gitea';
 import { logger } from '../utils/logger';
 import { DiffExtractor } from './context/diff-extractor';
 import { LocalRepoManager } from './context/local-repo-manager';
 import { SandboxExec } from './context/sandbox-exec';
 import { tokenCounter } from './context/token-counter';
-import { ReviewOrchestrator } from './orchestrator';
 import { FileReviewStore } from './store/file-review-store';
 import { CommitReviewPayload, PullRequestReviewPayload, ReviewRun } from './types';
 
-class ReviewEngine {
+export class ReviewEngine {
   // Sub-objects are created lazily per config snapshot.
   // store holds state (runs, steps) so we keep ONE instance but update workdir.
   private _store: FileReviewStore | null = null;
@@ -55,12 +58,26 @@ class ReviewEngine {
     );
   }
 
-  /** Create a fresh orchestrator with current config for each run. */
-  private createOrchestrator(): ReviewOrchestrator {
+  private createReviewAgentEntrypoint(): ReviewAgentEntrypoint {
     const sandboxExec = this.createSandboxExec();
     const localRepoManager = this.createLocalRepoManager(sandboxExec);
     const diffExtractor = this.createDiffExtractor(sandboxExec, localRepoManager);
-    return new ReviewOrchestrator(this.store, localRepoManager, diffExtractor);
+    const useE2EMock = process.env.E2E_MOCK_LLM === '1';
+    return new ReviewAgentEntrypoint({
+      store: this.store,
+      localRepoManager,
+      diffExtractor,
+      modelClient: useE2EMock
+        ? new RuntimeE2EMockLLM()
+        : {
+            chat: async (request) => {
+              const provider = providerRepo.list(true)[0];
+              if (!provider)
+                throw new Error('No enabled LLM provider configured for review main agent');
+              return llmGateway.chatDirect(provider.id, request);
+            },
+          },
+    });
   }
 
   async start(): Promise<void> {
@@ -174,16 +191,17 @@ class ReviewEngine {
       activeRuns: this.activeRunsCount,
     });
 
-    // Create a fresh orchestrator per run so it picks up latest config values
-    const orchestrator = this.createOrchestrator();
+    const entrypoint = this.createReviewAgentEntrypoint();
 
     try {
-      await orchestrator.execute(run);
+      await entrypoint.execute(run);
 
       const runDetails = await this.store.getRunDetails(run.id);
       if (runDetails && runDetails.run.status !== 'ignored') {
         await this.store.markRunSucceeded(run.id);
       }
+
+      await this.publishPendingComments(run);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const failed = await this.store.markRunFailed(run.id, message);
@@ -191,6 +209,92 @@ class ReviewEngine {
         logger.error('审查任务失败并达到重试上限', { runId: run.id, error: message });
       } else {
         logger.warn('审查任务失败，已重新入队重试', { runId: run.id, error: message });
+      }
+    }
+  }
+
+  /**
+   * 发布 pending 评论到 Gitea：
+   * - 无 path/line → PR issue comment（summary）
+   * - 有 path/line → PR review line comment（行级）
+   */
+  private async publishPendingComments(run: ReviewRun): Promise<void> {
+    if (!run.prNumber) {
+      const pending = await this.store.getPendingComments(run.id);
+      if (pending.length > 0 && run.commitSha) {
+        for (const comment of pending) {
+          try {
+            await giteaService.addCommitComment(run.owner, run.repo, run.commitSha, comment.body);
+            await this.store.markCommentPublished(comment.id);
+          } catch (error) {
+            logger.error('发布 commit 评论失败', {
+              runId: run.id,
+              commentId: comment.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            await this.store.markCommentFailed(comment.id);
+          }
+        }
+      }
+      return;
+    }
+
+    const pending = await this.store.getPendingComments(run.id);
+    if (pending.length === 0) return;
+
+    const summaryComments = pending.filter((c) => !c.path);
+    const lineComments = pending.filter((c) => c.path);
+
+    for (const comment of summaryComments) {
+      try {
+        await giteaService.addPullRequestComment(run.owner, run.repo, run.prNumber, comment.body);
+        await this.store.markCommentPublished(comment.id);
+        logger.info('已发布 PR summary 评论', { runId: run.id, commentId: comment.id });
+      } catch (error) {
+        logger.error('发布 PR summary 评论失败', {
+          runId: run.id,
+          commentId: comment.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        await this.store.markCommentFailed(comment.id);
+      }
+    }
+
+    if (lineComments.length > 0 && run.headSha) {
+      try {
+        const lineCommentPayload = lineComments.map((c) => ({
+          path: c.path!,
+          line: c.line ?? 1,
+          comment: c.body,
+        }));
+        await giteaService.addLineComments(
+          run.owner,
+          run.repo,
+          run.prNumber,
+          run.headSha,
+          lineCommentPayload
+        );
+        for (const comment of lineComments) {
+          await this.store.markCommentPublished(comment.id);
+        }
+        logger.info('已发布 PR 行级评论', {
+          runId: run.id,
+          count: lineComments.length,
+        });
+      } catch (error) {
+        logger.error('发布 PR 行级评论失败', {
+          runId: run.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        for (const comment of lineComments) {
+          await this.store.markCommentFailed(comment.id);
+        }
+      }
+    }
+
+    for (const comment of pending) {
+      if (comment.fingerprint) {
+        await this.store.markFindingPublished(run.id, comment.fingerprint);
       }
     }
   }

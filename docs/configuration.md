@@ -49,7 +49,9 @@ Change `ADMIN_PASSWORD` immediately after first login.
 ## 3) LLM
 
 - Providers: OpenAI Compatible / OpenAI Responses / Anthropic / Gemini
-- Role mapping: planner, specialist, judge, embedding
+- Agent runtime models:
+  - `AGENT_MAIN_MODEL`: The main model name used by the agent runtime when no specific model is configured. Default is `gpt-4.1`.
+  - `AGENT_DEFAULT_SUBAGENT_MODEL`: The default model name used by subagents when no specific model is declared in their definition or overridden during spawn. Default is `gpt-4.1-mini`.
 
 ## 4) Notification
 
@@ -59,7 +61,7 @@ Change `ADMIN_PASSWORD` immediately after first login.
 ## 5) Review
 
 - Engine mode: `agent` or `codex`
-- Triage switch
+- Triage size classification and routing hints
 - Size thresholds (`small`/`medium`/`large`)
 - Execution modes (`skip`/`light`/`full`)
 - Token budgets and concurrency limits
@@ -69,10 +71,15 @@ Change `ADMIN_PASSWORD` immediately after first login.
 > - `small/medium/large`: change-size classification
 > - `skip/light/full`: review execution depth
 
-## 6) Memory & learning (optional)
+## Agent Definitions
 
-- `ENABLE_MEMORY` (default `false`)
-- Qdrant URL
-- Reflection/debate toggles
+Project agent definitions are stored as Markdown files with frontmatter in the repository:
+- Path: `.gitea-assistant/agents/*.md`
 
-Qdrant is only required when memory is enabled.
+These files define the system prompts, metadata, and execution parameters for each agent.
+
+## Tool Permissions
+
+Tool permissions are controlled directly within each agent's definition file:
+- `tools`: An allow-list of tool names that the agent is permitted to call. An empty list grants no tools.
+- `disallowedTools`: A deny-list of tool names that the agent is explicitly forbidden from calling. This takes precedence over the allow-list.

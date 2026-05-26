@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { RoleAssignment } from '../RoleAssignment';
-import { fetchProviders, fetchRoles, setRole } from '@/services/llmProviderService';
+import { fetchConfig, updateConfig, type ConfigResponse } from '@/services/configService';
 
 vi.mock('sonner', () => ({
   toast: {
@@ -13,21 +13,10 @@ vi.mock('sonner', () => ({
   },
 }));
 
-vi.mock('@/services/llmProviderService', async () => {
-  const actual = await vi.importActual<typeof import('@/services/llmProviderService')>('@/services/llmProviderService');
-  return {
-    ...actual,
-    fetchProviders: vi.fn(),
-    fetchRoles: vi.fn(),
-    setRole: vi.fn(),
-    fetchModelSuggestions: vi.fn().mockResolvedValue({
-      openai_compatible: ['gpt-4o', 'gpt-4o-mini'],
-      openai_responses: ['gpt-4o', 'gpt-4o-mini'],
-      anthropic: ['claude-sonnet-4-20250514'],
-      gemini: ['gemini-2.5-pro'],
-    }),
-  };
-});
+vi.mock('@/services/configService', () => ({
+  fetchConfig: vi.fn(),
+  updateConfig: vi.fn(),
+}));
 
 function renderWithQuery(ui: ReactNode) {
   const queryClient = new QueryClient({
@@ -39,60 +28,163 @@ function renderWithQuery(ui: ReactNode) {
   return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
 }
 
+function makeConfigResponse(): ConfigResponse {
+  return {
+    groups: [
+      {
+        key: 'llm',
+        label: 'LLM 设置',
+        description: 'LLM 运行时与弹性设置',
+        icon: 'brain',
+        fields: [
+          {
+            envKey: 'AGENT_MAIN_MODEL',
+            label: '主智能体模型',
+            description: '主智能体默认使用的模型名称',
+            type: 'string',
+            sensitive: false,
+            value: 'gpt-4o',
+            hasValue: true,
+            source: 'db',
+          },
+          {
+            envKey: 'AGENT_DEFAULT_SUBAGENT_MODEL',
+            label: '默认子智能体模型',
+            description: '子智能体默认使用的模型名称',
+            type: 'string',
+            sensitive: false,
+            value: 'gpt-4o-mini',
+            hasValue: true,
+            source: 'db',
+          },
+          {
+            envKey: 'LLM_MAX_CONCURRENT_CALLS',
+            label: 'LLM 最大并发调用',
+            description: '同时在飞的 LLM API 调用上限',
+            type: 'number',
+            sensitive: false,
+            value: '4',
+            hasValue: true,
+            source: 'db',
+          },
+          {
+            envKey: 'LLM_RETRY_MAX_ATTEMPTS',
+            label: 'LLM 最大重试次数',
+            description: 'LLM 调用失败时的最大重试次数',
+            type: 'number',
+            sensitive: false,
+            value: '3',
+            hasValue: true,
+            source: 'db',
+          },
+          {
+            envKey: 'LLM_RETRY_BASE_DELAY_MS',
+            label: 'LLM 重试基础延迟(ms)',
+            description: 'LLM 调用失败重试的基础延迟时间',
+            type: 'number',
+            sensitive: false,
+            value: '1000',
+            hasValue: true,
+            source: 'db',
+          },
+        ],
+      },
+    ],
+  };
+}
+
 describe('RoleAssignment', () => {
-  it('renders role cards and supports provider/model editing', async () => {
-    vi.mocked(fetchProviders).mockResolvedValueOnce([
-      {
-        id: 'p1',
-        name: 'OpenAI',
-        type: 'openai_responses',
-        baseUrl: null,
-        defaultModel: 'gpt-4o-mini',
-        isEnabled: true,
-        hasKey: true,
-        extraConfig: {},
-        createdAt: '2026-01-01',
-      },
-    ]);
-
-    vi.mocked(fetchRoles).mockResolvedValueOnce([
-      {
-        role: 'planner',
-        providerId: 'p1',
-        providerName: 'OpenAI',
-        providerType: 'openai_responses',
-        model: 'gpt-4o',
-      },
-    ]);
-
-    vi.mocked(setRole).mockResolvedValue({
-      role: 'planner',
-      providerId: 'p1',
-      providerName: 'OpenAI',
-      providerType: 'openai_responses',
-      model: 'custom-planner-model',
-    });
+  it('renders agent model settings and saves edits', async () => {
+    vi.mocked(fetchConfig).mockResolvedValue(makeConfigResponse());
+    vi.mocked(updateConfig).mockResolvedValue(undefined);
 
     const user = userEvent.setup();
     renderWithQuery(<RoleAssignment />);
 
-    expect(await screen.findByText('角色分配')).toBeInTheDocument();
-    expect(await screen.findByText('规划器 Planner')).toBeInTheDocument();
+    // Wait for the fields to load and render
+    expect(await screen.findByText('主智能体模型')).toBeInTheDocument();
+    expect(screen.getByText('智能体模型设置')).toBeInTheDocument();
+    expect(screen.getByText('默认子智能体模型')).toBeInTheDocument();
+    expect(screen.getByText('LLM 最大并发调用')).toBeInTheDocument();
+    expect(screen.getByText('LLM 最大重试次数')).toBeInTheDocument();
+    expect(screen.getByText('LLM 重试基础延迟(ms)')).toBeInTheDocument();
 
-    // Radix Select renders placeholder in a span with pointer-events: none.
-    // Click the trigger button (parent) instead of the placeholder text.
-    const providerPlaceholders = screen.getAllByText('选择提供商');
-    const triggerButton = providerPlaceholders[0].closest('button')!;
-    await user.click(triggerButton);
-    await user.click(await screen.findByRole('option', { name: /OpenAI/ }));
+    const legacyLabels = ['pla' + 'nner', 'speci' + 'alist', 'ju' + 'dge', '角色' + '分配'];
+    legacyLabels.forEach((label) => {
+      expect(screen.queryByText(label)).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText(['/', 'llm', '/', 'roles'].join(''))).not.toBeInTheDocument();
 
-    const modelInputs = screen.getAllByPlaceholderText('选择或输入模型...') as HTMLInputElement[];
-    await waitFor(() => {
-      expect(modelInputs[0].value).toBe('gpt-4o');
+    const mainModelInput = screen.getByLabelText('主智能体模型');
+    const subagentModelInput = screen.getByLabelText('默认子智能体模型');
+    const maxCallsInput = screen.getByLabelText('LLM 最大并发调用');
+    const retryAttemptsInput = screen.getByLabelText('LLM 最大重试次数');
+    const retryDelayInput = screen.getByLabelText('LLM 重试基础延迟(ms)');
+
+    await user.clear(mainModelInput);
+    await user.type(mainModelInput, 'claude-3-5-sonnet');
+
+    await user.clear(subagentModelInput);
+    await user.type(subagentModelInput, 'claude-3-5-haiku');
+
+    await user.clear(maxCallsInput);
+    await user.type(maxCallsInput, '8');
+
+    await user.clear(retryAttemptsInput);
+    await user.type(retryAttemptsInput, '5');
+
+    await user.clear(retryDelayInput);
+    await user.type(retryDelayInput, '2000');
+
+    const saveButton = screen.getByRole('button', { name: '保存设置' });
+    await user.click(saveButton);
+
+    await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(1));
+    const payload = vi.mocked(updateConfig).mock.calls[0][0];
+    expect(payload).toEqual({
+      AGENT_MAIN_MODEL: 'claude-3-5-sonnet',
+      AGENT_DEFAULT_SUBAGENT_MODEL: 'claude-3-5-haiku',
+      LLM_MAX_CONCURRENT_CALLS: '8',
+      LLM_RETRY_MAX_ATTEMPTS: '5',
+      LLM_RETRY_BASE_DELAY_MS: '2000',
+    });
+  });
+
+  it('renders missing-field/unavailable state when fields are missing', async () => {
+    vi.mocked(fetchConfig).mockResolvedValue({
+      groups: [
+        {
+          key: 'llm',
+          label: 'LLM 设置',
+          description: 'LLM 运行时与弹性设置',
+          icon: 'brain',
+          fields: [
+            {
+              envKey: 'AGENT_MAIN_MODEL',
+              label: '主智能体模型',
+              description: '主智能体默认使用的模型名称',
+              type: 'string',
+              sensitive: false,
+              value: 'gpt-4o',
+              hasValue: true,
+              source: 'db',
+            },
+          ],
+        },
+      ],
     });
 
-    await user.clear(modelInputs[0]);
-    await user.type(modelInputs[0], 'custom-planner-model');
-    expect(modelInputs[0].value).toBe('custom-planner-model');
+    renderWithQuery(<RoleAssignment />);
+
+    // Wait for the warning to load and render
+    expect(await screen.findByText('部分配置项在系统中不可用：')).toBeInTheDocument();
+    expect(screen.getByText('智能体模型设置')).toBeInTheDocument();
+    expect(screen.getByLabelText('AGENT_DEFAULT_SUBAGENT_MODEL')).toBeInTheDocument();
+    expect(screen.getByLabelText('LLM_MAX_CONCURRENT_CALLS')).toBeInTheDocument();
+    expect(screen.getByLabelText('LLM_RETRY_MAX_ATTEMPTS')).toBeInTheDocument();
+    expect(screen.getByLabelText('LLM_RETRY_BASE_DELAY_MS')).toBeInTheDocument();
+
+    const subagentInput = screen.getByLabelText('AGENT_DEFAULT_SUBAGENT_MODEL');
+    expect(subagentInput).toBeDisabled();
   });
 });

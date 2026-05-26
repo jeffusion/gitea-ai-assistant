@@ -26,12 +26,12 @@ for i in $(seq 1 30); do
 done
 
 echo "=== [2/6] 创建管理员用户 ==="
-docker exec e2e-gitea gitea admin user create \
-  --username "${ADMIN_USER}" \
-  --password "${ADMIN_PASS}" \
-  --email "${ADMIN_EMAIL}" \
-  --admin \
-  --must-change-password=false 2>/dev/null || echo "  用户已存在，跳过"
+docker exec e2e-gitea su git -c "gitea admin user create \
+--username '${ADMIN_USER}' \
+--password '${ADMIN_PASS}' \
+--email '${ADMIN_EMAIL}' \
+--admin \
+--must-change-password=false" 2>/dev/null || echo " 用户已存在，跳过"
 
 echo "=== [3/6] 生成 API Token ==="
 TOKEN_RESPONSE=$(curl -sf -X POST "${GITEA_URL}/api/v1/users/${ADMIN_USER}/tokens" \
@@ -129,7 +129,7 @@ for i in $(seq 1 20); do
 done
 
 # Login to get JWT
-LOGIN_RESP=$(curl -sf -X POST "${ASSISTANT_URL}/admin/login" \
+LOGIN_RESP=$(curl -sf -X POST "${ASSISTANT_URL}/admin/api/login" \
   -H "Content-Type: application/json" \
   -d "{\"password\": \"${ADMIN_DEFAULT_PASS}\"}" 2>/dev/null || true)
 ADMIN_JWT=$(echo "${LOGIN_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || true)
@@ -138,7 +138,7 @@ if [ -z "${ADMIN_JWT}" ]; then
   echo "  WARNING: 无法获取管理员 JWT，跳过 assistant 配置"
 else
   echo "  JWT 获取成功，配置 assistant 设置..."
-  curl -sf -X PUT "${ASSISTANT_URL}/admin/config" \
+  curl -sf -X PUT "${ASSISTANT_URL}/admin/api/config" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${ADMIN_JWT}" \
     -d "{
@@ -146,10 +146,8 @@ else
       \"GITEA_API_URL\": \"http://gitea:3000/api/v1\",
       \"REVIEW_ENGINE\": \"agent\",
       \"REVIEW_WORKDIR\": \"/tmp/e2e-review\",
-      \"REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE\": \"0.5\",
-      \"REVIEW_ENABLE_HUMAN_GATE\": \"false\",
       \"REVIEW_ALLOWED_COMMANDS\": \"git,rg,cat,sed,wc\",
-      \"REVIEW_COMMAND_TIMEOUT_MS\": \"30000\"
+      \"REVIEW_COMMAND_TIMEOUT_MS\": \"120000\"
     }" > /dev/null 2>&1 && echo "  Assistant 配置完成" || echo "  WARNING: assistant 配置失败"
 fi
 

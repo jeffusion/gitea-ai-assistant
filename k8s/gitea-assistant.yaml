@@ -1,5 +1,3 @@
----
-# ConfigMap: only infrastructure-level env vars that must be known before DB init
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -11,9 +9,6 @@ metadata:
 data:
   PORT: "5174"
   LOG_LEVEL: "error"
-  # All settings (Gitea connection, webhook secret, admin password, review engine,
-  # Feishu, memory, etc.) are managed through the Admin Dashboard Web UI.
-  # They are auto-seeded with secure defaults on first boot.
 ---
 apiVersion: apps/v1
 kind: Deployment

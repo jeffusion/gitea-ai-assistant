@@ -15,8 +15,6 @@ const INTEGER_FIELDS = new Set([
   'REVIEW_MAX_FILES_PER_RUN',
   'REVIEW_MAX_FILE_CONTENT_CHARS',
   'REVIEW_COMMAND_TIMEOUT_MS',
-  'FEW_SHOT_EXAMPLES_COUNT',
-  'MAX_REFLECTION_ROUNDS',
 ]);
 
 /** Fast lookup from envKey → field metadata. */

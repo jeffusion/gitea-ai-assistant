@@ -106,7 +106,7 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
   // 从事件中提取必要信息
   const { pull_request: pullRequest, repository: repo } = body;
 
-  if (!pullRequest || !repo) {
+  if (!pullRequest || !repo || !repo.owner?.login || !repo.name) {
     return c.json({ error: '无效的Webhook数据' }, 400);
   }
 
@@ -204,7 +204,7 @@ async function handlePullRequestEvent(c: Context, body: any): Promise<Response> 
  */
 async function handlePullRequestClosed(c: Context, body: any): Promise<Response> {
   const { pull_request: pullRequest, repository: repo } = body;
-  if (!pullRequest || !repo) {
+  if (!pullRequest || !repo || !repo.owner?.login || !repo.name) {
     return c.json({ status: 'ignored', message: 'PR close 无效数据' }, 200);
   }
 

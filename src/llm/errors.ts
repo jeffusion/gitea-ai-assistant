@@ -79,14 +79,3 @@ export class LLMConnectionError extends LLMError {
     this.name = 'LLMConnectionError';
   }
 }
-
-/** No provider is configured for the requested role. */
-export class LLMNoProviderError extends LLMError {
-  readonly role: string;
-
-  constructor(role: string) {
-    super(`No provider configured for role '${role}'`, 'gateway');
-    this.name = 'LLMNoProviderError';
-    this.role = role;
-  }
-}

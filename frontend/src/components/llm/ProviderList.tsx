@@ -9,9 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { Edit2, Trash2, Play, Plus, Activity } from 'lucide-react';
-import { 
-  fetchProviders, updateProvider, deleteProvider, testProvider, fetchRoles
-} from '@/services/llmProviderService';
+import { fetchProviders, updateProvider, deleteProvider, testProvider } from '@/services/llmProviderService';
 import type { ProviderDto, TestResult } from '@/services/llmProviderService';
 import { ProviderDialog } from './ProviderDialog';
 import { TestResultDialog } from './TestResultDialog';
@@ -43,11 +41,6 @@ export function ProviderList() {
     queryFn: fetchProviders,
   });
 
-  const { data: roles = [] } = useQuery({
-    queryKey: ['llm-roles'],
-    queryFn: fetchRoles,
-  });
-
   const toggleMutation = useMutation({
     mutationFn: async ({ id, isEnabled }: { id: string; isEnabled: boolean }) => {
       return updateProvider(id, { isEnabled });
@@ -74,7 +67,6 @@ export function ProviderList() {
     onSuccess: () => {
       toast.success('已删除提供商');
       queryClient.invalidateQueries({ queryKey: ['llm-providers'] });
-      queryClient.invalidateQueries({ queryKey: ['llm-roles'] });
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { error?: string } }; message?: string };
@@ -87,16 +79,8 @@ export function ProviderList() {
   };
 
   const handleDelete = (provider: ProviderDto) => {
-    const boundRoles = roles.filter(r => r.providerId === provider.id);
-    if (boundRoles.length > 0) {
-      const roleNames = boundRoles.map(r => r.role).join(', ');
-      if (!window.confirm(`警告：该提供商已绑定到以下角色 (${roleNames})。\n删除后这些角色将失去提供商配置！\n确定要删除吗？`)) {
-        return;
-      }
-    } else {
-      if (!window.confirm(`确定要删除提供商 "${provider.name}" 吗？`)) {
-        return;
-      }
+    if (!window.confirm(`确定要删除提供商 "${provider.name}" 吗？`)) {
+      return;
     }
     deleteMutation.mutate(provider.id);
   };

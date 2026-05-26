@@ -32,14 +32,11 @@ const AGENT_SHARED_FIELDS = new Set([
 
 /** Fields specific to agent mode only. */
 const AGENT_ONLY_FIELDS = new Set([
-  'REVIEW_AUTO_PUBLISH_MIN_CONFIDENCE',
-  'REVIEW_ENABLE_HUMAN_GATE',
   'REVIEW_ALLOWED_COMMANDS',
   'REVIEW_COMMAND_TIMEOUT_MS',
   'LLM_MAX_CONCURRENT_CALLS',
   'LLM_RETRY_MAX_ATTEMPTS',
   'LLM_RETRY_BASE_DELAY_MS',
-  'ENABLE_TRIAGE',
 ]);
 
 /** Fields specific to codex mode only. */
@@ -102,16 +99,13 @@ export function ReviewConfigPage() {
     return 'agent';
   }, [localConfig]);
 
-  // Derived: review group and memory group from fetched data
   const reviewGroup = useMemo(() => data?.groups.find((g) => g.key === 'review'), [data]);
-  const memoryGroup = useMemo(() => data?.groups.find((g) => g.key === 'memory'), [data]);
 
-  // Initialize local config from ALL groups (so save works for review + memory fields)
   useEffect(() => {
     if (data) {
       const initialState: Record<string, any> = {};
       data.groups
-        .filter((g) => g.key === 'review' || g.key === 'memory')
+        .filter((g) => g.key === 'review')
         .forEach((group) => {
           group.fields.forEach((field) => {
             if (field.sensitive && field.hasValue) {
@@ -158,7 +152,10 @@ export function ReviewConfigPage() {
 
   const handleSave = () => {
     const payload: Record<string, string> = {};
-    for (const [key, val] of Object.entries(localConfig)) {
+    const fieldsToSave = new Set([ENGINE_FIELD, ...visibleReviewFields.map((field) => field.envKey)]);
+
+    for (const key of fieldsToSave) {
+      const val = localConfig[key];
       if (typeof val === 'boolean') {
         payload[key] = val ? 'true' : 'false';
       } else {
@@ -175,7 +172,7 @@ export function ReviewConfigPage() {
   };
 
   const handleResetAll = () => {
-    const groups = [reviewGroup, memoryGroup].filter(Boolean) as ConfigGroupDto[];
+    const groups = [reviewGroup].filter(Boolean) as ConfigGroupDto[];
     const allOverrideKeys = groups
       .flatMap((g) => g.fields)
       .filter((f) => f.source === 'db')
@@ -193,9 +190,9 @@ export function ReviewConfigPage() {
   );
 
   const hasOverrides = useMemo(() => {
-    const groups = [reviewGroup, memoryGroup].filter(Boolean) as ConfigGroupDto[];
+    const groups = [reviewGroup].filter(Boolean) as ConfigGroupDto[];
     return groups.some((g) => g.fields.some((f) => f.source === 'db'));
-  }, [reviewGroup, memoryGroup]);
+  }, [reviewGroup]);
 
   // -- Render states --
 
@@ -229,7 +226,7 @@ export function ReviewConfigPage() {
         description:
           engine === 'codex'
             ? 'Codex CLI 审查引擎配置'
-            : '多代理编排审查引擎配置',
+            : 'Agent 审查引擎配置',
         fields: visibleReviewFields,
       }
     : null;
@@ -355,17 +352,6 @@ export function ReviewConfigPage() {
             onReset={handleResetGroup}
             isResetting={resetMutation.isPending}
             renderField={renderReviewField}
-          />
-        )}
-
-        {/* Memory group — agent mode only */}
-        {engine === 'agent' && memoryGroup && (
-          <ConfigGroupCard
-            group={memoryGroup}
-            localConfig={localConfig}
-            onFieldChange={handleFieldChange}
-            onReset={handleResetGroup}
-            isResetting={resetMutation.isPending}
           />
         )}
 

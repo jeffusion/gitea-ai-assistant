@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-import type { DiffExtractor } from '../context/diff-extractor';
 import type { LocalRepoManager, LocalRepoPaths } from '../context/local-repo-manager';
 import type { FileReviewStore } from '../store/file-review-store';
-import type { Finding, ReviewContext, ReviewRun, ReviewTask } from '../types';
+import type { ReviewRun } from '../types';
 
 function makeRun(overrides: Partial<ReviewRun> = {}): ReviewRun {
   return {
@@ -48,35 +47,6 @@ function createLocalRepoManagerMock() {
       saveReviewedRef: mock(async () => undefined),
       cleanupWorkspace: mock(async () => undefined),
     },
-    repoPaths,
-  };
-}
-
-function createDiffExtractorMock() {
-  const context: ReviewContext = {
-    workspacePath: '/tmp/workspace',
-    mirrorPath: '/tmp/mirror',
-    diff: 'diff --git a/src/app.ts b/src/app.ts\n+const x = 1;',
-    changedFiles: [
-      {
-        path: 'src/app.ts',
-        status: 'M',
-        additions: 3,
-        deletions: 1,
-      },
-    ],
-    parsedDiff: [],
-    fileContents: {},
-  };
-
-  return {
-    context,
-    extractor: {
-      getSandbox: mock(() => ({
-        execute: async () => ({ stdout: '', stderr: '', exitCode: 0 }),
-      })),
-      buildContext: mock(async () => context),
-    },
   };
 }
 
@@ -87,132 +57,6 @@ describe('project prompt wiring', () => {
 
   afterEach(() => {
     mock.restore();
-  });
-
-  test('orchestrator forwards resolved project prompt to triage and specialist execution options', async () => {
-    const projectPrompt = `repo-policy-${'P'.repeat(360)}`;
-
-    mock.module('../project-review-prompt', () => ({
-      resolveProjectReviewPrompt: () => projectPrompt,
-    }));
-
-    const { ReviewOrchestrator } = await import('../orchestrator');
-
-    const store = createStoreMock();
-    const { manager } = createLocalRepoManagerMock();
-    const { extractor } = createDiffExtractorMock();
-
-    const orchestrator = new ReviewOrchestrator(
-      store as unknown as FileReviewStore,
-      manager as unknown as LocalRepoManager,
-      extractor as unknown as DiffExtractor
-    );
-
-    type TriageResultLike = {
-      complexity: 'trivial' | 'standard' | 'complex';
-      reviewSize: 'small' | 'medium' | 'large';
-      mode: 'skip' | 'light' | 'full';
-      tasks: ReviewTask[];
-      riskTags: string[];
-      rationale: string;
-    };
-
-    type ReviewFinding = Array<Omit<Finding, 'id' | 'runId' | 'published'>>;
-
-    type InternalOrchestrator = {
-      triageAgent: {
-        analyze: (
-          context: ReviewContext,
-          options?: { projectPrompt?: string }
-        ) => Promise<TriageResultLike>;
-      };
-      agentMap: Record<
-        string,
-        {
-          reviewWithOptions: (
-            run: ReviewRun,
-            context: ReviewContext,
-            options: { projectPrompt?: string }
-          ) => Promise<{ findings: ReviewFinding }>;
-          reviewWithReflection: (
-            run: ReviewRun,
-            context: ReviewContext,
-            maxRounds?: number,
-            options?: { projectPrompt?: string }
-          ) => Promise<{ findings: ReviewFinding }>;
-        }
-      >;
-      judgeAgent: {
-        judge: (findings: ReviewFinding) => { summaryMarkdown: string; findings: ReviewFinding };
-      };
-      publishSummary: (run: ReviewRun, summary: string, gatedCount: number) => Promise<void>;
-      publishLineComments: (
-        run: ReviewRun,
-        comments: Array<{ path: string; line: number; comment: string }>
-      ) => Promise<boolean>;
-    };
-
-    const internal = orchestrator as unknown as InternalOrchestrator;
-
-    const task: ReviewTask = {
-      domain: 'correctness',
-      paths: ['src/app.ts'],
-      riskTags: [],
-      mode: 'light',
-      tokenBudget: 1200,
-      maxIterations: 1,
-      allowTools: false,
-      allowReflection: false,
-      allowDebate: false,
-    };
-
-    const triageAnalyzeMock = mock(async () => ({
-      complexity: 'standard' as const,
-      reviewSize: 'small' as const,
-      mode: 'light' as const,
-      tasks: [task],
-      riskTags: [],
-      rationale: 'project prompt wiring test',
-    }));
-
-    const reviewWithOptionsMock = mock(async () => ({
-      findings: [] as ReviewFinding,
-    }));
-
-    const reviewWithReflectionMock = mock(async () => ({
-      findings: [] as ReviewFinding,
-    }));
-
-    internal.triageAgent = {
-      analyze: triageAnalyzeMock,
-    };
-
-    internal.agentMap = {
-      correctness: {
-        reviewWithOptions: reviewWithOptionsMock,
-        reviewWithReflection: reviewWithReflectionMock,
-      },
-    };
-
-    internal.judgeAgent = {
-      judge: mock(() => ({
-        summaryMarkdown: 'ok',
-        findings: [] as ReviewFinding,
-      })),
-    };
-
-    internal.publishSummary = mock(async () => undefined);
-    internal.publishLineComments = mock(async () => false);
-
-    const run = makeRun();
-    await orchestrator.execute(run);
-
-    expect(triageAnalyzeMock).toHaveBeenCalledWith(expect.anything(), { projectPrompt });
-    expect(reviewWithOptionsMock).toHaveBeenCalledWith(
-      run,
-      expect.anything(),
-      expect.objectContaining({ projectPrompt })
-    );
   });
 
   test('codex prompt builder includes resolved project-level prompt section', async () => {

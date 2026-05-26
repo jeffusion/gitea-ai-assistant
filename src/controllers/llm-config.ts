@@ -4,7 +4,6 @@
  */
 
 import { Hono } from 'hono';
-import { type ModelRole, modelRoleRepo } from '../db/repositories/model-role-repo';
 import {
   type CreateProviderInput,
   type UpdateProviderInput,
@@ -13,7 +12,6 @@ import {
 import { secretRepo } from '../db/repositories/secret-repo';
 import { settingsRepo } from '../db/repositories/settings-repo';
 import { llmGateway } from '../llm/gateway';
-import { MODEL_ROLES } from '../llm/types';
 import { tokenCounter } from '../review/context/token-counter';
 
 export const llmConfigRouter = new Hono();
@@ -92,14 +90,6 @@ llmConfigRouter.post('/providers', async (c) => {
     secretRepo.set(created.id, body.apiKey);
   }
 
-  const allProviders = providerRepo.list();
-  if (allProviders.length === 1) {
-    const modelRolesToBind: ModelRole[] = ['planner', 'specialist', 'judge', 'embedding'];
-    for (const role of modelRolesToBind) {
-      modelRoleRepo.set(role, created.id, body.defaultModel);
-    }
-  }
-
   return c.json(
     {
       id: created.id,
@@ -153,12 +143,11 @@ llmConfigRouter.put('/providers/:id', async (c) => {
 
 llmConfigRouter.delete('/providers/:id', (c) => {
   const id = c.req.param('id');
-  const roles = modelRoleRepo.getRolesByProvider(id);
   const deleted = providerRepo.delete(id);
   if (!deleted) return c.json({ message: 'Provider not found' }, 404);
 
   llmGateway.invalidateProvider(id);
-  return c.json({ success: true, removedRoleAssignments: roles });
+  return c.json({ success: true });
 });
 
 // ── API Key Management ──────────────────────────────────────────────────
@@ -184,52 +173,6 @@ llmConfigRouter.delete('/providers/:id/key', (c) => {
   secretRepo.delete(id);
   llmGateway.invalidateProvider(id);
   return c.json({ success: true });
-});
-
-// ── Role Assignments ────────────────────────────────────────────────────
-
-llmConfigRouter.get('/roles', (c) => {
-  const assignments = modelRoleRepo.list();
-
-  const allRoles = MODEL_ROLES.map((role) => {
-    const assignment = assignments.find((a) => a.role === role);
-    return assignment
-      ? {
-          role: assignment.role,
-          providerId: assignment.provider_id,
-          providerName: assignment.provider_name,
-          providerType: assignment.provider_type,
-          model: assignment.model,
-        }
-      : { role, providerId: null, providerName: null, providerType: null, model: null };
-  });
-
-  return c.json(allRoles);
-});
-
-llmConfigRouter.put('/roles/:role', async (c) => {
-  const role = c.req.param('role') as ModelRole;
-  if (!MODEL_ROLES.includes(role)) {
-    return c.json({ message: `Invalid role. Must be one of: ${MODEL_ROLES.join(', ')}` }, 400);
-  }
-
-  const { providerId, model } = await c.req.json<{ providerId: string; model: string }>();
-  if (!providerId || !model) {
-    return c.json({ message: 'providerId and model are required' }, 400);
-  }
-
-  const provider = providerRepo.getById(providerId);
-  if (!provider) return c.json({ message: 'Provider not found' }, 404);
-
-  modelRoleRepo.set(role, providerId, model);
-
-  return c.json({
-    role,
-    providerId: provider.id,
-    providerName: provider.name,
-    providerType: provider.type,
-    model,
-  });
 });
 
 // ── Connection Test ─────────────────────────────────────────────────────

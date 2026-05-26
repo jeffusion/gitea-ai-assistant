@@ -46,7 +46,10 @@ services:
       - NODE_ENV=production
       - GITEA_API_URL=http://gitea:3000/api/v1
       - GITEA_ACCESS_TOKEN=${E2E_GITEA_TOKEN:-placeholder}
+      - E2E_MOCK_LLM=1
       - PORT=5174
+      - ENCRYPTION_KEY=${E2E_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      - WEBHOOK_SECRET=e2e-test-secret
     ports:
       - "3334:5174"
     healthcheck:

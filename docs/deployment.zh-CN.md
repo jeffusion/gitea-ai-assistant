@@ -13,14 +13,9 @@ docker run -d -p 5174:5174 -v ./data:/app/data -e PORT=5174 -e LOG_LEVEL=error g
 docker compose up -d
 ```
 
-`docker-compose.yml` 默认包含：
-
-- `gitea-assistant`
-- `qdrant`
+`docker-compose.yml` 默认包含 `gitea-assistant`。
 
 Compose 生产默认日志级别已设置为 `LOG_LEVEL=error`。
-
-如果不使用记忆能力，可在自定义编排中将 Qdrant 设为可选。
 
 ## Kubernetes
 
@@ -46,7 +41,6 @@ kubectl apply -k k8s/
 
 ```bash
 kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/qdrant.yaml
 kubectl apply -f k8s/gitea-assistant.yaml
 ```
 

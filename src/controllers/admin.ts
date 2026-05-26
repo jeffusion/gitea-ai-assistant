@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { sign } from 'hono/jwt';
+import { agentSessionRepository } from '../agent-kernel/session';
 import config from '../config';
 import { repositoryReviewPromptRepo } from '../db/repositories/repository-review-prompt-repo';
 import { reviewEngine } from '../review/engine';
@@ -189,7 +190,11 @@ protectedRoutes.get('/review/runs/:runId', async (c) => {
     if (!result) {
       return c.json({ message: 'Run not found' }, 404);
     }
-    return c.json(result);
+    const sessionTree = agentSessionRepository.getSessionTreeByRunId(runId);
+    return c.json({
+      ...result,
+      sessionTree,
+    });
   } catch (error: any) {
     logger.error('获取审查任务详情失败:', error);
     return c.json({ message: 'Failed to fetch review run details', error: error.message }, 500);

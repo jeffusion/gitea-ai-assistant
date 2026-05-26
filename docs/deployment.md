@@ -13,14 +13,9 @@ docker run -d -p 5174:5174 -v ./data:/app/data -e PORT=5174 -e LOG_LEVEL=error g
 docker compose up -d
 ```
 
-`docker-compose.yml` includes both:
-
-- `gitea-assistant`
-- `qdrant`
+`docker-compose.yml` includes `gitea-assistant`.
 
 Production default in compose sets `LOG_LEVEL=error`.
-
-If you do not use memory features, Qdrant can be optional in custom compose setups.
 
 ## Kubernetes
 
@@ -46,7 +41,6 @@ Or apply individually:
 
 ```bash
 kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/qdrant.yaml
 kubectl apply -f k8s/gitea-assistant.yaml
 ```
 

@@ -132,14 +132,13 @@ CREATE TABLE llm_secrets (
 -- ============================================================
 -- 表3: model_role_assignments — 场景 → 模型映射
 -- ============================================================
--- 每个业务场景（如 planner/specialist/judge/embedding）绑定到
+-- 每个业务场景（如 planner/specialist/judge）绑定到
 -- 一个 provider + 具体 model，支持不同场景用不同 provider。
 CREATE TABLE model_role_assignments (
   role          TEXT PRIMARY KEY CHECK (role IN (
-                  'planner',         -- Agent 审查 planner
-                  'specialist',      -- Agent 审查 specialist
-                  'judge',           -- Agent 审查 judge
-                  'embedding'        -- 向量嵌入（Qdrant）
+                  'planner',
+                  'specialist',
+                  'judge'
                 )),
   provider_id   TEXT NOT NULL REFERENCES llm_providers(id),
   model         TEXT NOT NULL,        -- 该场景使用的具体模型 ID
@@ -183,7 +182,7 @@ CREATE INDEX idx_providers_enabled ON llm_providers(is_enabled);
 // ── src/llm/types.ts ────────────────────────────────────────
 
 /** 模型角色枚举 */
-export type ModelRole = 'planner' | 'specialist' | 'judge' | 'embedding';
+export type ModelRole = 'planner' | 'specialist' | 'judge';
 
 /** 统一消息格式（内部表达，不暴露 provider 差异） */
 export interface LLMMessage {
@@ -345,7 +344,7 @@ export class LLMGateway {
 
   /**
    * 按业务角色调用 LLM
- * @param role 业务角色（planner/specialist/judge/embedding）
+   * @param role 业务角色（planner/specialist/judge）
    * @param request 请求（不含 model，由角色映射决定）
    */
   async chatForRole(
@@ -360,14 +359,6 @@ export class LLMGateway {
     providerId: string,
     request: LLMChatRequest
   ): Promise<LLMChatResponse>;
-
-  /**
-   * 获取指定 provider 的 embedding 接口
-   */
-  async embedForRole(
-    role: 'embedding',
-    texts: string[]
-  ): Promise<number[][]>;
 
   /** 配置变更时清除单个 provider 缓存 */
   invalidateProvider(providerId: string): void;
@@ -692,7 +683,6 @@ Settings 页面
 │       │ Planner(Triage)      │ [公司 OpenAI 代理 ▾] │ [gpt-4o-mini      ] │
 │       │ Specialist(任务执行) │ [Anthropic Claude ▾] │ [claude-sonnet-4   ] │
 │       │ Judge(汇总裁决)      │ [公司 OpenAI 代理 ▾] │ [gpt-4o           ] │
-│       │ Embedding(记忆检索)  │ [公司 OpenAI 代理 ▾] │ [text-embedding-3  ] │
 │       └──────────────────────────────────────────────────────────────┘
 │       [保存角色分配]
 │
@@ -736,13 +726,10 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
 | 2 | `src/controllers/review.ts` | 旧版 webhook 存在回退分支 | 删除回退分支，仅保留 `agent` / `codex` 入队逻辑 | 审查主入口 |
 | 3 | `src/review/orchestrator.ts:45,61-63` | `private readonly openai: OpenAI` + `this.openai = new OpenAI(...)` | 构造函数改接收 `LLMGateway`；传给各 agent（任务化分级编排：skip/light/full） | Agent 编排 |
 | 4 | `src/review/agents/specialist-agent.ts:93` | `protected readonly openai: OpenAI` | → `protected readonly gateway: LLMGateway`；`reviewWithOptions()` 与 ReAct 调用改为 `this.gateway.chatForRole('specialist', ...)` | 核心 agent |
-| 5 | `src/review/agents/critic-agent.ts:23` | `private openai: OpenAI` | 同上 | 评审 agent |
-| 6 | `src/review/agents/reflexion-agent.ts:24` | `constructor(openai: OpenAI, ...)` | 构造传 gateway | 反思 agent |
-| 7 | `src/review/agents/debate-orchestrator.ts:17` | `private openai: OpenAI` | 同上 | 辩论 agent |
-| 8 | `src/review/tools/registry.ts:22` | `toOpenAIFunctions()` | → `toToolDefinitions(): LLMToolDefinition[]`（返回内部格式），由 adapter 的 `tool-converter.ts` 负责转换 | 工具注册 |
-| 9 | `src/config/config-schema.ts:120-138` | `OPENAI_BASE_URL/API_KEY/MODEL` 字段定义 | 删除这些字段；`group: 'openai'` → 整个 group 移除 | 配置 schema |
-| 10 | `src/config/config-manager.ts:44-46` | `OPENAI_*` Zod schema 条目 | 删除 | 配置验证 |
-| 11 | `src/config/config-manager.ts:271-273` | `openai: { baseUrl, apiKey, model }` 映射 | 删除整个 `openai` 块 | 配置输出 |
+| 5 | `src/review/tools/registry.ts:22` | `toOpenAIFunctions()` | → `toToolDefinitions(): LLMToolDefinition[]`（返回内部格式），由 adapter 的 `tool-converter.ts` 负责转换 | 工具注册 |
+| 6 | `src/config/config-schema.ts:120-138` | `OPENAI_BASE_URL/API_KEY/MODEL` 字段定义 | 删除这些字段；`group: 'openai'` → 整个 group 移除 | 配置 schema |
+| 7 | `src/config/config-manager.ts:44-46` | `OPENAI_*` Zod schema 条目 | 删除 | 配置验证 |
+| 8 | `src/config/config-manager.ts:271-273` | `openai: { baseUrl, apiKey, model }` 映射 | 删除整个 `openai` 块 | 配置输出 |
 
 ### 8.2 前端代码改造
 
@@ -795,7 +782,6 @@ Day 6.5:  旧代码清理完毕，文档更新，Ready for review
 |---|---|---|
 | **Anthropic 无原生 JSON mode** | `response_format: json_object` 不可用，JSON 解析可能失败 | Adapter 内 prompt 注入 JSON 指令 + `JSON.parse()` 容错（正则提取 \`\`\`json\`\`\` 块 → 重试 parse） |
 | **Gemini function calling 格式差异大** | `functionDeclarations` 包装层级不同；`functionResponse` 嵌套在 `parts` 中 | `tool-converter.ts` 单独处理；finish reason 映射表全覆盖测试 |
-| **Embedding 维度变化导致 Qdrant 不兼容** | `src/review/memory/vector-store.ts` 硬编码 1536 维 | `model_role_assignments.role='embedding'` 变更时，UI 提示用户需重建 collection；或自动检测维度创建新 collection |
 | **ENCRYPTION_KEY 丢失** | 所有加密的 API Key 不可恢复 | 启动时检测密钥版本不匹配 → 报错并要求重新设置所有 API Key（trade-off：安全性 > 便利性） |
 | **SQLite 并发写** | 多请求同时写入可能 SQLITE_BUSY | `bun:sqlite` 开启 WAL mode；写操作走单连接序列化；读可并行 |
 | **Provider SDK 版本冲突** | `openai`、`@anthropic-ai/sdk`、`@google/generative-ai` 三个 SDK 共存 | 各 adapter 独立 import，无交叉依赖；`package.json` 锁定主版本 |
@@ -832,5 +818,4 @@ DATABASE_PATH=./data/assistant.db    # SQLite 文件路径
 # - Gitea 配置（API URL / Token）
 # - 飞书配置（Webhook URL / Secret）
 # - Review 引擎配置
-# - 记忆系统配置
 ```

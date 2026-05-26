@@ -1,213 +1,229 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { fetchConfig, updateConfig } from '@/services/configService';
+import type { ConfigResponse, ConfigFieldDto } from '@/services/configService';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { AlertCircle, Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Save, ShieldCheck } from 'lucide-react';
-import { fetchProviders, fetchRoles, setRole } from '@/services/llmProviderService';
-import { ModelCombobox } from './ModelCombobox';
-
-const ROLE_LABELS: Record<string, { label: string; desc: string }> = {
-  planner: { label: '规划器 Planner', desc: '多阶段审查的第一步，负责分析上下文并分配任务' },
-  specialist: { label: '专家 Specialist', desc: '执行深度代码审查的主力模型，专注于发现具体问题' },
-  judge: { label: '评审 Judge', desc: '对专家的建议进行审核、合并和过滤，确保评论质量' },
-  embedding: { label: '嵌入 Embedding', desc: '用于向量化代码和注释，支持语义搜索 (Qdrant)' },
-};
-
-const ROLES = ['planner', 'specialist', 'judge', 'embedding'];
-
-interface RoleState {
-  providerId: string | null;
-  model: string;
-}
 
 export function RoleAssignment() {
   const queryClient = useQueryClient();
-  const [roleStates, setRoleStates] = useState<Record<string, RoleState>>({});
+  const [localValues, setLocalValues] = useState<Record<string, string>>({});
+  const [isDirty, setIsDirty] = useState(false);
 
-  const { data: providers = [] } = useQuery({
-    queryKey: ['llm-providers'],
-    queryFn: fetchProviders,
+  const { data, isLoading, isError, error } = useQuery<ConfigResponse, Error>({
+    queryKey: ['config'],
+    queryFn: fetchConfig,
   });
 
-  const { data: roles = [], isLoading } = useQuery({
-    queryKey: ['llm-roles'],
-    queryFn: fetchRoles,
-  });
+  const REQUIRED_KEYS = [
+    'AGENT_MAIN_MODEL',
+    'AGENT_DEFAULT_SUBAGENT_MODEL',
+    'LLM_MAX_CONCURRENT_CALLS',
+    'LLM_RETRY_MAX_ATTEMPTS',
+    'LLM_RETRY_BASE_DELAY_MS',
+  ];
+
+  const fieldsMap = useMemo(() => {
+    if (!data) return new Map<string, ConfigFieldDto>();
+    const map = new Map<string, ConfigFieldDto>();
+    data.groups.forEach((group) => {
+      group.fields.forEach((field) => {
+        map.set(field.envKey, field);
+      });
+    });
+    return map;
+  }, [data]);
 
   useEffect(() => {
-    if (roles.length > 0) {
-      const initial: Record<string, RoleState> = {};
-      roles.forEach(role => {
-        initial[role.role] = {
-          providerId: role.providerId,
-          model: role.model || '',
-        };
-      });
-      // Fill missing roles
-      ROLES.forEach(r => {
-        if (!initial[r]) {
-          initial[r] = { providerId: null, model: '' };
+    if (data) {
+      const initialValues: Record<string, string> = {};
+      REQUIRED_KEYS.forEach((key) => {
+        const field = fieldsMap.get(key);
+        if (field) {
+          initialValues[key] = String(field.value ?? field.defaultValue ?? '');
+        } else {
+          initialValues[key] = '';
         }
       });
-      setRoleStates(initial);
-    } else if (!isLoading) {
-      const initial: Record<string, RoleState> = {};
-      ROLES.forEach(r => {
-        initial[r] = { providerId: null, model: '' };
-      });
-      setRoleStates(initial);
+      setLocalValues(initialValues);
+      setIsDirty(false);
     }
-  }, [roles, isLoading]);
+  }, [data, fieldsMap]);
 
   const saveMutation = useMutation({
-    mutationFn: async ({ role, providerId, model }: { role: string; providerId: string | null; model: string | null }) => {
-      return setRole(role, providerId, model);
+    mutationFn: (configData: Record<string, string>) => updateConfig(configData),
+    onSuccess: () => {
+      toast.success('智能体模型设置已保存');
+      queryClient.invalidateQueries({ queryKey: ['config'] });
+      setIsDirty(false);
     },
-    onSuccess: (data) => {
-      toast.success(`${ROLE_LABELS[data.role]?.label || data.role} 角色配置已保存`);
-      queryClient.invalidateQueries({ queryKey: ['llm-roles'] });
+    onError: (err: Error) => {
+      toast.error(`保存失败: ${err.message}`);
     },
-    onError: (error: unknown) => {
-      const err = error as { response?: { data?: { error?: string } }; message?: string };
-      toast.error(`保存失败: ${err?.response?.data?.error || err.message}`);
-    }
   });
 
-  const handleProviderChange = (role: string, providerId: string) => {
-    const provider = providers.find(p => p.id === providerId);
-    setRoleStates(prev => ({
-      ...prev,
-      [role]: {
-        providerId,
-        model: provider?.defaultModel || ''
-      }
-    }));
+  const handleFieldChange = (key: string, value: string) => {
+    setLocalValues((prev) => ({ ...prev, [key]: value }));
+    setIsDirty(true);
   };
 
-  const handleModelChange = (role: string, model: string) => {
-    setRoleStates(prev => ({
-      ...prev,
-      [role]: { ...prev[role], model }
-    }));
-  };
-
-  const handleSave = (role: string) => {
-    const state = roleStates[role];
-    if (!state.providerId) {
-      return toast.error('请选择提供商');
-    }
-    if (!state.model) {
-      return toast.error('请输入模型名称');
-    }
-    saveMutation.mutate({
-      role,
-      providerId: state.providerId,
-      model: state.model,
+  const handleSave = () => {
+    const payload: Record<string, string> = {};
+    REQUIRED_KEYS.forEach((key) => {
+      payload[key] = localValues[key] ?? '';
     });
+    saveMutation.mutate(payload);
   };
 
-  const enabledProviders = providers.filter(p => p.isEnabled && p.hasKey);
+  if (isLoading) {
+    return (
+      <Card className="gap-0 py-0 theme-card-shell group">
+        <CardHeader className="theme-card-header pb-4">
+          <CardTitle className="text-xl font-bold text-foreground tracking-tight">
+            智能体模型设置
+          </CardTitle>
+          <CardDescription className="text-muted-foreground">
+            加载配置中...
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="theme-card-content flex justify-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isError) {
+    return (
+      <Card className="gap-0 py-0 theme-card-shell group">
+        <CardHeader className="theme-card-header pb-4">
+          <CardTitle className="text-xl font-bold text-foreground tracking-tight">
+            智能体模型设置
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="theme-card-content">
+          <div className="theme-error-panel flex items-center gap-3 text-danger">
+            <AlertCircle className="w-5 h-5" />
+            <div className="font-medium tracking-wide">加载配置失败: {error.message}</div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const missingKeys = REQUIRED_KEYS.filter((key) => !fieldsMap.has(key));
 
   return (
     <Card className="gap-0 py-0 theme-card-shell group">
-      <CardHeader className="theme-card-header flex flex-row items-center justify-between pb-4 space-y-0">
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center border border-warning/20 group-hover:bg-warning/20 transition-all duration-300">
-            <ShieldCheck className="h-5 w-5 text-warning" />
-          </div>
-            <div className="space-y-1">
-              <CardTitle className="text-xl font-bold text-foreground tracking-tight">
-                角色分配
-              </CardTitle>
-              <CardDescription className="text-muted-foreground">
-                为 AI 审查系统的不同角色指定提供商和模型
-              </CardDescription>
+      <CardHeader className="theme-card-header pb-4 flex flex-row items-start justify-between space-y-0">
+        <div className="space-y-1">
+          <CardTitle className="text-xl font-bold text-foreground tracking-tight">
+            智能体模型设置
+          </CardTitle>
+          <CardDescription className="text-muted-foreground">
+            管理智能体运行时的主模型、子模型以及 LLM 调用弹性设置。
+          </CardDescription>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleSave}
+            disabled={!isDirty || saveMutation.isPending}
+            className="theme-interactive-elevate min-w-[100px] bg-primary text-primary-foreground font-bold hover:bg-primary/90 tech-glow transition-all"
+          >
+            {saveMutation.isPending ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="size-4 animate-spin" /> 保存中...
+              </span>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                保存设置
+              </>
+            )}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="theme-card-content space-y-6">
+        {missingKeys.length > 0 && (
+          <div className="p-3 rounded-lg bg-warning/10 border border-warning/20 text-warning text-sm flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <div>
+              <span className="font-semibold">部分配置项在系统中不可用：</span>
+              <span className="font-mono text-xs">{missingKeys.join(', ')}</span>。这些设置将无法编辑或保存。
             </div>
           </div>
-      </CardHeader>
+        )}
 
-      <CardContent className="theme-card-content">
-        {isLoading ? (
-          <div className="h-32 flex items-center justify-center text-muted-foreground gap-2">
-            <div className="w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-            加载角色配置...
-          </div>
-        ) : (
-          <div className="divide-y divide-border/50">
-            {ROLES.map(role => {
-              const state = roleStates[role] || { providerId: null, model: '' };
-              const isDirty = roles.find(r => r.role === role)?.providerId !== state.providerId || 
-                             (roles.find(r => r.role === role)?.model || '') !== state.model;
-              
-              return (
-                <div key={role} className="flex flex-col md:flex-row items-start md:items-center gap-4 py-5 px-1 hover:bg-accent/40 transition-colors rounded-lg">
-                  <div className="w-full md:w-1/3 space-y-1.5">
-                    <Label className="text-base font-semibold text-foreground">
-                      {ROLE_LABELS[role]?.label || role}
-                    </Label>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {ROLE_LABELS[role]?.desc}
-                    </p>
+        <div className="space-y-4">
+          {REQUIRED_KEYS.map((key) => {
+            const field = fieldsMap.get(key);
+            const isAvailable = !!field;
+            const label = field?.label || key;
+            const description = field?.description || '系统未提供该配置项的描述。';
+            const type = field?.type === 'number' ? 'number' : 'text';
+
+            return (
+              <div
+                key={key}
+                className={`flex flex-col gap-2 p-4 rounded-lg border transition-colors ${
+                  isAvailable
+                    ? 'border-border hover:bg-accent/20'
+                    : 'border-dashed border-muted bg-muted/10 opacity-60'
+                }`}
+              >
+                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                  <div className="flex flex-col space-y-1 flex-1">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor={key} className="text-base font-semibold text-foreground cursor-pointer">
+                        {label}
+                      </Label>
+                      {!isAvailable && (
+                        <Badge variant="outline" className="border-danger/30 text-danger bg-danger/5">
+                          不可用
+                        </Badge>
+                      )}
+                      {isAvailable && field.source === 'db' && (
+                        <Badge className="bg-primary/20 text-primary border-primary/30 tech-glow">
+                          已配置
+                        </Badge>
+                      )}
+                      {isAvailable && field.source === 'default' && (
+                        <Badge variant="outline" className="border-border text-muted-foreground">
+                          默认值
+                        </Badge>
+                      )}
+                    </div>
+                    <span className="text-sm text-muted-foreground leading-relaxed">
+                      {description}
+                    </span>
+                    <div className="pt-1">
+                      <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 inline-flex items-center">
+                        {key}
+                      </span>
+                    </div>
                   </div>
-                  
-                  <div className="w-full md:w-2/3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                    <div className="flex-1 w-full space-y-1">
-                      <Label className="text-xs text-muted-foreground">提供商</Label>
-                      <Select 
-                        value={state.providerId || ''} 
-                        onValueChange={(v) => handleProviderChange(role, v)}
-                      >
-                        <SelectTrigger className="bg-muted/50 border-border text-foreground">
-                          <SelectValue placeholder="选择提供商" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-popover border-border text-foreground">
-                          {enabledProviders.map(p => (
-                            <SelectItem key={p.id} value={p.id} description={p.type} className="focus:bg-accent focus:text-primary">
-                              {p.name}
-                            </SelectItem>
-                          ))}
-                          {enabledProviders.length === 0 && (
-                            <div className="px-2 py-3 text-xs text-danger text-center border-t border-border/60">
-                              无可用提供商。请先添加并启用。
-                            </div>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
 
-                    <div className="flex-1 w-full space-y-1">
-                      <Label className="text-xs text-muted-foreground">使用的模型</Label>
-                      <ModelCombobox
-                        providerType={providers.find(p => p.id === state.providerId)?.type}
-                        value={state.model}
-                        onChange={(model) => handleModelChange(role, model)}
-                        placeholder="选择或输入模型..."
-                        disabled={!state.providerId}
-                        className="w-full"
-                      />
-                    </div>
-
-                    <div className="pt-5 flex-shrink-0">
-                      <Button 
-                        size="sm"
-                        onClick={() => handleSave(role)}
-                        disabled={!isDirty || saveMutation.isPending}
-                        variant={isDirty ? 'default' : 'secondary'}
-                        className={`transition-all ${isDirty ? 'bg-warning/15 text-warning border border-warning/30 hover:bg-warning/25' : 'bg-muted/50 text-muted-foreground border border-transparent'}`}
-                      >
-                        <Save className="w-4 h-4 mr-1.5" />
-                        {isDirty ? '保存更改' : '已保存'}
-                      </Button>
-                    </div>
+                  <div className="flex-1 w-full max-w-xl flex flex-col gap-2">
+                    <Input
+                      id={key}
+                      type={type}
+                      value={localValues[key] ?? ''}
+                      onChange={(e) => handleFieldChange(key, e.target.value)}
+                      disabled={!isAvailable || saveMutation.isPending}
+                      placeholder={!isAvailable ? '配置项不可用' : `请输入 ${label}...`}
+                      className="bg-muted/50 border-border focus-visible:ring-primary focus-visible:border-primary transition-all duration-200"
+                    />
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
+              </div>
+            );
+          })}
+        </div>
       </CardContent>
     </Card>
   );

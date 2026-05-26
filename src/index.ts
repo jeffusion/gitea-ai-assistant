@@ -3,8 +3,8 @@ import { serveStatic } from 'hono/bun';
 import { jwt } from 'hono/jwt';
 import config, { configManager } from './config';
 import { adminController } from './controllers/admin';
+import { agentsRouter } from './controllers/agents';
 import { configRouter } from './controllers/config';
-import { feedbackRouter, initializeFeedbackSystem } from './controllers/feedback';
 import { llmConfigRouter } from './controllers/llm-config';
 import { handleGiteaWebhook } from './controllers/review';
 import { initMasterKey } from './crypto/secrets';
@@ -60,9 +60,9 @@ adminProtected.use('/*', (c, next) => {
   return jwtMiddleware(c, next);
 });
 adminProtected.route('/', adminController.protectedRoutes);
-adminProtected.route('/feedback', feedbackRouter);
 adminProtected.route('/config', configRouter);
 adminProtected.route('/llm', llmConfigRouter);
+adminProtected.route('/agents', agentsRouter);
 app.route('/admin/api', adminProtected);
 
 // --- 前端静态文件服务 ---
@@ -87,16 +87,6 @@ codexEngine.start().catch((error) => {
 
 // 启动清理调度器（定期清理过期 mirror/workspace 目录）
 cleanupScheduler.start();
-
-// 初始化反馈系统（总是初始化，记忆系统可选）
-const reviewStore = reviewEngine.getStore();
-initializeFeedbackSystem(reviewStore);
-
-if (config.review.enableMemory) {
-  console.log('✅ 反馈系统已初始化（含向量记忆）');
-} else {
-  console.log('✅ 反馈系统已初始化（不含向量记忆）');
-}
 
 export default {
   port,

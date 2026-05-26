@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { ProviderList } from '../ProviderList';
 import {
   fetchProviders,
-  fetchRoles,
   updateProvider,
   deleteProvider,
   testProvider,
@@ -20,7 +19,6 @@ vi.mock('sonner', () => ({
 
 vi.mock('@/services/llmProviderService', () => ({
   fetchProviders: vi.fn(),
-  fetchRoles: vi.fn(),
   updateProvider: vi.fn(),
   deleteProvider: vi.fn(),
   testProvider: vi.fn(),
@@ -62,7 +60,6 @@ describe('ProviderList', () => {
         createdAt: '2026-01-01',
       },
     ]);
-    vi.mocked(fetchRoles).mockResolvedValueOnce([]);
     vi.mocked(updateProvider).mockResolvedValue({} as never);
     vi.mocked(deleteProvider).mockResolvedValue(undefined);
     vi.mocked(testProvider).mockResolvedValue({ success: true });

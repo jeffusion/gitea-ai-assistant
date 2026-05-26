@@ -130,7 +130,7 @@ export const providerRepo = {
 
   /**
    * Delete a provider by ID. Returns true if deleted.
-   * CASCADE will also delete the associated secret and role assignments.
+   * CASCADE will also delete the associated secret.
    */
   delete(id: string): boolean {
     const db = getDatabase();

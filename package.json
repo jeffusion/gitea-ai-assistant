@@ -9,7 +9,6 @@
     "@anthropic-ai/sdk": "^0.78.0",
     "@google/genai": "^1.43.0",
     "@hono/zod-validator": "^0.4.3",
-    "@qdrant/js-client-rest": "^1.16.2",
     "axios": "^1.8.3",
     "dotenv": "^16.4.7",
     "hono": "^4.11.9",
@@ -52,6 +51,7 @@
     "start:prod": "bun run dist/index.js",
     "lint": "biome check src/",
     "test": "bun test",
+    "test:e2e": "bash ./e2e/test.sh",
     "prepare": "command -v husky >/dev/null 2>&1 && husky || true"
   },
   "keywords": [

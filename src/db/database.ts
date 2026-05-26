@@ -12,6 +12,9 @@ import { dirname, resolve } from 'node:path';
 import { migration001Init } from './migrations/001_init';
 import { migration002RemoveLegacyReviewMode } from './migrations/002_remove_legacy_review_mode';
 import { migration003RepositoryReviewPrompts } from './migrations/003_repository_review_prompts';
+import { migration004RemoveEmbeddingRole } from './migrations/004_remove_embedding_role';
+import { migration005AgentTranscripts } from './migrations/005_agent_transcripts';
+import { migration006DropLegacyAssignments } from './migrations/006_drop_legacy_assignments';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,6 +34,9 @@ const MIGRATIONS: Migration[] = [
   migration001Init,
   migration002RemoveLegacyReviewMode,
   migration003RepositoryReviewPrompts,
+  migration004RemoveEmbeddingRole,
+  migration005AgentTranscripts,
+  migration006DropLegacyAssignments,
 ];
 
 const REPOSITORY_REVIEW_PROMPTS_TABLE = 'repository_review_prompts';

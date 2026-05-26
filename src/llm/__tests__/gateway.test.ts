@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { initMasterKey } from '../../crypto/secrets';
 import { closeDatabase, initDatabase } from '../../db/database';
-import { modelRoleRepo } from '../../db/repositories/model-role-repo';
 import { providerRepo } from '../../db/repositories/provider-repo';
 import type { CreateProviderInput } from '../../db/repositories/provider-repo';
 import { secretRepo } from '../../db/repositories/secret-repo';
@@ -74,72 +73,6 @@ describe('LLMGateway', () => {
     }
   });
 
-  // ─── chatForRole: Error Cases ──────────────────────────────────────
-
-  describe('chatForRole() — error handling', () => {
-    test('throws LLMNoProviderError when role is not assigned', async () => {
-      try {
-        await gateway.chatForRole('planner', {
-          messages: [{ role: 'user', content: 'hello' }],
-        });
-        expect(true).toBe(false); // Should not reach
-      } catch (e: any) {
-        expect(e.name).toBe('LLMNoProviderError');
-        expect(e.role).toBe('planner');
-      }
-    });
-
-    test('throws LLMError when provider is disabled', async () => {
-      providerRepo.update(providerId, { isEnabled: false });
-      modelRoleRepo.set('planner', providerId, 'gpt-4o-mini');
-
-      try {
-        await gateway.chatForRole('planner', {
-          messages: [{ role: 'user', content: 'hello' }],
-        });
-        expect(true).toBe(false);
-      } catch (e: any) {
-        expect(e.name).toBe('LLMError');
-        expect(e.message).toContain('disabled');
-      }
-    });
-
-    test('throws LLMAuthError when no API key configured', async () => {
-      secretRepo.delete(providerId);
-      modelRoleRepo.set('planner', providerId, 'gpt-4o-mini');
-
-      try {
-        await gateway.chatForRole('planner', {
-          messages: [{ role: 'user', content: 'hello' }],
-        });
-        expect(true).toBe(false);
-      } catch (e: any) {
-        expect(e.name).toBe('LLMAuthError');
-        expect(e.message).toContain('No API key');
-      }
-    });
-
-    test('throws LLMError when provider not found after role assignment manually deleted', async () => {
-      modelRoleRepo.set('planner', providerId, 'gpt-4o-mini');
-      // Must remove assignments before deleting provider (no CASCADE on model_role_assignments)
-      modelRoleRepo.delete('planner');
-      secretRepo.delete(providerId);
-      providerRepo.delete(providerId);
-
-      // Re-create assignment pointing to non-existent provider
-      // (simulating stale data)
-      try {
-        // No assignment exists now, so this throws LLMNoProviderError
-        await gateway.chatForRole('planner', {
-          messages: [{ role: 'user', content: 'hello' }],
-        });
-        expect(true).toBe(false);
-      } catch (e: any) {
-        expect(e.name).toBe('LLMNoProviderError');
-      }
-    });
-  });
-
   // ─── chatDirect: Error Cases ──────────────────────────────────────
 
   describe('chatDirect() — error handling', () => {
@@ -155,18 +88,34 @@ describe('LLMGateway', () => {
         expect(e.message).toContain('not found');
       }
     });
-  });
 
-  // ─── embedForRole: Error Cases ────────────────────────────────────
+    test('throws LLMError when provider is disabled', async () => {
+      providerRepo.update(providerId, { isEnabled: false });
 
-  describe('embedForRole() — error handling', () => {
-    test('throws LLMNoProviderError when embedding role not assigned', async () => {
       try {
-        await gateway.embedForRole(['text']);
+        await gateway.chatDirect(providerId, {
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: 'hello' }],
+        });
         expect(true).toBe(false);
       } catch (e: any) {
-        expect(e.name).toBe('LLMNoProviderError');
-        expect(e.role).toBe('embedding');
+        expect(e.name).toBe('LLMError');
+        expect(e.message).toContain('disabled');
+      }
+    });
+
+    test('throws LLMAuthError when no API key configured', async () => {
+      secretRepo.delete(providerId);
+
+      try {
+        await gateway.chatDirect(providerId, {
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: 'hello' }],
+        });
+        expect(true).toBe(false);
+      } catch (e: any) {
+        expect(e.name).toBe('LLMAuthError');
+        expect(e.message).toContain('No API key');
       }
     });
   });
