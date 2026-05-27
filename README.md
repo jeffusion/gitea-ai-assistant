@@ -2,104 +2,58 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-AI-powered code review assistant for Gitea. It receives webhooks, runs AI review workflows, and posts summary + line-level feedback back to Gitea.
+AI-powered code review assistant for Gitea. Receives webhooks, runs AI review workflows, and posts summary + line-level feedback back to Gitea.
 
-- English docs: [./docs/README.md](./docs/README.md)
-- 中文文档: [./docs/README.zh-CN.md](./docs/README.zh-CN.md)
+[English](./docs/README.md) | [中文](./docs/README.zh-CN.md)
 
-## Why this project
+## Features
 
-- 🤖 **Automated PR + commit review** via webhook events (`pull_request`, `status`)
-- 🧠 **Two review engines**: `agent` (native Agent pipeline) and `codex` (Codex CLI pipeline)
-- 🧵 **Pluggable LLM providers**: OpenAI Compatible, OpenAI Responses API, Anthropic, Gemini
-- 📍 **Actionable output**: summary comments and line-level findings
-- 🎛️ **Web Admin UI** for runtime configuration (providers, models, webhook, review policy)
-- 🔔 **Notifications**: Feishu + WeCom (企业微信)
-- 🔐 **Security-first defaults**: webhook signature verification + encrypted API key storage
+- **Automated PR & commit review** via webhook events
+- **Dynamic Agent engine** — main agent autonomously spawns subagents for focused analysis
+- **Codex engine** — Codex CLI-backed review as an alternative pipeline
+- **Pluggable LLM providers** — OpenAI Compatible, OpenAI Responses API, Anthropic, Gemini
+- **Web Admin UI** — runtime configuration for providers, models, webhook, review policy
+- **Notifications** — Feishu + WeCom (企业微信)
+- **Security-first** — webhook signature verification + AES-256-GCM encrypted API key storage
 
-## Product screenshot
+![Dashboard](./docs/assets/page-repos.png)
 
-> Dashboard screenshot is generated from local dev service.
-
-![Gitea AI Assistant Dashboard - Repository Page](./docs/assets/page-repos.png)
-
-More screenshots (one per admin menu): [EN](./docs/screenshots.md) | [中文](./docs/screenshots.zh-CN.md)
-
-## Architecture (high-level)
-
-```
-Gitea Webhook -> Gitea AI Assistant (Hono + Bun) -> LLM Gateway (multi-provider)
-                                 |
-                                 +-> Admin Dashboard (React)
-```
-
-For detailed documentation, see [Documentation index](./docs/README.md).
-
-## Quick start (minimal)
-
-### 1) Prerequisites
-
-- Bun >= 1.2.5
-- Reachable Gitea instance
-- At least one LLM provider credential
-
-### 2) Install
+## Quick start
 
 ```bash
-git clone https://github.com/user/gitea-ai-assistant.git
+git clone https://github.com/jeffusion/gitea-ai-assistant.git
 cd gitea-ai-assistant
-bun install
+bun install                       # installs frontend via postinstall
 ```
 
-If lifecycle scripts are disabled in your environment, run:
+Create `.env`:
 
 ```bash
-bun run bootstrap
+ENCRYPTION_KEY=$(openssl rand -hex 32)
 ```
-
-### 3) Minimal `.env`
-
-```bash
-PORT=5174
-ENCRYPTION_KEY=   # required, 64 hex chars (openssl rand -hex 32)
-# DATABASE_PATH=./data/assistant.db
-# LOG_LEVEL=info   # dev default; use LOG_LEVEL=error in production
-```
-
-> `ENCRYPTION_KEY` is mandatory. The app refuses to start without it.
-
-### 4) Run
 
 ```bash
 bun run dev
-# or
-bun run start
 ```
 
-### 5) Configure in Admin UI
+Open `http://localhost:5174`, login with default password `password` (change it immediately), then configure Gitea, LLM providers, and webhook in the Admin UI.
 
-Open `http://your-server:5174`, login with default `password` (first boot only), then change it immediately.
+See [Getting Started](./docs/getting-started.md) for full setup walkthrough including webhook configuration.
 
-- Configure Gitea API + tokens
-- Configure webhook secret
-- Configure LLM providers/models
-- Configure review engine and policy
+## Documentation
 
-### 6) Add webhook in Gitea
+| Topic | Description |
+|---|---|
+| [Getting Started](./docs/getting-started.md) | Full installation and setup walkthrough |
+| [Configuration](./docs/configuration.md) | Environment variables and Admin UI settings |
+| [Review Engines](./docs/review-engines.md) | Agent engine, Codex engine, review modes |
+| [Deployment](./docs/deployment.md) | Docker, Compose, and Kubernetes |
+| [Screenshots](./docs/screenshots.md) | Admin UI gallery |
 
-- URL: `http://your-server:5174/webhook/gitea`
-- Content-Type: `application/json`
-- Secret: same as dashboard webhook secret
-- Events: Pull Request + Status
+## Contributing
 
-## Progressive disclosure: detailed docs
-
-- [Documentation index](./docs/README.md)
-- [Getting started details](./docs/getting-started.md)
-- [Configuration reference](./docs/configuration.md)
-- [Review engines](./docs/review-engines.md)
-- [Deployment (Docker / Compose / Kubernetes)](./docs/deployment.md)
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for development conventions and UI guidelines.
 
 ## License
 
-MIT License
+MIT
