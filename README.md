@@ -33,7 +33,7 @@ Gitea Webhook -> Gitea AI Assistant (Hono + Bun) -> LLM Gateway (multi-provider)
                                  +-> Admin Dashboard (React)
 ```
 
-For component-level design, see [Architecture docs](./docs/README.md#architecture--design).
+For detailed documentation, see [Documentation index](./docs/README.md).
 
 ## Quick start (minimal)
 
