@@ -1,6 +1,6 @@
 # 文档中心
 
-根目录 `README.md` 保持简洁；本目录提供详细说明与设计文档。
+根目录 `README.md` 保持简洁；本目录提供详细说明。
 
 ## 快速导航
 
@@ -9,15 +9,6 @@
 - [审查引擎](./review-engines.zh-CN.md)
 - [部署指南](./deployment.zh-CN.md)
 - [截图集](./screenshots.zh-CN.md)
-
-## 架构与设计
-
-- [通知服务重构设计](./design/notification-service-refactoring.md)
-- [UI 主题语言设计](./design/ui-theme-language.md)
-
-## 产品截图
-
-![Gitea AI Assistant 管理后台（仓库管理页）](./assets/page-repos.png)
 
 ## 语言切换
 
