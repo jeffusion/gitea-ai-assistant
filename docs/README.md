@@ -1,14 +1,20 @@
 # Documentation
 
-This project keeps the root `README.md` concise and moves implementation/deployment details here.
+Setup, configuration, and deployment guides for Gitea AI Assistant.
 
-## Start here
+## Getting started
 
-- [Getting started](./getting-started.md)
-- [Configuration reference](./configuration.md)
-- [Review engines](./review-engines.md)
-- [Deployment](./deployment.md)
-- [Screenshot gallery](./screenshots.md)
+- [Getting Started](./getting-started.md) — full installation, first login, and webhook setup walkthrough
+- [Screenshots](./screenshots.md) — Admin UI gallery (one page per feature area)
+
+## Reference
+
+- [Configuration](./configuration.md) — environment variables, Admin UI settings, and runtime configuration model
+- [Review Engines](./review-engines.md) — Agent engine, Codex engine, review modes, size policy, and agent definitions
+
+## Deployment
+
+- [Deployment](./deployment.md) — Docker, Docker Compose, and Kubernetes
 
 ## Language
 

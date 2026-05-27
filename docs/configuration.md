@@ -2,21 +2,23 @@
 
 ## Configuration model
 
-This project uses a DB-first runtime configuration model:
+This project uses a **DB-first** runtime configuration model:
 
-- `.env` contains only infrastructure-level bootstrap values.
-- Runtime settings (Gitea, providers, secrets, review policy, notifications) are managed in Admin UI and stored in SQLite.
+- `.env` stores only infrastructure-level bootstrap values
+- Runtime settings (Gitea, providers, secrets, review policy, notifications) are managed in Admin UI and persisted to SQLite
 
-## Environment variables (minimal)
+This means you configure most settings through the web dashboard after first boot, not through environment variables.
+
+## Environment variables
 
 | Variable | Required | Description | Default |
 |---|---|---|---|
-| `ENCRYPTION_KEY` | Yes | AES-256-GCM master key (64 hex chars) for API key encryption | - |
+| `ENCRYPTION_KEY` | Yes | AES-256-GCM master key for API key encryption (64 hex chars) | — |
 | `PORT` | No | Service port | `5174` |
-| `DATABASE_PATH` | No | SQLite path | `./data/assistant.db` |
-| `LOG_LEVEL` | No | Backend log level (`debug`/`info`/`warn`/`error`). Default is `info`; use `error` in production. | `info` |
+| `DATABASE_PATH` | No | SQLite database path | `./data/assistant.db` |
+| `LOG_LEVEL` | No | Backend log level: `debug` / `info` / `warn` / `error` | `info` |
 
-Generate key:
+Generate encryption key:
 
 ```bash
 openssl rand -hex 32
@@ -24,62 +26,57 @@ openssl rand -hex 32
 
 ## First boot defaults
 
-When database is empty:
+When the database is empty on first launch:
 
-- `JWT_SECRET` auto-generated
-- `WEBHOOK_SECRET` auto-generated
-- `ADMIN_PASSWORD` defaults to `password`
+- `JWT_SECRET` — auto-generated
+- `WEBHOOK_SECRET` — auto-generated
+- `ADMIN_PASSWORD` — defaults to `password` (**change immediately after login**)
 
-Change `ADMIN_PASSWORD` immediately after first login.
+## Admin UI settings
 
-## Runtime groups in Admin UI
+All settings below are configured through the Admin UI at `http://your-server:5174`.
 
-## 1) Gitea
+### Gitea
 
-- API URL
-- Access token
-- Admin token (optional)
+| Setting | Description |
+|---|---|
+| API URL | Gitea API endpoint (e.g. `http://gitea:3000/api/v1`) |
+| Access Token | Token for cloning repos and posting comments |
+| Admin Token | Optional; required for repository discovery |
 
-## 2) Security
+### Security
 
-- Webhook secret (HMAC-SHA256 verification)
-- Admin password
-- JWT secret
+| Setting | Description |
+|---|---|
+| Webhook Secret | HMAC-SHA256 key for verifying incoming webhooks |
+| Admin Password | Dashboard login password |
+| JWT Secret | Token signing key (auto-generated on first boot) |
 
-## 3) LLM
+### LLM
 
-- Providers: OpenAI Compatible / OpenAI Responses / Anthropic / Gemini
-- Agent runtime models:
-  - `AGENT_MAIN_MODEL`: The main model name used by the agent runtime when no specific model is configured. Default is `gpt-4.1`.
-  - `AGENT_DEFAULT_SUBAGENT_MODEL`: The default model name used by subagents when no specific model is declared in their definition or overridden during spawn. Default is `gpt-4.1-mini`.
+| Setting | Description |
+|---|---|
+| Providers | Add one or more providers: OpenAI Compatible / OpenAI Responses / Anthropic / Gemini |
+| `AGENT_MAIN_MODEL` | Default model for the main agent runtime. Default: `gpt-4.1` |
+| `AGENT_DEFAULT_SUBAGENT_MODEL` | Default model for subagents when not declared in definition or spawn. Default: `gpt-4.1-mini` |
 
-## 4) Notification
+Model resolution order: `spawn override > AgentDefinition.model > AGENT_DEFAULT_SUBAGENT_MODEL > AGENT_MAIN_MODEL`
 
-- Feishu webhook and optional secret
-- WeCom (企业微信) webhook
+### Notifications
 
-## 5) Review
+| Setting | Description |
+|---|---|
+| Feishu Webhook | Feishu bot webhook URL and optional signing secret |
+| WeCom Webhook | WeCom (企业微信) bot webhook URL |
 
-- Engine mode: `agent` or `codex`
-- Triage size classification and routing hints
-- Size thresholds (`small`/`medium`/`large`)
-- Execution modes (`skip`/`light`/`full`)
-- Token budgets and concurrency limits
+### Review
 
-> Size and mode are different layers:
->
-> - `small/medium/large`: change-size classification
-> - `skip/light/full`: review execution depth
+| Setting | Description |
+|---|---|
+| Engine | `agent` or `codex` |
+| Size thresholds | `small` / `medium` / `large` — classifies change size |
+| Execution modes | `skip` / `light` / `full` — controls review depth |
+| Token budgets | Per-mode token limits |
+| Concurrency | Max parallel review runs |
 
-## Agent Definitions
-
-Project agent definitions are stored as Markdown files with frontmatter in the repository:
-- Path: `.gitea-assistant/agents/*.md`
-
-These files define the system prompts, metadata, and execution parameters for each agent.
-
-## Tool Permissions
-
-Tool permissions are controlled directly within each agent's definition file:
-- `tools`: An allow-list of tool names that the agent is permitted to call. An empty list grants no tools.
-- `disallowedTools`: A deny-list of tool names that the agent is explicitly forbidden from calling. This takes precedence over the allow-list.
+> Size and mode are separate layers: `small/medium/large` classifies how big the change is; `skip/light/full` controls how deeply the engine reviews it.

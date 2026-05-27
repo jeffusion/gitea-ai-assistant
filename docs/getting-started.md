@@ -2,68 +2,92 @@
 
 ## Prerequisites
 
-- Bun >= 1.2.5
+- [Bun](https://bun.sh) >= 1.2.5
 - A reachable Gitea instance
-- At least one LLM provider credential
+- At least one LLM provider credential (OpenAI, Anthropic, Gemini, or compatible)
 
 ## Install
 
 ```bash
-git clone https://github.com/user/gitea-ai-assistant.git
+git clone https://github.com/jeffusion/gitea-ai-assistant.git
 cd gitea-ai-assistant
 bun install
 ```
 
-`bun install` at repository root installs frontend dependencies via `postinstall`.
-
-If lifecycle scripts are disabled:
+`bun install` at repository root installs frontend dependencies via `postinstall`. If lifecycle scripts are disabled:
 
 ```bash
 bun run bootstrap
 ```
 
-## Minimal environment
+## Configure environment
 
-Create `.env`:
+Create `.env` in the project root:
 
 ```bash
-PORT=5174
-ENCRYPTION_KEY= # required, generate with: openssl rand -hex 32
+ENCRYPTION_KEY=<generate with: openssl rand -hex 32>
+# PORT=5174
 # DATABASE_PATH=./data/assistant.db
-# LOG_LEVEL=info   # local dev default; use LOG_LEVEL=error in production
+# LOG_LEVEL=info
 ```
 
-> `ENCRYPTION_KEY` is required. Application startup fails when it is missing.
+`ENCRYPTION_KEY` is required — the application refuses to start without it. It is the AES-256-GCM master key for encrypting API keys stored in the database.
+
+See [Configuration](./configuration.md) for all environment variables and runtime settings.
 
 ## Run
 
 ```bash
-bun run dev
-# or
-bun run start
+bun run dev          # development with hot reload
+bun run start        # production mode
 ```
+
+Open `http://localhost:5174` to access the Admin UI.
 
 ## First login
 
-- Open `http://your-server:5174`
-- Default admin password is `password` on first boot
-- Change admin password immediately after login
+- Default admin password is `password` on first boot.
+- **Change it immediately** after login (Security section in Admin UI).
+
+## Configure in Admin UI
+
+The Admin UI manages all runtime settings stored in SQLite. You only need `.env` for infrastructure bootstrap values.
+
+![Dashboard](./assets/page-repos.png)
+
+Key settings to configure:
+
+1. **Gitea** — API URL, access token
+2. **LLM Providers** — add at least one provider (OpenAI Compatible, Anthropic, Gemini, etc.) with API key and default model
+3. **Webhook Secret** — used for HMAC-SHA256 signature verification
+
+See [Screenshots](./screenshots.md) for a full UI gallery.
 
 ## Webhook setup
 
 ### Option A: Admin UI (recommended)
 
-In repository list, click enable to auto-provision webhook.
+In the repository list page, click the enable button. The system auto-provisions the webhook in Gitea.
 
 ### Option B: Manual
 
-In Gitea repository settings:
+In Gitea repository settings → Webhooks → Add webhook:
 
-- URL: `http://your-server:5174/webhook/gitea`
-- Content Type: `application/json`
-- Secret: same value as dashboard webhook secret
-- Events: Pull Request + Status
+| Field | Value |
+|---|---|
+| URL | `http://your-server:5174/webhook/gitea` |
+| Content Type | `application/json` |
+| Secret | Same value as configured in Admin UI |
+| Events | Pull Request + Status |
 
-## Health endpoint
+## Health check
 
-Use `/api/health` to check service status.
+```
+GET /api/health
+```
+
+## Next steps
+
+- [Configuration reference](./configuration.md) — all settings and runtime model
+- [Review engines](./review-engines.md) — Agent engine, Codex engine, review modes
+- [Deployment](./deployment.md) — Docker, Compose, Kubernetes
